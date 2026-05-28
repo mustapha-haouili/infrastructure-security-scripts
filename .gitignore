@@ -1,0 +1,28 @@
+# Runtime output
+reports/
+backups/
+logs/
+*.log
+*.csv
+*.jsonl
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# PowerShell
+*.ps1xml
+*.clixml
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
