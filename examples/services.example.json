@@ -1,0 +1,18 @@
+{
+  "services": [
+    {
+      "name": "Public website",
+      "type": "http",
+      "url": "https://example.com",
+      "expected_status": [200, 301, 302],
+      "timeout": 5
+    },
+    {
+      "name": "SSH bastion",
+      "type": "tcp",
+      "host": "127.0.0.1",
+      "port": 22,
+      "timeout": 3
+    }
+  ]
+}
