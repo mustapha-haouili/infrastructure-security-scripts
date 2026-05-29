@@ -24,6 +24,16 @@ Options:
 USAGE
 }
 
+require_value() {
+    local option="$1"
+    local value="${2:-}"
+    if [[ -z "$value" || "$value" == -* ]]; then
+        echo "Option $option requires a value." >&2
+        usage
+        exit 1
+    fi
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --apply)
@@ -31,10 +41,12 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --backup-dir)
+            require_value "$1" "${2:-}"
             BACKUP_DIR="${2:-}"
             shift 2
             ;;
         --report-dir)
+            require_value "$1" "${2:-}"
             REPORT_DIR="${2:-}"
             shift 2
             ;;
@@ -143,6 +155,10 @@ write_ssh_baseline() {
 
     if [[ ! -d /etc/ssh/sshd_config.d ]]; then
         target="/etc/ssh/sshd_config"
+    fi
+
+    if [[ "$target" == */sshd_config && ! -e "$target" ]]; then
+        install -m 600 -o root -g root /dev/null "$target"
     fi
 
     backup_file "$target"

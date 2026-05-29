@@ -19,6 +19,16 @@ Options:
 USAGE
 }
 
+require_value() {
+    local option="$1"
+    local value="${2:-}"
+    if [[ -z "$value" || "$value" == -* ]]; then
+        echo "Option $option requires a value." >&2
+        usage
+        exit 1
+    fi
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --deep)
@@ -26,6 +36,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --output-dir)
+            require_value "$1" "${2:-}"
             OUTPUT_DIR="${2:-}"
             shift 2
             ;;
@@ -124,7 +135,7 @@ run_section "Image history" inspect_history
 
 USER_VALUE="$(docker image inspect "$IMAGE" --format '{{.Config.User}}' 2>/dev/null || true)"
 section "Baseline observations"
-if [[ -z "$USER_VALUE" || "$USER_VALUE" == "root" || "$USER_VALUE" == "0" ]]; then
+if [[ -z "$USER_VALUE" || "$USER_VALUE" =~ ^(root|0)(:|$) ]]; then
     echo "Finding: image runs as root or does not define a non-root user." >> "$REPORT_FILE"
 else
     echo "OK: image defines user: $USER_VALUE" >> "$REPORT_FILE"

@@ -22,17 +22,30 @@ Options:
 USAGE
 }
 
+require_value() {
+    local option="$1"
+    local value="${2:-}"
+    if [[ -z "$value" || "$value" == -* ]]; then
+        echo "Option $option requires a value." >&2
+        usage
+        exit 1
+    fi
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --warn)
+            require_value "$1" "${2:-}"
             WARN="${2:-}"
             shift 2
             ;;
         --crit)
+            require_value "$1" "${2:-}"
             CRIT="${2:-}"
             shift 2
             ;;
         --exclude-types)
+            require_value "$1" "${2:-}"
             EXCLUDE_TYPES="${2:-}"
             shift 2
             ;;
