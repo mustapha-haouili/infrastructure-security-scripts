@@ -28,15 +28,15 @@ This repository is designed for defensive security operations, infrastructure ad
 
 ```text
 infrastructure-security-scripts/
-├── .github/workflows/          # CI checks for scripts
-├── docs/                       # Usage notes and script index
-├── examples/                   # Example configuration files
-├── scripts/
-│   ├── windows/                # Windows audit and hardening scripts
-│   ├── linux/                  # Linux audit, hardening, and inventory scripts
-│   ├── devsecops/              # Docker, Kubernetes, and secret scanning scripts
-│   └── monitoring/             # Service and disk monitoring scripts
-└── tests/                      # Lightweight static checks and unit tests
+|-- .github/workflows/          # CI checks for scripts
+|-- docs/                       # Usage notes and script index
+|-- examples/                   # Example configuration files
+|-- scripts/
+|   |-- windows/                # Windows audit and hardening scripts
+|   |-- linux/                  # Linux audit, hardening, and inventory scripts
+|   |-- devsecops/              # Docker, Kubernetes, and secret scanning scripts
+|   `-- monitoring/             # Service and disk monitoring scripts
+`-- tests/                      # Lightweight static checks and unit tests
 ```
 
 ## Safety model
@@ -138,7 +138,8 @@ infrastructure-security windows-server linux powershell bash python devsecops ha
 
 ## Author
 
-Mustapha Haouili  
+Mustapha Haouili
+
 Infrastructure Security Architect
 
 ## Responsible use

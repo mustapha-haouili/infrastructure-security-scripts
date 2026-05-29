@@ -18,9 +18,20 @@ Options:
 USAGE
 }
 
+require_value() {
+    local option="$1"
+    local value="${2:-}"
+    if [[ -z "$value" || "$value" == -* ]]; then
+        echo "Option $option requires a value." >&2
+        usage
+        exit 1
+    fi
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -o|--output-dir)
+            require_value "$1" "${2:-}"
             OUTPUT_DIR="${2:-}"
             shift 2
             ;;
@@ -123,7 +134,7 @@ check_sudoers() {
 check_ssh() {
     echo "sshd_config effective security settings:"
     if have_cmd sshd; then
-        sshd -T 2>/dev/null | grep -Ei '^(permitrootlogin|passwordauthentication|pubkeyauthentication|x11forwarding|maxauthtries|logingracetime|allowtcpforwarding|permitempty passwords|clientaliveinterval|clientalivecountmax)' || true
+        sshd -T 2>/dev/null | grep -Ei '^(permitrootlogin|passwordauthentication|pubkeyauthentication|x11forwarding|maxauthtries|logingracetime|allowtcpforwarding|permitemptypasswords|clientaliveinterval|clientalivecountmax)' || true
     elif [[ -r /etc/ssh/sshd_config ]]; then
         grep -Ei '^[[:space:]]*(PermitRootLogin|PasswordAuthentication|PubkeyAuthentication|X11Forwarding|MaxAuthTries|LoginGraceTime|AllowTcpForwarding|PermitEmptyPasswords|ClientAliveInterval|ClientAliveCountMax)' /etc/ssh/sshd_config || true
     else
