@@ -63,7 +63,7 @@ if [[ -n "$CONTEXT" ]]; then
 fi
 
 mkdir -p "$OUTPUT_DIR"
-CURRENT_CONTEXT="$(${KUBECTL[@]} config current-context 2>/dev/null || echo unknown)"
+CURRENT_CONTEXT="$("${KUBECTL[@]}" config current-context 2>/dev/null || echo unknown)"
 SAFE_CONTEXT="$(echo "$CURRENT_CONTEXT" | tr '/:@' '___')"
 REPORT_FILE="$OUTPUT_DIR/kubernetes-rbac-audit-${SAFE_CONTEXT}-$(date -u +%Y%m%d-%H%M%S).txt"
 
@@ -92,38 +92,38 @@ HEADER
 }
 
 cluster_summary() {
-    ${KUBECTL[@]} version --short 2>/dev/null || ${KUBECTL[@]} version 2>/dev/null || true
+    "${KUBECTL[@]}" version --short 2>/dev/null || "${KUBECTL[@]}" version 2>/dev/null || true
     echo
-    ${KUBECTL[@]} get nodes -o wide
+    "${KUBECTL[@]}" get nodes -o wide
 }
 
 cluster_admin_bindings() {
-    ${KUBECTL[@]} get clusterrolebinding -o jsonpath='{range .items[?(@.roleRef.name=="cluster-admin")]}{.metadata.name}{" | "}{range .subjects[*]}{.kind}{":"}{.namespace}{":"}{.name}{","}{end}{"\n"}{end}'
+    "${KUBECTL[@]}" get clusterrolebinding -o jsonpath='{range .items[?(@.roleRef.name=="cluster-admin")]}{.metadata.name}{" | "}{range .subjects[*]}{.kind}{":"}{.namespace}{":"}{.name}{","}{end}{"\n"}{end}'
 }
 
 wildcard_cluster_roles() {
-    ${KUBECTL[@]} get clusterroles -o jsonpath='{range .items[*]}{.metadata.name}{" | "}{range .rules[*]}verbs={.verbs};resources={.resources};apiGroups={.apiGroups}{" || "}{end}{"\n"}{end}' | grep -E '\*|verbs=\[.*\*.*\]|resources=\[.*\*.*\]' || true
+    "${KUBECTL[@]}" get clusterroles -o jsonpath='{range .items[*]}{.metadata.name}{" | "}{range .rules[*]}verbs={.verbs};resources={.resources};apiGroups={.apiGroups}{" || "}{end}{"\n"}{end}' | grep -E '\*|verbs=\[.*\*.*\]|resources=\[.*\*.*\]' || true
 }
 
 privileged_pods() {
-    ${KUBECTL[@]} get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{" | hostNetwork="}{.spec.hostNetwork}{" | "}{range .spec.containers[*]}{.name}{":privileged="}{.securityContext.privileged}{",allowPrivilegeEscalation="}{.securityContext.allowPrivilegeEscalation}{",runAsUser="}{.securityContext.runAsUser}{";"}{end}{"\n"}{end}' | grep -E 'privileged=true|allowPrivilegeEscalation=true|hostNetwork=true|runAsUser=0' || true
+    "${KUBECTL[@]}" get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{" | hostNetwork="}{.spec.hostNetwork}{" | "}{range .spec.containers[*]}{.name}{":privileged="}{.securityContext.privileged}{",allowPrivilegeEscalation="}{.securityContext.allowPrivilegeEscalation}{",runAsUser="}{.securityContext.runAsUser}{";"}{end}{"\n"}{end}' | grep -E 'privileged=true|allowPrivilegeEscalation=true|hostNetwork=true|runAsUser=0' || true
 }
 
 hostpath_pods() {
-    ${KUBECTL[@]} get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{" | "}{range .spec.volumes[*]}{.name}{":hostPath="}{.hostPath.path}{";"}{end}{"\n"}{end}' | grep 'hostPath=/' || true
+    "${KUBECTL[@]}" get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{" | "}{range .spec.volumes[*]}{.name}{":hostPath="}{.hostPath.path}{";"}{end}{"\n"}{end}' | grep 'hostPath=/' || true
 }
 
 default_service_account_usage() {
-    ${KUBECTL[@]} get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{" | serviceAccount="}{.spec.serviceAccountName}{"\n"}{end}' | grep 'serviceAccount=default' || true
+    "${KUBECTL[@]}" get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{" | serviceAccount="}{.spec.serviceAccountName}{"\n"}{end}' | grep 'serviceAccount=default' || true
 }
 
 network_policy_coverage() {
     local namespaces
-    namespaces="$(${KUBECTL[@]} get namespaces -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')"
+    namespaces="$("${KUBECTL[@]}" get namespaces -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')"
     while IFS= read -r ns; do
         [[ -z "$ns" ]] && continue
         local count
-        count="$(${KUBECTL[@]} get networkpolicy -n "$ns" --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+        count="$("${KUBECTL[@]}" get networkpolicy -n "$ns" --no-headers 2>/dev/null | wc -l | tr -d ' ')"
         printf '%s | network policies: %s\n' "$ns" "$count"
     done <<< "$namespaces"
 }
