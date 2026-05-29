@@ -55,7 +55,7 @@ def load_config(path: Path) -> list[dict[str, Any]]:
 def check_http(service: dict[str, Any], timeout_override: float | None) -> CheckResult:
     name = str(service.get("name", service.get("url", "http-service")))
     url = str(service["url"])
-    timeout = float(timeout_override or service.get("timeout", 5))
+    timeout = float(timeout_override if timeout_override is not None else service.get("timeout", 5))
     expected_status = set(int(code) for code in service.get("expected_status", [200]))
     start = time.monotonic()
 
@@ -96,7 +96,7 @@ def check_tcp(service: dict[str, Any], timeout_override: float | None) -> CheckR
     name = str(service.get("name", "tcp-service"))
     host = str(service["host"])
     port = int(service["port"])
-    timeout = float(timeout_override or service.get("timeout", 3))
+    timeout = float(timeout_override if timeout_override is not None else service.get("timeout", 3))
     target = f"{host}:{port}"
     start = time.monotonic()
 
