@@ -1,5 +1,8 @@
 # Script Index
 
+For full parameter documentation and examples for every argument, see
+[script-reference.md](script-reference.md).
+
 ## Windows
 
 | Script | Purpose | Default mode |
@@ -7,6 +10,7 @@
 | `Invoke-WindowsSecurityAudit.ps1` | Collect Windows baseline security information and export JSON | Audit |
 | `Set-WindowsBaselineHardening.ps1` | Apply selected Windows baseline hardening controls | Dry run |
 | `Export-WindowsEventSecurityReport.ps1` | Export important Windows Security and System event log activity | Audit |
+| `Clear-RDPUserProfileCache.ps1` | Audit and optionally clean safe per-user cache locations on RDP/Terminal Server hosts | Dry run |
 
 ## Linux
 

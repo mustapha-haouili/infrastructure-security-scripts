@@ -15,6 +15,16 @@ Options:
   --context NAME      kubectl context to use
   --output-dir DIR    Directory for the report. Default: reports
   -h, --help          Show this help
+
+Examples:
+  $0
+      Audit the current kubectl context.
+  $0 --context prod-admin
+      Audit a named kubectl context.
+  $0 --output-dir reports/kubernetes
+      Write the report to a specific directory.
+  $0 --context prod-admin --output-dir reports/kubernetes
+      Combine explicit context and output directory.
 USAGE
 }
 
