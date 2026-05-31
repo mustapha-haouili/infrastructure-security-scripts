@@ -125,6 +125,22 @@ python3 scripts/monitoring/service-health-check.py --config examples/services.ex
 ## Script index
 
 See [docs/script-index.md](docs/script-index.md) for a complete list of scripts and their purpose.
+See [docs/script-reference.md](docs/script-reference.md) for every script argument, output file, safety mode, and copy-ready examples.
+
+Every script also has built-in help:
+
+```bash
+bash scripts/linux/linux-security-audit.sh --help
+python3 scripts/devsecops/secret-scan.py --help
+```
+
+PowerShell scripts include comment-based help at the top of each file. If your
+PowerShell session does not load script help with `Get-Help`, view the header
+directly:
+
+```powershell
+Get-Content .\scripts\windows\Invoke-WindowsSecurityAudit.ps1 -First 120
+```
 
 ## Recommended GitHub description
 

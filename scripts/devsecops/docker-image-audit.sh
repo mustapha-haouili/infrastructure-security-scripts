@@ -16,6 +16,16 @@ Options:
   --deep              Run a temporary container to collect extra details
   --output-dir DIR    Directory for the report. Default: reports
   -h, --help          Show this help
+
+Examples:
+  $0 nginx:latest
+      Audit Docker image metadata only.
+  $0 nginx:latest --deep
+      Run a temporary container for runtime checks.
+  $0 registry.example.com/app/api:1.2.3 --output-dir reports/docker
+      Write the audit report to a specific directory.
+  $0 nginx:latest --deep --output-dir reports/docker
+      Combine runtime checks and explicit output directory.
 USAGE
 }
 
