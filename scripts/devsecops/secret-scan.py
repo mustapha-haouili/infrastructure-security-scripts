@@ -4,6 +4,12 @@ Scan files for common secret patterns before code is committed or deployed.
 
 The scanner is intentionally dependency-free so it can run on developer
 workstations and in CI jobs without extra setup.
+
+Examples:
+  python3 scripts/devsecops/secret-scan.py .
+  python3 scripts/devsecops/secret-scan.py . --format json --output reports/secrets.json
+  python3 scripts/devsecops/secret-scan.py . --allowlist .secret-scan-allowlist --no-fail
+  python3 scripts/devsecops/secret-scan.py . --include-hidden --max-file-size 2097152
 """
 
 from __future__ import annotations
@@ -125,7 +131,26 @@ RULES = [
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Scan files for common secret patterns.")
+    parser = argparse.ArgumentParser(
+        description="Scan files for common secret patterns.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  %(prog)s
+      Scan the current directory and print text output.
+  %(prog)s scripts
+      Scan a specific directory.
+  %(prog)s . --format json --output reports/secrets.json
+      Write JSON findings to a file.
+  %(prog)s . --allowlist .secret-scan-allowlist
+      Ignore fingerprints listed in an allowlist file.
+  %(prog)s . --max-file-size 2097152
+      Scan files up to 2 MiB.
+  %(prog)s . --include-hidden
+      Include hidden files and directories.
+  %(prog)s . --no-fail
+      Return exit code 0 even when findings exist.
+""",
+    )
     parser.add_argument("path", nargs="?", default=".", help="File or directory to scan. Default: current directory")
     parser.add_argument("--format", choices=("text", "json"), default="text", help="Output format")
     parser.add_argument("--output", help="Write results to a file instead of stdout")
