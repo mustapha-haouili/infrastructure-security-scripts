@@ -19,6 +19,18 @@ Options:
   --exclude-types LIST   Comma-separated filesystem types to exclude
   --json                 Output JSON lines
   -h, --help             Show this help
+
+Examples:
+  $0
+      Check disks with default 80 percent warning and 90 percent critical thresholds.
+  $0 --warn 75 --crit 90
+      Use custom warning and critical thresholds.
+  $0 --exclude-types tmpfs,devtmpfs,squashfs,overlay,nfs
+      Exclude additional filesystem types.
+  $0 --json
+      Print one JSON object per checked filesystem.
+  $0 --warn 75 --crit 90 --exclude-types tmpfs,devtmpfs --json
+      Combine thresholds, exclusions, and JSON output for automation.
 USAGE
 }
 

@@ -9,6 +9,18 @@ Usage: $0 [-o output_dir]
 
 Collects basic Linux host inventory and writes JSON.
 This script does not change system configuration.
+
+Options:
+  -o, --output-dir DIR   Directory for the inventory JSON. Default: reports
+  -h, --help             Show this help
+
+Examples:
+  $0
+      Write inventory JSON under reports/.
+  $0 -o /var/tmp/inventory
+      Write inventory JSON to a specific directory.
+  $0 --output-dir reports
+      Use the long option form for automation.
 USAGE
 }
 
