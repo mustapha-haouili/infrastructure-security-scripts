@@ -3,18 +3,38 @@ set -euo pipefail
 
 OUTPUT_DIR="reports"
 QUICK_MODE=0
+SUMMARY_JSON_PATH=""
+
+FINDING_IDS=()
+FINDING_SEVERITIES=()
+FINDING_TITLES=()
+FINDING_RECOMMENDATIONS=()
+FINDING_EVIDENCES=()
 
 usage() {
     cat <<USAGE
-Usage: $0 [-o output_dir] [--quick]
+Usage: $0 [-o output_dir] [--quick] [--summary-json file]
 
-Collects Linux security baseline information and writes a text report.
+Collects Linux security baseline information and writes a structured text report.
 The script does not change system configuration.
 
 Options:
   -o, --output-dir DIR   Directory for the report. Default: reports
   --quick                Skip slower filesystem checks
+  --summary-json FILE    JSON summary path. Default: next to the text report
   -h, --help             Show this help
+
+Examples:
+  $0
+      Run a full audit and write text plus JSON reports under reports/.
+  $0 -o /var/tmp/security-reports
+      Write reports to a specific directory.
+  $0 --quick
+      Skip slower filesystem permission checks.
+  $0 --summary-json reports/linux-summary.json
+      Write the JSON summary to an explicit file.
+  $0 --quick --output-dir reports --summary-json reports/linux-summary.json
+      Combine quick mode, explicit text output directory, and explicit JSON path.
 USAGE
 }
 
@@ -39,6 +59,11 @@ while [[ $# -gt 0 ]]; do
             QUICK_MODE=1
             shift
             ;;
+        --summary-json)
+            require_value "$1" "${2:-}"
+            SUMMARY_JSON_PATH="${2:-}"
+            shift 2
+            ;;
         -h|--help)
             usage
             exit 0
@@ -54,6 +79,9 @@ done
 mkdir -p "$OUTPUT_DIR"
 HOSTNAME_VALUE="$(hostname 2>/dev/null || echo unknown)"
 REPORT_FILE="$OUTPUT_DIR/linux-security-audit-${HOSTNAME_VALUE}-$(date -u +%Y%m%d-%H%M%S).txt"
+if [[ -z "$SUMMARY_JSON_PATH" ]]; then
+    SUMMARY_JSON_PATH="${REPORT_FILE%.txt}.summary.json"
+fi
 
 is_root() {
     [[ "${EUID:-$(id -u)}" -eq 0 ]]
@@ -61,6 +89,38 @@ is_root() {
 
 have_cmd() {
     command -v "$1" >/dev/null 2>&1
+}
+
+json_escape() {
+    python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().rstrip("\n")))'
+}
+
+add_finding() {
+    local id="$1"
+    local severity="$2"
+    local title="$3"
+    local recommendation="$4"
+    local evidence="$5"
+
+    FINDING_IDS+=("$id")
+    FINDING_SEVERITIES+=("$severity")
+    FINDING_TITLES+=("$title")
+    FINDING_RECOMMENDATIONS+=("$recommendation")
+    FINDING_EVIDENCES+=("$evidence")
+}
+
+count_findings_by_severity() {
+    local target="$1"
+    local count=0
+    local severity
+
+    for severity in "${FINDING_SEVERITIES[@]}"; do
+        if [[ "$severity" == "$target" ]]; then
+            count=$((count + 1))
+        fi
+    done
+
+    echo "$count"
 }
 
 section() {
@@ -83,6 +143,230 @@ run_check() {
     }
 }
 
+read_ssh_effective_config() {
+    if have_cmd sshd; then
+        sshd -T 2>/dev/null || true
+    elif [[ -r /etc/ssh/sshd_config ]]; then
+        grep -Ei '^[[:space:]]*(PermitRootLogin|PasswordAuthentication|PermitEmptyPasswords)[[:space:]]+' /etc/ssh/sshd_config | awk '{print tolower($1) " " tolower($2)}' || true
+    fi
+}
+
+ssh_setting_value() {
+    local config="$1"
+    local key="$2"
+    awk -v wanted="$key" 'tolower($1) == wanted {print tolower($2); exit}' <<< "$config"
+}
+
+collect_sysctl_finding() {
+    local key="$1"
+    local expected="$2"
+    local id="$3"
+    local severity="$4"
+    local title="$5"
+    local recommendation="$6"
+    local value
+
+    value="$(sysctl -n "$key" 2>/dev/null || true)"
+    if [[ -n "$value" && "$value" != "$expected" ]]; then
+        add_finding "$id" "$severity" "$title" "$recommendation" "$key=$value, expected $expected"
+    fi
+}
+
+collect_findings() {
+    local uid_zero_accounts
+    local uid_zero_count
+    local empty_password_accounts
+    local writable_sudoers
+    local ssh_config
+    local ssh_root_login
+    local ssh_password_auth
+    local ssh_empty_passwords
+
+    if ! is_root; then
+        add_finding \
+            "LINUX-AUDIT-COVERAGE-001" \
+            "info" \
+            "Audit was not run as root" \
+            "Run with sudo for complete shadow, service, and package evidence." \
+            "Current user: $(id -un 2>/dev/null || echo unknown)"
+    fi
+
+    uid_zero_accounts="$(awk -F: '$3 == 0 {print $1}' /etc/passwd 2>/dev/null | paste -sd ',' -)"
+    uid_zero_count="$(awk -F: '$3 == 0 {count++} END {print count + 0}' /etc/passwd 2>/dev/null || echo 0)"
+    if (( uid_zero_count > 1 )); then
+        add_finding \
+            "LINUX-IDENTITY-001" \
+            "high" \
+            "Multiple UID 0 accounts exist" \
+            "Review UID 0 accounts and remove or remap any account that should not have root-equivalent privileges." \
+            "UID 0 accounts: $uid_zero_accounts"
+    fi
+
+    if is_root && [[ -r /etc/shadow ]]; then
+        empty_password_accounts="$(awk -F: '$2 == "" {print $1}' /etc/shadow | paste -sd ',' -)"
+        if [[ -n "$empty_password_accounts" ]]; then
+            add_finding \
+                "LINUX-IDENTITY-002" \
+                "critical" \
+                "Accounts with empty password fields exist" \
+                "Lock the accounts or set strong passwords immediately." \
+                "Accounts: $empty_password_accounts"
+        fi
+    else
+        add_finding \
+            "LINUX-AUDIT-COVERAGE-002" \
+            "info" \
+            "Shadow password file was not readable" \
+            "Run with sudo to verify empty local password fields." \
+            "/etc/shadow not readable in current context"
+    fi
+
+    writable_sudoers="$({ find /etc/sudoers /etc/sudoers.d -type f -perm /022 -print 2>/dev/null || true; } | sed -n '1,10p' | paste -sd ',' -)"
+    if [[ -n "$writable_sudoers" ]]; then
+        add_finding \
+            "LINUX-SUDO-001" \
+            "high" \
+            "Sudoers files are writable by group or others" \
+            "Restrict sudoers files to root-owned, non-world-writable permissions." \
+            "Writable files: $writable_sudoers"
+    fi
+
+    ssh_config="$(read_ssh_effective_config)"
+    if [[ -n "$ssh_config" ]]; then
+        ssh_root_login="$(ssh_setting_value "$ssh_config" "permitrootlogin")"
+        ssh_password_auth="$(ssh_setting_value "$ssh_config" "passwordauthentication")"
+        ssh_empty_passwords="$(ssh_setting_value "$ssh_config" "permitemptypasswords")"
+
+        if [[ "$ssh_root_login" == "yes" ]]; then
+            add_finding \
+                "LINUX-SSH-001" \
+                "high" \
+                "SSH root login is enabled" \
+                "Set PermitRootLogin no and use named administrative accounts with sudo." \
+                "PermitRootLogin=$ssh_root_login"
+        elif [[ -n "$ssh_root_login" && "$ssh_root_login" != "no" ]]; then
+            add_finding \
+                "LINUX-SSH-002" \
+                "medium" \
+                "SSH root login is not fully disabled" \
+                "Consider setting PermitRootLogin no unless an exception is documented." \
+                "PermitRootLogin=$ssh_root_login"
+        fi
+
+        if [[ "$ssh_password_auth" == "yes" ]]; then
+            add_finding \
+                "LINUX-SSH-003" \
+                "medium" \
+                "SSH password authentication is enabled" \
+                "Prefer key-based SSH authentication and disable password authentication where operationally safe." \
+                "PasswordAuthentication=$ssh_password_auth"
+        fi
+
+        if [[ "$ssh_empty_passwords" == "yes" ]]; then
+            add_finding \
+                "LINUX-SSH-004" \
+                "critical" \
+                "SSH permits empty passwords" \
+                "Set PermitEmptyPasswords no immediately." \
+                "PermitEmptyPasswords=$ssh_empty_passwords"
+        fi
+    else
+        add_finding \
+            "LINUX-SSH-005" \
+            "info" \
+            "SSH server configuration was not found" \
+            "Confirm whether OpenSSH server should be installed or audited on this host." \
+            "No sshd effective config or readable /etc/ssh/sshd_config"
+    fi
+
+    if ! have_cmd ufw && ! have_cmd firewall-cmd && ! have_cmd nft && ! have_cmd iptables; then
+        add_finding \
+            "LINUX-FIREWALL-001" \
+            "medium" \
+            "Firewall status could not be verified" \
+            "Install or expose a supported firewall tool, or document the host firewall control used by this system." \
+            "No ufw, firewall-cmd, nft, or iptables command found"
+    fi
+
+    collect_sysctl_finding "net.ipv4.ip_forward" "0" "LINUX-KERNEL-001" "medium" "IPv4 forwarding is enabled" "Disable IP forwarding unless the host is intended to route traffic."
+    collect_sysctl_finding "net.ipv4.conf.all.accept_redirects" "0" "LINUX-KERNEL-002" "medium" "IPv4 ICMP redirects are accepted" "Disable ICMP redirect acceptance through sysctl."
+    collect_sysctl_finding "net.ipv4.conf.default.accept_redirects" "0" "LINUX-KERNEL-003" "medium" "Default IPv4 ICMP redirects are accepted" "Disable default ICMP redirect acceptance through sysctl."
+    collect_sysctl_finding "net.ipv6.conf.all.accept_redirects" "0" "LINUX-KERNEL-004" "medium" "IPv6 ICMP redirects are accepted" "Disable IPv6 redirect acceptance through sysctl."
+    collect_sysctl_finding "kernel.randomize_va_space" "2" "LINUX-KERNEL-005" "medium" "Full ASLR is not enabled" "Set kernel.randomize_va_space to 2."
+}
+
+write_findings_summary() {
+    local total="${#FINDING_IDS[@]}"
+    local index
+
+    {
+        echo
+        echo "Finding summary"
+        echo "---------------"
+        echo "Total findings: $total"
+        echo "Critical: $(count_findings_by_severity critical)"
+        echo "High: $(count_findings_by_severity high)"
+        echo "Medium: $(count_findings_by_severity medium)"
+        echo "Info: $(count_findings_by_severity info)"
+        echo
+        echo "Recommended actions"
+        echo "-------------------"
+        if (( total == 0 )); then
+            echo "No high-signal findings were identified by the built-in checks."
+        else
+            for index in "${!FINDING_IDS[@]}"; do
+                echo "- [${FINDING_SEVERITIES[$index]}] ${FINDING_TITLES[$index]} (${FINDING_IDS[$index]})"
+                echo "  Recommendation: ${FINDING_RECOMMENDATIONS[$index]}"
+                echo "  Evidence: ${FINDING_EVIDENCES[$index]}"
+            done
+        fi
+        echo
+        echo "Evidence collected"
+        echo "------------------"
+        echo "Raw command output follows for review and manual validation."
+    } >> "$REPORT_FILE"
+}
+
+write_summary_json() {
+    local index
+
+    if ! have_cmd python3; then
+        echo "Summary JSON skipped because python3 is not installed." >> "$REPORT_FILE"
+        return
+    fi
+
+    mkdir -p "$(dirname "$SUMMARY_JSON_PATH")"
+    {
+        echo "{"
+        printf '  "host": %s,\n' "$(printf '%s' "$HOSTNAME_VALUE" | json_escape)"
+        printf '  "generated_at_utc": %s,\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ | json_escape)"
+        printf '  "root_context": %s,\n' "$(is_root && echo true || echo false)"
+        printf '  "quick_mode": %s,\n' "$([[ "$QUICK_MODE" -eq 1 ]] && echo true || echo false)"
+        echo '  "finding_counts": {'
+        printf '    "critical": %s,\n' "$(count_findings_by_severity critical)"
+        printf '    "high": %s,\n' "$(count_findings_by_severity high)"
+        printf '    "medium": %s,\n' "$(count_findings_by_severity medium)"
+        printf '    "info": %s\n' "$(count_findings_by_severity info)"
+        echo '  },'
+        echo '  "findings": ['
+        for index in "${!FINDING_IDS[@]}"; do
+            if (( index > 0 )); then
+                echo ","
+            fi
+            echo "    {"
+            printf '      "id": %s,\n' "$(printf '%s' "${FINDING_IDS[$index]}" | json_escape)"
+            printf '      "severity": %s,\n' "$(printf '%s' "${FINDING_SEVERITIES[$index]}" | json_escape)"
+            printf '      "title": %s,\n' "$(printf '%s' "${FINDING_TITLES[$index]}" | json_escape)"
+            printf '      "recommendation": %s,\n' "$(printf '%s' "${FINDING_RECOMMENDATIONS[$index]}" | json_escape)"
+            printf '      "evidence": %s\n' "$(printf '%s' "${FINDING_EVIDENCES[$index]}" | json_escape)"
+            printf '    }'
+        done
+        echo
+        echo '  ]'
+        echo "}"
+    } > "$SUMMARY_JSON_PATH"
+}
+
 write_header() {
     cat > "$REPORT_FILE" <<HEADER
 Linux Security Audit Report
@@ -90,7 +374,10 @@ Host: $HOSTNAME_VALUE
 Generated UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 User: $(id -un 2>/dev/null || echo unknown)
 Root context: $(is_root && echo yes || echo no)
+Quick mode: $([[ "$QUICK_MODE" -eq 1 ]] && echo yes || echo no)
+Summary JSON: $SUMMARY_JSON_PATH
 HEADER
+    write_findings_summary
 }
 
 check_system() {
@@ -259,7 +546,9 @@ check_containers() {
     fi
 }
 
+collect_findings
 write_header
+write_summary_json
 run_check "System information" check_system
 run_check "Identity and privileged accounts" check_identity
 run_check "Sudoers review" check_sudoers
