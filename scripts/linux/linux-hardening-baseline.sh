@@ -21,6 +21,20 @@ Options:
   --no-ssh                Skip SSH baseline changes
   --disable-ssh-password  Set PasswordAuthentication no in sshd config
   -h, --help              Show this help
+
+Examples:
+  $0
+      Preview all planned controls without changing the host.
+  $0 --report-dir /var/tmp/security-reports
+      Write the dry-run plan to a specific report directory.
+  sudo $0 --apply
+      Apply the default baseline and create backups under backups/.
+  sudo $0 --apply --backup-dir /root/baseline-backups --report-dir /var/log/security-baseline
+      Apply with explicit backup and report directories.
+  $0 --no-ssh
+      Preview all controls except SSH daemon changes.
+  sudo $0 --apply --disable-ssh-password
+      Apply the baseline and disable SSH password authentication.
 USAGE
 }
 

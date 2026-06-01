@@ -6,6 +6,11 @@ The script returns:
   0 when every service is healthy
   2 when one or more services fail
   1 for configuration or runtime errors
+
+Examples:
+  python3 scripts/monitoring/service-health-check.py --config examples/services.example.json
+  python3 scripts/monitoring/service-health-check.py --config examples/services.example.json --output reports/services.json
+  python3 scripts/monitoring/service-health-check.py --config examples/services.example.json --timeout 10
 """
 
 from __future__ import annotations
@@ -35,7 +40,20 @@ class CheckResult:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Check HTTP and TCP service health.")
+    parser = argparse.ArgumentParser(
+        description="Check HTTP and TCP service health.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  %(prog)s
+      Check services from examples/services.example.json.
+  %(prog)s --config examples/services.example.json
+      Use an explicit service configuration file.
+  %(prog)s --config examples/services.example.json --output reports/services-health.json
+      Write JSON results to a file.
+  %(prog)s --config examples/services.example.json --timeout 10
+      Override every service timeout to 10 seconds.
+""",
+    )
     parser.add_argument("--config", default="examples/services.example.json", help="Path to JSON config file")
     parser.add_argument("--output", help="Optional JSON output path")
     parser.add_argument("--timeout", type=float, default=None, help="Override timeout for all checks")

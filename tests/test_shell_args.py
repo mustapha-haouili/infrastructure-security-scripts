@@ -28,6 +28,7 @@ class ShellArgumentValidationTests(unittest.TestCase):
     def test_linux_security_audit_requires_output_dir(self):
         self.assert_missing_value("scripts/linux/linux-security-audit.sh", "--output-dir")
         self.assert_missing_value("scripts/linux/linux-security-audit.sh", "--output-dir", "--quick")
+        self.assert_missing_value("scripts/linux/linux-security-audit.sh", "--summary-json")
 
     def test_linux_hardening_requires_paths(self):
         self.assert_missing_value("scripts/linux/linux-hardening-baseline.sh", "--backup-dir")
