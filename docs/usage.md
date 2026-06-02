@@ -1,4 +1,4 @@
-# Usage Notes
+﻿# Usage Notes
 
 ## Running scripts safely
 
@@ -20,7 +20,7 @@ python3 scripts/monitoring/service-health-check.py --help
 ```
 
 ```powershell
-Get-Content .\scripts\windows\Set-WindowsBaselineHardening.ps1 -First 140
+Get-Content .\scripts\windows\host\Set-WindowsBaselineHardening.ps1 -First 140
 ```
 
 ## Output locations
@@ -51,6 +51,24 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 This does not change the machine-wide execution policy.
 
+## Windows menu launcher
+
+For normal IT administration, start with the Windows menu:
+
+```powershell
+.\scripts\windows\Start-WindowsSecurity.ps1
+```
+
+The menu lets the admin choose a group, choose one script or run the
+default-safe scripts in that group, enter supported parameters, preview the
+command, and confirm before the selected script starts.
+
+List menu IDs for direct use:
+
+```powershell
+.\scripts\windows\Start-WindowsSecurity.ps1 -ListScripts
+```
+
 ## Reading Windows reports
 
 The Windows audit and hardening reports include summary sections before the raw evidence:
@@ -74,7 +92,7 @@ Start with `summary.txt` or `summary.json` -> `InvestigationSummary.Verdict`. A 
 If another approved product owns a control, exclude that control by ID instead of editing the script. For example, on a server where ESET manages the firewall:
 
 ```powershell
-.\scripts\windows\Set-WindowsBaselineHardening.ps1 -ExcludeControlId WIN-HARDEN-FW-001
+.\scripts\windows\host\Set-WindowsBaselineHardening.ps1 -ExcludeControlId WIN-HARDEN-FW-001
 ```
 
 Use `-ListControls` to see available control IDs.
@@ -84,7 +102,7 @@ Use `-ListControls` to see available control IDs.
 Use dry-run mode first on production RDP or Terminal Server hosts:
 
 ```powershell
-.\scripts\windows\Clear-RDPUserProfileCache.ps1 -MinimumAgeDays 30
+.\scripts\windows\server\Clear-RDPUserProfileCache.ps1 -MinimumAgeDays 30
 ```
 
 Review the JSON report under `reports/` before applying cleanup. By default, the script skips loaded profiles and does not clean user Recycle Bin or Temp folders unless those options are explicitly enabled.
@@ -104,3 +122,4 @@ python3 scripts/devsecops/secret-scan.py . --format json --output reports/secret
 ```
 
 The scanner returns exit code `2` when findings are detected unless `--no-fail` is used.
+
