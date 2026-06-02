@@ -728,7 +728,7 @@ if ($runnableApprovedCount -eq 0) {
 
 if (-not $ApplyApproved) {
     Write-Host "Dry-run complete. To apply these saved decisions, run:" -ForegroundColor Yellow
-    Write-Host ".\scripts\windows\Start-WindowsSecurityRemediation.ps1 -PlanPath `"$planPath`" -ApplyApproved" -ForegroundColor Yellow
+    Write-Host ".\scripts\windows\host\Start-WindowsSecurityRemediation.ps1 -PlanPath `"$planPath`" -ApplyApproved" -ForegroundColor Yellow
     return
 }
 

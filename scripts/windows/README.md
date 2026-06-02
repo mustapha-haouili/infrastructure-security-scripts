@@ -1,4 +1,4 @@
-# Windows Scripts
+﻿# Windows Scripts
 
 These scripts support Windows Server and workstation audit, hardening, event
 review, and safe RDP profile cache cleanup.
@@ -12,20 +12,60 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 Full cross-platform reference: [../../docs/script-reference.md](../../docs/script-reference.md)
 
+Windows expansion roadmap: [../../docs/windows-roadmap.md](../../docs/windows-roadmap.md)
+
+## Main Launcher
+
+Use one root script for normal Windows administration:
+
+```powershell
+.\scripts\windows\Start-WindowsSecurity.ps1
+```
+
+The launcher shows group menus for AD/GPO, Windows Host, Server, and
+Workstation scripts. After a script is selected, it displays the supported
+parameters and lets the admin enter values before running it.
+
+Useful direct launcher commands:
+
+```powershell
+.\scripts\windows\Start-WindowsSecurity.ps1 -ListScripts
+.\scripts\windows\Start-WindowsSecurity.ps1 -Group AD -RunAll
+.\scripts\windows\Start-WindowsSecurity.ps1 -ToolId AD-GPO-HEALTH
+```
+
+## Category Folders
+
+New Windows scripts should be added under these folders:
+
+| Folder | Purpose |
+|---|---|
+| `ad/` | Active Directory identity, computer-account, privileged-group, service-account, and SPN audits. |
+| `gpo/` | Group Policy and policy baseline comparison scripts. |
+| `host/` | Cross-host audit, hardening, workflow, remediation plan, and event scripts. |
+| `server/` | Server-focused exposure, remote-management, service, certificate, and patch state audits. |
+| `workstation/` | Workstation endpoint posture scripts. |
+| `shared/` | Reusable PowerShell helpers and modules. |
+
+The root of `scripts/windows/` contains only the main launcher. Implementation
+scripts stay in the category folders.
+
 ## Recommended Workflow
 
 For day-to-day IT use, start with the guided workflow:
 
 ```powershell
-.\scripts\windows\Start-WindowsSecurityRemediation.ps1
+.\scripts\windows\Start-WindowsSecurity.ps1
 ```
 
-The guided script runs the audit, creates a remediation plan, shows each finding
-with the suggested fix, records admin decisions, and runs a hardening dry-run
-preview. After reviewing the preview, apply the saved decisions with:
+Choose `Windows Host`, then select `Guided audit and remediation workflow`.
+That guided script runs the audit, creates a remediation plan, shows each
+finding with the suggested fix, records admin decisions, and runs a hardening
+dry-run preview. After reviewing the preview, run the same menu item again and
+enable `-ApplyApproved`, or use the direct command:
 
 ```powershell
-.\scripts\windows\Start-WindowsSecurityRemediation.ps1 -ApplyApproved
+.\scripts\windows\host\Start-WindowsSecurityRemediation.ps1 -ApplyApproved
 ```
 
 When a saved decision plan exists in the output directory, `-ApplyApproved`
@@ -53,10 +93,10 @@ Parameters:
 Examples:
 
 ```powershell
-.\scripts\windows\Start-WindowsSecurityRemediation.ps1
-.\scripts\windows\Start-WindowsSecurityRemediation.ps1 -ApplyApproved
-.\scripts\windows\Start-WindowsSecurityRemediation.ps1 -AuditReportPath .\reports\server01-audit.json
-.\scripts\windows\Start-WindowsSecurityRemediation.ps1 -PlanPath .\reports\server01-remediation-plan.json -ApplyApproved
+.\scripts\windows\host\Start-WindowsSecurityRemediation.ps1
+.\scripts\windows\host\Start-WindowsSecurityRemediation.ps1 -ApplyApproved
+.\scripts\windows\host\Start-WindowsSecurityRemediation.ps1 -AuditReportPath .\reports\server01-audit.json
+.\scripts\windows\host\Start-WindowsSecurityRemediation.ps1 -PlanPath .\reports\server01-remediation-plan.json -ApplyApproved
 ```
 
 Use this workflow when an admin should not edit JSON manually. The script writes
@@ -67,6 +107,44 @@ The guided prompt shows `Approve fix` only when the finding maps to a hardening
 control that can run. Manual-only items, such as broad listening ports or
 PowerShell transcription design, can still be recorded as skipped or exception
 items.
+
+## AD Scripts
+
+Active Directory scripts are under `ad/`.
+
+| Script | Purpose |
+|---|---|
+| `ad/Get-ADInactiveUserReport.ps1` | Reports inactive AD users with last logon evidence, priority, category, and deletion-readiness guidance. |
+| `ad/Get-ADStaleComputerReport.ps1` | Reports stale AD computers with last logon evidence, priority, category, and cleanup-readiness guidance. |
+| `ad/Watch-ADPrivilegedGroupChanges.ps1` | Compares privileged AD group membership against a saved baseline and reports added/removed members. |
+| `ad/Get-ADServiceAccountAudit.ps1` | Audits service account candidates, gMSA/sMSA objects, SPNs, password age, delegation, ownership, and privilege risk. |
+| `ad/Get-ADSPNExposureAudit.ps1` | Audits SPN-bearing user accounts for Kerberos exposure indicators without offensive actions. |
+| `ad/Get-ADPasswordNeverExpiresReport.ps1` | Reports PasswordNeverExpires accounts with service, SPN, privilege, exception, and cleanup guidance. |
+
+Example:
+
+```powershell
+.\scripts\windows\ad\Get-ADInactiveUserReport.ps1 -DaysInactive 90
+.\scripts\windows\ad\Get-ADStaleComputerReport.ps1 -DaysInactive 90
+.\scripts\windows\ad\Watch-ADPrivilegedGroupChanges.ps1
+.\scripts\windows\ad\Get-ADServiceAccountAudit.ps1
+.\scripts\windows\ad\Get-ADSPNExposureAudit.ps1
+.\scripts\windows\ad\Get-ADPasswordNeverExpiresReport.ps1
+```
+
+## GPO Scripts
+
+Group Policy scripts are under `gpo/`.
+
+| Script | Purpose |
+|---|---|
+| `gpo/Get-ADGPOHealthReport.ps1` | Audits GPO inventory, links, stale policies, filters, version mismatches, and common policy health risks. |
+
+Example:
+
+```powershell
+.\scripts\windows\gpo\Get-ADGPOHealthReport.ps1 -StaleDays 365
+```
 
 ## `Invoke-WindowsSecurityAudit.ps1`
 
@@ -84,10 +162,10 @@ Parameters:
 Examples:
 
 ```powershell
-.\scripts\windows\Invoke-WindowsSecurityAudit.ps1
-.\scripts\windows\Invoke-WindowsSecurityAudit.ps1 -IncludeHotfixes
-.\scripts\windows\Invoke-WindowsSecurityAudit.ps1 -OutputPath .\reports\server01-audit.json
-.\scripts\windows\Invoke-WindowsSecurityAudit.ps1 -OutputPath .\reports\server01-audit.json -IncludeHotfixes -Quiet
+.\scripts\windows\host\Invoke-WindowsSecurityAudit.ps1
+.\scripts\windows\host\Invoke-WindowsSecurityAudit.ps1 -IncludeHotfixes
+.\scripts\windows\host\Invoke-WindowsSecurityAudit.ps1 -OutputPath .\reports\server01-audit.json
+.\scripts\windows\host\Invoke-WindowsSecurityAudit.ps1 -OutputPath .\reports\server01-audit.json -IncludeHotfixes -Quiet
 ```
 
 Start reading the report at `Summary.Posture`, `Summary.SeverityCounts`, and
@@ -112,8 +190,8 @@ Parameters:
 Examples:
 
 ```powershell
-.\scripts\windows\New-WindowsRemediationPlan.ps1 -AuditReportPath .\reports\server01-audit.json
-.\scripts\windows\New-WindowsRemediationPlan.ps1 -AuditReportPath .\reports\server01-audit.json -IncludeMarkdown -IncludeCsv
+.\scripts\windows\host\New-WindowsRemediationPlan.ps1 -AuditReportPath .\reports\server01-audit.json
+.\scripts\windows\host\New-WindowsRemediationPlan.ps1 -AuditReportPath .\reports\server01-audit.json -IncludeMarkdown -IncludeCsv
 ```
 
 Every plan item starts as `ApprovalStatus = NotApproved`. Review and approve
@@ -142,15 +220,15 @@ Parameters:
 Examples:
 
 ```powershell
-.\scripts\windows\Set-WindowsBaselineHardening.ps1
-.\scripts\windows\Set-WindowsBaselineHardening.ps1 -ListControls
-.\scripts\windows\Set-WindowsBaselineHardening.ps1 -ExcludeControlId WIN-HARDEN-FW-001
-.\scripts\windows\Set-WindowsBaselineHardening.ps1 -ExcludeControlId WIN-HARDEN-FW-001,WIN-HARDEN-DEF-001
-.\scripts\windows\Set-WindowsBaselineHardening.ps1 -OnlyControlId WIN-HARDEN-RDP-001
-.\scripts\windows\Set-WindowsBaselineHardening.ps1 -PlanPath .\reports\server01-remediation-plan.json
-.\scripts\windows\Set-WindowsBaselineHardening.ps1 -PlanPath .\reports\server01-remediation-plan.json -Apply
-.\scripts\windows\Set-WindowsBaselineHardening.ps1 -SkipDefender -SkipAuditPolicy -ReportPath .\reports\server01-hardening.json
-.\scripts\windows\Set-WindowsBaselineHardening.ps1 -Apply -BackupDirectory .\backups\server01-baseline -ReportPath .\reports\server01-hardening.json
+.\scripts\windows\host\Set-WindowsBaselineHardening.ps1
+.\scripts\windows\host\Set-WindowsBaselineHardening.ps1 -ListControls
+.\scripts\windows\host\Set-WindowsBaselineHardening.ps1 -ExcludeControlId WIN-HARDEN-FW-001
+.\scripts\windows\host\Set-WindowsBaselineHardening.ps1 -ExcludeControlId WIN-HARDEN-FW-001,WIN-HARDEN-DEF-001
+.\scripts\windows\host\Set-WindowsBaselineHardening.ps1 -OnlyControlId WIN-HARDEN-RDP-001
+.\scripts\windows\host\Set-WindowsBaselineHardening.ps1 -PlanPath .\reports\server01-remediation-plan.json
+.\scripts\windows\host\Set-WindowsBaselineHardening.ps1 -PlanPath .\reports\server01-remediation-plan.json -Apply
+.\scripts\windows\host\Set-WindowsBaselineHardening.ps1 -SkipDefender -SkipAuditPolicy -ReportPath .\reports\server01-hardening.json
+.\scripts\windows\host\Set-WindowsBaselineHardening.ps1 -Apply -BackupDirectory .\backups\server01-baseline -ReportPath .\reports\server01-hardening.json
 ```
 
 If another product owns a control, exclude it by ID. Example: if ESET manages
@@ -183,9 +261,9 @@ Parameters:
 Examples:
 
 ```powershell
-.\scripts\windows\Export-WindowsEventSecurityReport.ps1
-.\scripts\windows\Export-WindowsEventSecurityReport.ps1 -Days 7
-.\scripts\windows\Export-WindowsEventSecurityReport.ps1 -Days 30 -OutputDirectory .\reports\server01-events
+.\scripts\windows\host\Export-WindowsEventSecurityReport.ps1
+.\scripts\windows\host\Export-WindowsEventSecurityReport.ps1 -Days 7
+.\scripts\windows\host\Export-WindowsEventSecurityReport.ps1 -Days 30 -OutputDirectory .\reports\server01-events
 ```
 
 Review `summary.txt` first. It gives a verdict, findings, why each item
@@ -212,14 +290,15 @@ Parameters:
 Examples:
 
 ```powershell
-.\scripts\windows\Clear-RDPUserProfileCache.ps1
-.\scripts\windows\Clear-RDPUserProfileCache.ps1 -MinimumAgeDays 30
-.\scripts\windows\Clear-RDPUserProfileCache.ps1 -MinimumAgeDays 30 -IncludeRecycleBin -IncludeTemp
-.\scripts\windows\Clear-RDPUserProfileCache.ps1 -ProfileRoot D:\Users -MinimumAgeDays 45 -ReportPath .\reports\terminal01-cache.json
-.\scripts\windows\Clear-RDPUserProfileCache.ps1 -ExcludeProfileName "Default","Public","admin-template"
-.\scripts\windows\Clear-RDPUserProfileCache.ps1 -Apply -MinimumAgeDays 30
-.\scripts\windows\Clear-RDPUserProfileCache.ps1 -Apply -MinimumAgeDays 30 -IncludeLoadedProfiles
+.\scripts\windows\server\Clear-RDPUserProfileCache.ps1
+.\scripts\windows\server\Clear-RDPUserProfileCache.ps1 -MinimumAgeDays 30
+.\scripts\windows\server\Clear-RDPUserProfileCache.ps1 -MinimumAgeDays 30 -IncludeRecycleBin -IncludeTemp
+.\scripts\windows\server\Clear-RDPUserProfileCache.ps1 -ProfileRoot D:\Users -MinimumAgeDays 45 -ReportPath .\reports\terminal01-cache.json
+.\scripts\windows\server\Clear-RDPUserProfileCache.ps1 -ExcludeProfileName "Default","Public","admin-template"
+.\scripts\windows\server\Clear-RDPUserProfileCache.ps1 -Apply -MinimumAgeDays 30
+.\scripts\windows\server\Clear-RDPUserProfileCache.ps1 -Apply -MinimumAgeDays 30 -IncludeLoadedProfiles
 ```
 
 Use `-IncludeLoadedProfiles` only during a maintenance window after checking
 active sessions.
+

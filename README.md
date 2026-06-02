@@ -1,8 +1,10 @@
-# Infrastructure Security Scripts
+﻿# Infrastructure Security Scripts
 
 A practical collection of enterprise infrastructure security, automation, hardening, and DevSecOps scripts focused on Windows and Linux environments.
 
 This repository is designed for defensive security operations, infrastructure administration, and repeatable baseline checks across enterprise environments.
+
+Current version: `1.0.0`. See [CHANGELOG.md](CHANGELOG.md) for the release baseline.
 
 ## Focus areas
 
@@ -83,20 +85,25 @@ Run PowerShell as Administrator:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\scripts\windows\Invoke-WindowsSecurityAudit.ps1 -IncludeHotfixes
+.\scripts\windows\Start-WindowsSecurity.ps1
 ```
+
+Choose `Windows Host` from the menu, then select `Windows security audit`.
 
 ### Windows baseline dry run
 
 ```powershell
-.\scripts\windows\Set-WindowsBaselineHardening.ps1
+.\scripts\windows\Start-WindowsSecurity.ps1 -ToolId HOST-HARDENING
 ```
 
 Apply baseline changes only after review:
 
 ```powershell
-.\scripts\windows\Set-WindowsBaselineHardening.ps1 -Apply
+.\scripts\windows\Start-WindowsSecurity.ps1 -ToolId HOST-HARDENING
 ```
+
+When prompted for parameters, enable `-Apply` only during an approved change
+window.
 
 ### Secret scan before pushing code
 
@@ -126,6 +133,7 @@ python3 scripts/monitoring/service-health-check.py --config examples/services.ex
 
 See [docs/script-index.md](docs/script-index.md) for a complete list of scripts and their purpose.
 See [docs/script-reference.md](docs/script-reference.md) for every script argument, output file, safety mode, and copy-ready examples.
+See [docs/windows-roadmap.md](docs/windows-roadmap.md) for the Windows AD, GPO, server, and workstation expansion plan.
 
 Every script also has built-in help:
 
@@ -139,7 +147,7 @@ PowerShell session does not load script help with `Get-Help`, view the header
 directly:
 
 ```powershell
-Get-Content .\scripts\windows\Invoke-WindowsSecurityAudit.ps1 -First 120
+Get-Content .\scripts\windows\Start-WindowsSecurity.ps1 -First 120
 ```
 
 ## Recommended GitHub description
@@ -161,3 +169,4 @@ Infrastructure Security Architect
 ## Responsible use
 
 These scripts are intended for systems you own or are authorized to administer. Do not run them against third-party environments without written permission.
+
