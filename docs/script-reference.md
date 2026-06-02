@@ -1,4 +1,4 @@
-# Script Reference
+﻿# Script Reference
 
 This page documents every operational script in the repository, including
 purpose, safety mode, parameters, outputs, and examples.
@@ -23,7 +23,53 @@ For a temporary execution policy bypass:
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ```
 
-### `scripts/windows/Invoke-WindowsSecurityAudit.ps1`
+### `scripts/windows/Start-WindowsSecurity.ps1`
+
+Interactive menu launcher for Windows scripts. It is the recommended starting
+point for normal IT administrators. It does not change the system by itself;
+child scripts still keep their own audit, dry-run, `-Apply`, or final approval
+behavior.
+
+Default mode: menu.
+
+Outputs:
+
+- No report from the launcher itself
+- Child scripts write their normal reports under `reports/` unless a custom path is provided
+
+Parameters:
+
+| Parameter | Type | Default | Description |
+|---|---:|---|---|
+| `-ListScripts` | switch | off | Print every menu tool and exit. |
+| `-Group` | string | empty | Open one group directly, such as `AD`, `Host`, `Server`, or `Workstation`. |
+| `-ToolId` | string | empty | Run one menu tool directly by ID. Use `-ListScripts` to see IDs. |
+| `-RunAll` | switch | off | With `-Group`, run the default-safe scripts in that group. |
+| `-UseDefaults` | switch | off | Use child-script defaults instead of prompting for optional parameters. Required parameters are still prompted. |
+
+Examples:
+
+```powershell
+.\scripts\windows\Start-WindowsSecurity.ps1
+```
+
+```powershell
+.\scripts\windows\Start-WindowsSecurity.ps1 -ListScripts
+```
+
+```powershell
+.\scripts\windows\Start-WindowsSecurity.ps1 -Group AD -RunAll
+```
+
+```powershell
+.\scripts\windows\Start-WindowsSecurity.ps1 -ToolId AD-GPO-HEALTH
+```
+
+Use the menu when an admin should choose a group, review available scripts, and
+enter parameters without editing PowerShell commands manually. Direct paths in
+the sections below remain supported for automation and advanced use.
+
+### `scripts/windows/host/Invoke-WindowsSecurityAudit.ps1`
 
 Collects Windows security posture information and writes a JSON report. It does
 not change the system.
@@ -46,19 +92,19 @@ Parameters:
 Examples:
 
 ```powershell
-.\scripts\windows\Invoke-WindowsSecurityAudit.ps1
+.\scripts\windows\host\Invoke-WindowsSecurityAudit.ps1
 ```
 
 ```powershell
-.\scripts\windows\Invoke-WindowsSecurityAudit.ps1 -IncludeHotfixes
+.\scripts\windows\host\Invoke-WindowsSecurityAudit.ps1 -IncludeHotfixes
 ```
 
 ```powershell
-.\scripts\windows\Invoke-WindowsSecurityAudit.ps1 -OutputPath .\reports\server01-audit.json
+.\scripts\windows\host\Invoke-WindowsSecurityAudit.ps1 -OutputPath .\reports\server01-audit.json
 ```
 
 ```powershell
-.\scripts\windows\Invoke-WindowsSecurityAudit.ps1 -OutputPath .\reports\server01-audit.json -IncludeHotfixes -Quiet
+.\scripts\windows\host\Invoke-WindowsSecurityAudit.ps1 -OutputPath .\reports\server01-audit.json -IncludeHotfixes -Quiet
 ```
 
 Start reading the report at:
@@ -67,7 +113,416 @@ Start reading the report at:
 - `Summary.SeverityCounts`
 - `Findings`
 
-### `scripts/windows/Set-WindowsBaselineHardening.ps1`
+### `scripts/windows/ad/Get-ADInactiveUserReport.ps1`
+
+Reports inactive Active Directory user accounts with last logon evidence,
+review priority, account category, lifecycle stage, and deletion-readiness
+guidance. It does not change Active Directory.
+
+Default mode: audit only.
+
+Outputs:
+
+- `inactive-users.json` under `-OutputDirectory`
+- `inactive-users.csv` under `-OutputDirectory`
+- `inactive-users-review.md` under `-OutputDirectory`
+
+Parameters:
+
+| Parameter | Type | Default | Description |
+|---|---:|---|---|
+| `-DaysInactive` | int | `90` | Days since last logon before a user is reported. |
+| `-SearchBase` | string | empty | Optional OU or domain distinguished name to search. |
+| `-Server` | string | empty | Optional domain controller to query. |
+| `-Credential` | PSCredential | current user | Optional credential for the AD query. |
+| `-IncludeDisabled` | switch | off | Include disabled accounts. By default, only enabled users are scanned. |
+| `-ExcludeNeverLoggedOn` | switch | off | Exclude accounts that never logged on. |
+| `-OutputDirectory` | string | `.\reports\ad-inactive-users-COMPUTER-TIMESTAMP` | Directory for JSON and CSV reports. |
+| `-Quiet` | switch | off | Suppress console summary. |
+
+Examples:
+
+```powershell
+.\scripts\windows\ad\Get-ADInactiveUserReport.ps1
+```
+
+```powershell
+.\scripts\windows\ad\Get-ADInactiveUserReport.ps1 -DaysInactive 180
+```
+
+```powershell
+.\scripts\windows\ad\Get-ADInactiveUserReport.ps1 -SearchBase "OU=Users,DC=example,DC=com"
+```
+
+```powershell
+.\scripts\windows\ad\Get-ADInactiveUserReport.ps1 -IncludeDisabled -OutputDirectory .\reports\ad-users
+```
+
+Start reading the report at:
+
+- `Summary.HighPriorityReviewUsers`
+- `Summary.CriticalPriorityUsers`
+- `Summary.HoldSystemManagedUsers`
+- `Summary.PotentialDeletionCandidates`
+- `Summary.MailEnabledInactiveUsers`
+- `Summary.PrivilegedGroupMembers`
+- `InactiveUsers[].ReviewPriority`
+- `InactiveUsers[].AccountCategory`
+- `InactiveUsers[].DeletionReadiness`
+- `InactiveUsers[].DependencySignalsText`
+- `InactiveUsers[].NextReviewStep`
+- `InactiveUsers[].LastLogonDateUtc`
+- `InactiveUsers[].RecommendedAction`
+- `InactiveUsers[].DeletionGuidance`
+
+The script uses `LastLogonDate`, which is based on replicated
+`lastLogonTimestamp`. Use a conservative threshold and confirm ownership before
+disabling accounts. `CanDeleteNow` is always `false`; even potential deletion
+candidates require owner approval, disabled quarantine, dependency checks, and
+rollback planning.
+
+### `scripts/windows/ad/Get-ADStaleComputerReport.ps1`
+
+Reports stale Active Directory computer accounts with last logon evidence,
+review priority, computer category, lifecycle stage, and cleanup-readiness
+guidance. It does not change Active Directory.
+
+Default mode: audit only.
+
+Outputs:
+
+- `stale-computers.json` under `-OutputDirectory`
+- `stale-computers.csv` under `-OutputDirectory`
+- `stale-computers-review.md` under `-OutputDirectory`
+
+Parameters:
+
+| Parameter | Type | Default | Description |
+|---|---:|---|---|
+| `-DaysInactive` | int | `90` | Days since last logon before a computer is reported. |
+| `-SearchBase` | string | empty | Optional OU or domain distinguished name to search. |
+| `-Server` | string | empty | Optional domain controller to query. |
+| `-Credential` | PSCredential | current user | Optional credential for the AD query. |
+| `-IncludeDisabled` | switch | off | Include disabled computer accounts. By default, only enabled computers are scanned. |
+| `-ExcludeNeverLoggedOn` | switch | off | Exclude computers that never logged on. |
+| `-OutputDirectory` | string | `.\reports\ad-stale-computers-COMPUTER-TIMESTAMP` | Directory for JSON, CSV, and Markdown reports. |
+| `-Quiet` | switch | off | Suppress console summary. |
+
+Examples:
+
+```powershell
+.\scripts\windows\ad\Get-ADStaleComputerReport.ps1
+```
+
+```powershell
+.\scripts\windows\ad\Get-ADStaleComputerReport.ps1 -DaysInactive 180
+```
+
+```powershell
+.\scripts\windows\ad\Get-ADStaleComputerReport.ps1 -SearchBase "OU=Computers,DC=example,DC=com"
+```
+
+```powershell
+.\scripts\windows\ad\Get-ADStaleComputerReport.ps1 -IncludeDisabled -OutputDirectory .\reports\ad-computers
+```
+
+Start reading the report at:
+
+- `Summary.CriticalPriorityComputers`
+- `Summary.HighPriorityReviewComputers`
+- `Summary.PotentialCleanupCandidates`
+- `StaleComputers[].ReviewPriority`
+- `StaleComputers[].ActionPriority`
+- `StaleComputers[].ComputerCategory`
+- `StaleComputers[].CleanupReadiness`
+- `StaleComputers[].RiskFlagsText`
+- `StaleComputers[].NextReviewStep`
+- `StaleComputers[].RecommendedAction`
+- `StaleComputers[].CleanupGuidance`
+
+The script uses `LastLogonDate`, which is based on replicated
+`lastLogonTimestamp`. Domain controllers are marked Critical and must not be
+handled as stale cleanup. `CanDeleteNow` is always `false`; even cleanup
+candidates require owner approval, disabled quarantine, dependency checks, and
+rollback planning.
+
+### `scripts/windows/ad/Watch-ADPrivilegedGroupChanges.ps1`
+
+Audits privileged Active Directory groups against a saved direct-membership
+baseline. It does not change Active Directory membership. The first run creates
+the baseline if it does not exist; later runs report membership differences and
+current structural risks such as nested groups in privileged groups.
+
+Default mode: audit only.
+
+Outputs:
+
+- `privileged-groups.json` under `-OutputDirectory`
+- `privileged-groups.csv` under `-OutputDirectory`
+- `privileged-group-members.csv` under `-OutputDirectory`
+- `privileged-group-changes.csv` under `-OutputDirectory`
+- `privileged-groups-review.md` under `-OutputDirectory`
+- Baseline JSON at `-BaselinePath`
+
+Parameters:
+
+| Parameter | Type | Default | Description |
+|---|---:|---|---|
+| `-BaselinePath` | string | `.\reports\ad-privileged-groups-baseline.json` | Stable JSON baseline used for comparison. |
+| `-OutputDirectory` | string | `.\reports\ad-privileged-groups-COMPUTER-TIMESTAMP` | Directory for JSON, CSV, and Markdown reports. |
+| `-GroupName` | string array | empty | Extra group identities to audit in addition to the built-in privileged group set. |
+| `-Server` | string | empty | Optional domain controller to query. |
+| `-Credential` | PSCredential | current user | Optional credential for the AD query. |
+| `-IncludeRecursiveMembers` | switch | off | Also collect recursive/effective members for visibility. |
+| `-UpdateBaseline` | switch | off | Replace the baseline with the current snapshot after review. |
+| `-Quiet` | switch | off | Suppress console summary. |
+
+Examples:
+
+```powershell
+.\scripts\windows\ad\Watch-ADPrivilegedGroupChanges.ps1
+```
+
+```powershell
+.\scripts\windows\ad\Watch-ADPrivilegedGroupChanges.ps1 -IncludeRecursiveMembers
+```
+
+```powershell
+.\scripts\windows\ad\Watch-ADPrivilegedGroupChanges.ps1 -GroupName "DnsAdmins","Custom Tier0 Admins"
+```
+
+```powershell
+.\scripts\windows\ad\Watch-ADPrivilegedGroupChanges.ps1 -UpdateBaseline
+```
+
+Start reading the report at:
+
+- `Summary.BaselineStatus`
+- `Summary.AddedMembers`
+- `Summary.RemovedMembers`
+- `Summary.NestedGroupFindings`
+- `Changes[].ChangeType`
+- `Changes[].Severity`
+- `Changes[].AdminAction`
+- `Changes[].VerificationStep`
+- `Members[].RiskFlagsText`
+
+Review `Added` changes first. Confirm owner approval, ticket/change record,
+expected duration, and rollback decision before accepting the new state with
+`-UpdateBaseline`.
+
+### `scripts/windows/ad/Get-ADServiceAccountAudit.ps1`
+
+Audits user service account candidates, SPN-bearing accounts, gMSA, and sMSA
+objects. It does not change Active Directory.
+
+Default mode: audit only.
+
+Outputs:
+
+- `service-accounts.json` under `-OutputDirectory`
+- `service-accounts.csv` under `-OutputDirectory`
+- `service-accounts-review.md` under `-OutputDirectory`
+
+Parameters:
+
+| Parameter | Type | Default | Description |
+|---|---:|---|---|
+| `-SearchBase` | string | empty | Optional OU or domain distinguished name to search. |
+| `-Server` | string | empty | Optional domain controller to query. |
+| `-Credential` | PSCredential | current user | Optional credential for the AD query. |
+| `-IncludeDisabled` | switch | off | Include disabled user accounts. |
+| `-StaleDays` | int | `90` | Days since last logon before an enabled service account is considered stale. |
+| `-MaxPasswordAgeDays` | int | `180` | Password age threshold used for review. |
+| `-OutputDirectory` | string | `.\reports\ad-service-accounts-COMPUTER-TIMESTAMP` | Directory for JSON, CSV, and Markdown reports. |
+| `-Quiet` | switch | off | Suppress console summary. |
+
+Examples:
+
+```powershell
+.\scripts\windows\ad\Get-ADServiceAccountAudit.ps1
+```
+
+```powershell
+.\scripts\windows\ad\Get-ADServiceAccountAudit.ps1 -SearchBase "OU=Service Accounts,DC=example,DC=com"
+```
+
+Start reading the report at:
+
+- `Summary.CriticalAccounts`
+- `Summary.HighAccounts`
+- `ServiceAccounts[].ReviewPriority`
+- `ServiceAccounts[].AccountType`
+- `ServiceAccounts[].RiskFlagsText`
+- `ServiceAccounts[].RecommendedAction`
+- `ServiceAccounts[].NextReviewStep`
+
+Prioritize privileged access, delegation, pre-authentication disabled,
+`PasswordNeverExpires`, old passwords, and missing owner evidence. Prefer gMSA
+where applications support it.
+
+### `scripts/windows/ad/Get-ADSPNExposureAudit.ps1`
+
+Audits user accounts with SPNs for defensive Kerberos exposure indicators. It
+does not request tickets, test passwords, or change Active Directory.
+
+Default mode: audit only.
+
+Outputs:
+
+- `spn-exposure.json` under `-OutputDirectory`
+- `spn-exposure.csv` under `-OutputDirectory`
+- `spn-exposure-review.md` under `-OutputDirectory`
+
+Parameters:
+
+| Parameter | Type | Default | Description |
+|---|---:|---|---|
+| `-SearchBase` | string | empty | Optional OU or domain distinguished name to search. |
+| `-Server` | string | empty | Optional domain controller to query. |
+| `-Credential` | PSCredential | current user | Optional credential for the AD query. |
+| `-IncludeDisabled` | switch | off | Include disabled SPN-bearing accounts. |
+| `-MaxPasswordAgeDays` | int | `180` | Password age threshold used for exposure review. |
+| `-OutputDirectory` | string | `.\reports\ad-spn-exposure-COMPUTER-TIMESTAMP` | Directory for JSON, CSV, and Markdown reports. |
+| `-Quiet` | switch | off | Suppress console summary. |
+
+Examples:
+
+```powershell
+.\scripts\windows\ad\Get-ADSPNExposureAudit.ps1
+```
+
+```powershell
+.\scripts\windows\ad\Get-ADSPNExposureAudit.ps1 -IncludeDisabled -MaxPasswordAgeDays 365
+```
+
+Start reading the report at:
+
+- `Summary.CriticalAccounts`
+- `Summary.HighAccounts`
+- `Summary.EncryptionReviewAccounts`
+- `SPNAccounts[].ExposurePriority`
+- `SPNAccounts[].EncryptionRisk`
+- `SPNAccounts[].RiskFlagsText`
+- `SPNAccounts[].RecommendedAction`
+
+Prioritize SPN accounts with privileged access, delegation,
+pre-authentication disabled, `PasswordNeverExpires`, old passwords, or weak and
+unknown encryption settings.
+
+### `scripts/windows/ad/Get-ADPasswordNeverExpiresReport.ps1`
+
+Reports Active Directory users where `PasswordNeverExpires` is set and
+classifies privilege, service-account, SPN, exception, disabled, and
+system-managed hold cases. It does not change Active Directory.
+
+Default mode: audit only.
+
+Outputs:
+
+- `password-never-expires.json` under `-OutputDirectory`
+- `password-never-expires.csv` under `-OutputDirectory`
+- `password-never-expires-review.md` under `-OutputDirectory`
+
+Parameters:
+
+| Parameter | Type | Default | Description |
+|---|---:|---|---|
+| `-SearchBase` | string | empty | Optional OU or domain distinguished name to search. |
+| `-Server` | string | empty | Optional domain controller to query. |
+| `-Credential` | PSCredential | current user | Optional credential for the AD query. |
+| `-IncludeDisabled` | switch | off | Include disabled accounts. |
+| `-MaxPasswordAgeDays` | int | `180` | Password age threshold used for review. |
+| `-OutputDirectory` | string | `.\reports\ad-password-never-expires-COMPUTER-TIMESTAMP` | Directory for JSON, CSV, and Markdown reports. |
+| `-Quiet` | switch | off | Suppress console summary. |
+
+Examples:
+
+```powershell
+.\scripts\windows\ad\Get-ADPasswordNeverExpiresReport.ps1
+```
+
+```powershell
+.\scripts\windows\ad\Get-ADPasswordNeverExpiresReport.ps1 -IncludeDisabled
+```
+
+Start reading the report at:
+
+- `Summary.CriticalAccounts`
+- `Summary.HighAccounts`
+- `Summary.ExceptionRequiredAccounts`
+- `PasswordNeverExpiresAccounts[].ReviewPriority`
+- `PasswordNeverExpiresAccounts[].AccountCategory`
+- `PasswordNeverExpiresAccounts[].RotationReadiness`
+- `PasswordNeverExpiresAccounts[].RecommendedAction`
+
+Do not remove `PasswordNeverExpires` blindly. Confirm owner, service
+dependency, maintenance window, rollback, and exception status first.
+
+### `scripts/windows/gpo/Get-ADGPOHealthReport.ps1`
+
+Audits Active Directory Group Policy inventory, links, and common health risks.
+It does not change Group Policy or Active Directory.
+
+Default mode: audit only.
+
+Outputs:
+
+- `gpo-health.json` under `-OutputDirectory`
+- `gpos.csv` under `-OutputDirectory`
+- `gpo-links.csv` under `-OutputDirectory`
+- `gpo-findings.csv` under `-OutputDirectory`
+- `gpo-review.md` under `-OutputDirectory`
+
+Parameters:
+
+| Parameter | Type | Default | Description |
+|---|---:|---|---|
+| `-OutputDirectory` | string | `.\reports\ad-gpo-health-COMPUTER-TIMESTAMP` | Directory for JSON, CSV, and Markdown reports. |
+| `-Domain` | string | empty | Optional DNS domain name to query. |
+| `-Server` | string | empty | Optional domain controller to query. |
+| `-StaleDays` | int | `365` | Days since last GPO modification before a stale finding is created. |
+| `-MaxGposPerTarget` | int | `10` | Number of enabled direct GPO links on one target before a review finding is created. |
+| `-LegacyKeyword` | string array | old Windows, IE, Office terms | Keywords used to flag possible legacy policy references. |
+| `-SkipTargetInventory` | switch | off | Skip OU/domain target inventory and rely on GPO XML link evidence when available. |
+| `-Quiet` | switch | off | Suppress console summary. |
+
+Examples:
+
+```powershell
+.\scripts\windows\gpo\Get-ADGPOHealthReport.ps1
+```
+
+```powershell
+.\scripts\windows\gpo\Get-ADGPOHealthReport.ps1 -Domain example.com -StaleDays 730
+```
+
+```powershell
+.\scripts\windows\gpo\Get-ADGPOHealthReport.ps1 -SkipTargetInventory -OutputDirectory .\reports\gpo
+```
+
+Start reading the report at:
+
+- `Summary.TotalFindings`
+- `Summary.ActionPriorityCounts`
+- `Summary.HighFindings`
+- `Findings[].ActionPriority`
+- `Findings[].Severity`
+- `Findings[].FindingType`
+- `Findings[].Evidence`
+- `Findings[].AdminAction`
+- `Findings[].VerificationStep`
+- `Findings[].Recommendation`
+- `GPOs[].DirectLinkCount`
+- `GPOs[].IsStale`
+- `GPOs[].VersionMismatch`
+- `Targets[].DirectEnabledLinkCount`
+
+The script highlights review risks. It cannot decide whether a GPO is still
+business-required, so cleanup should still use ownership review, GPO backup,
+change approval, and staged testing.
+
+### `scripts/windows/host/Set-WindowsBaselineHardening.ps1`
 
 Creates a Windows hardening plan and optionally applies selected controls. It is
 dry-run by default.
@@ -95,31 +550,31 @@ Parameters:
 Examples:
 
 ```powershell
-.\scripts\windows\Set-WindowsBaselineHardening.ps1
+.\scripts\windows\host\Set-WindowsBaselineHardening.ps1
 ```
 
 ```powershell
-.\scripts\windows\Set-WindowsBaselineHardening.ps1 -ListControls
+.\scripts\windows\host\Set-WindowsBaselineHardening.ps1 -ListControls
 ```
 
 ```powershell
-.\scripts\windows\Set-WindowsBaselineHardening.ps1 -ExcludeControlId WIN-HARDEN-FW-001
+.\scripts\windows\host\Set-WindowsBaselineHardening.ps1 -ExcludeControlId WIN-HARDEN-FW-001
 ```
 
 ```powershell
-.\scripts\windows\Set-WindowsBaselineHardening.ps1 -ExcludeControlId WIN-HARDEN-FW-001,WIN-HARDEN-DEF-001
+.\scripts\windows\host\Set-WindowsBaselineHardening.ps1 -ExcludeControlId WIN-HARDEN-FW-001,WIN-HARDEN-DEF-001
 ```
 
 ```powershell
-.\scripts\windows\Set-WindowsBaselineHardening.ps1 -OnlyControlId WIN-HARDEN-RDP-001
+.\scripts\windows\host\Set-WindowsBaselineHardening.ps1 -OnlyControlId WIN-HARDEN-RDP-001
 ```
 
 ```powershell
-.\scripts\windows\Set-WindowsBaselineHardening.ps1 -SkipDefender -SkipAuditPolicy -ReportPath .\reports\server01-hardening.json
+.\scripts\windows\host\Set-WindowsBaselineHardening.ps1 -SkipDefender -SkipAuditPolicy -ReportPath .\reports\server01-hardening.json
 ```
 
 ```powershell
-.\scripts\windows\Set-WindowsBaselineHardening.ps1 -Apply -BackupDirectory .\backups\server01-baseline -ReportPath .\reports\server01-hardening.json
+.\scripts\windows\host\Set-WindowsBaselineHardening.ps1 -Apply -BackupDirectory .\backups\server01-baseline -ReportPath .\reports\server01-hardening.json
 ```
 
 If another product owns a control, exclude it by ID. Example: if ESET manages
@@ -132,7 +587,7 @@ Start reading the report at:
 - `Results[].OperationalImpact`
 - `Results[].Rollback`
 
-### `scripts/windows/Export-WindowsEventSecurityReport.ps1`
+### `scripts/windows/host/Export-WindowsEventSecurityReport.ps1`
 
 Exports selected Windows Security and System event log activity to a readable
 summary, JSON summary, and CSV evidence file.
@@ -155,21 +610,21 @@ Parameters:
 Examples:
 
 ```powershell
-.\scripts\windows\Export-WindowsEventSecurityReport.ps1
+.\scripts\windows\host\Export-WindowsEventSecurityReport.ps1
 ```
 
 ```powershell
-.\scripts\windows\Export-WindowsEventSecurityReport.ps1 -Days 7
+.\scripts\windows\host\Export-WindowsEventSecurityReport.ps1 -Days 7
 ```
 
 ```powershell
-.\scripts\windows\Export-WindowsEventSecurityReport.ps1 -Days 30 -OutputDirectory .\reports\server01-events
+.\scripts\windows\host\Export-WindowsEventSecurityReport.ps1 -Days 30 -OutputDirectory .\reports\server01-events
 ```
 
 Start with `summary.txt`. A High item means "review first", not automatic proof
 of an attack.
 
-### `scripts/windows/Clear-RDPUserProfileCache.ps1`
+### `scripts/windows/server/Clear-RDPUserProfileCache.ps1`
 
 Audits and optionally cleans safe per-user cache locations on RDP or Terminal
 Server hosts. It is conservative by default and skips loaded profiles unless
@@ -198,31 +653,31 @@ Parameters:
 Examples:
 
 ```powershell
-.\scripts\windows\Clear-RDPUserProfileCache.ps1
+.\scripts\windows\server\Clear-RDPUserProfileCache.ps1
 ```
 
 ```powershell
-.\scripts\windows\Clear-RDPUserProfileCache.ps1 -MinimumAgeDays 30
+.\scripts\windows\server\Clear-RDPUserProfileCache.ps1 -MinimumAgeDays 30
 ```
 
 ```powershell
-.\scripts\windows\Clear-RDPUserProfileCache.ps1 -MinimumAgeDays 30 -IncludeRecycleBin -IncludeTemp
+.\scripts\windows\server\Clear-RDPUserProfileCache.ps1 -MinimumAgeDays 30 -IncludeRecycleBin -IncludeTemp
 ```
 
 ```powershell
-.\scripts\windows\Clear-RDPUserProfileCache.ps1 -ProfileRoot D:\Users -MinimumAgeDays 45 -ReportPath .\reports\terminal01-cache.json
+.\scripts\windows\server\Clear-RDPUserProfileCache.ps1 -ProfileRoot D:\Users -MinimumAgeDays 45 -ReportPath .\reports\terminal01-cache.json
 ```
 
 ```powershell
-.\scripts\windows\Clear-RDPUserProfileCache.ps1 -ExcludeProfileName "Default","Public","admin-template"
+.\scripts\windows\server\Clear-RDPUserProfileCache.ps1 -ExcludeProfileName "Default","Public","admin-template"
 ```
 
 ```powershell
-.\scripts\windows\Clear-RDPUserProfileCache.ps1 -Apply -MinimumAgeDays 30
+.\scripts\windows\server\Clear-RDPUserProfileCache.ps1 -Apply -MinimumAgeDays 30
 ```
 
 ```powershell
-.\scripts\windows\Clear-RDPUserProfileCache.ps1 -Apply -MinimumAgeDays 30 -IncludeLoadedProfiles
+.\scripts\windows\server\Clear-RDPUserProfileCache.ps1 -Apply -MinimumAgeDays 30 -IncludeLoadedProfiles
 ```
 
 Use `-IncludeLoadedProfiles` only during a maintenance window after checking
@@ -601,3 +1056,4 @@ bash scripts/monitoring/disk-space-monitor.sh --json
 ```bash
 bash scripts/monitoring/disk-space-monitor.sh --warn 75 --crit 90 --exclude-types tmpfs,devtmpfs --json
 ```
+
