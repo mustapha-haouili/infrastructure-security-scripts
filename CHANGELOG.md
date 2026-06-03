@@ -20,6 +20,7 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 - Added `scripts/windows/ad/Get-ADServiceAccountAudit.ps1` for audit-only service account, gMSA/sMSA, SPN, password age, delegation, owner, and privilege review.
 - Added `scripts/windows/ad/Get-ADSPNExposureAudit.ps1` for defensive SPN-bearing account exposure reporting without Kerberos ticket requests or password testing.
 - Added `scripts/windows/ad/Get-ADPasswordNeverExpiresReport.ps1` for PasswordNeverExpires exception, rotation, service-account, SPN, and privilege review.
+- Added `scripts/windows/ad/Get-PrivilegedIdentityProtectionAudit.ps1` for on-prem privileged AD identity protection review, including smartcard, Protected Users, delegation, SPN, stale, password, and owner signals.
 - Added `scripts/windows/gpo/Get-ADGPOHealthReport.ps1` for audit-only Group Policy inventory, link mapping, stale policy, filter, version mismatch, and policy health reporting.
 - Improved `Get-ADGPOHealthReport.ps1` with an Admin Action Plan, per-finding action priority, admin action, verification guidance, localized default-principal detection, and more specific GPO extension names.
 - Replaced root-level Windows compatibility wrappers with `scripts/windows/Start-WindowsSecurity.ps1`, a single menu launcher for AD/GPO, host, server, and workstation scripts with parameter prompts.
