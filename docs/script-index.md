@@ -30,6 +30,7 @@ in organized category folders for advanced or direct use.
 | `ad/Get-ADServiceAccountAudit.ps1` | Audit service account candidates, SPNs, password age, delegation, ownership, and privilege risk | Audit |
 | `ad/Get-ADSPNExposureAudit.ps1` | Audit SPN-bearing user accounts for defensive Kerberos exposure indicators | Audit |
 | `ad/Get-ADPasswordNeverExpiresReport.ps1` | Report PasswordNeverExpires accounts with exception and rotation guidance | Audit |
+| `ad/Get-PrivilegedIdentityProtectionAudit.ps1` | Audit privileged AD identities for on-prem protection gaps; MFA/Conditional Access not checked | Audit |
 
 ### Windows GPO
 
