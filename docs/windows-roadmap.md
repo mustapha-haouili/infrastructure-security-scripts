@@ -40,7 +40,7 @@ scripts/windows/
 | 4 | Windows / AD | Service accounts without review | Discover service accounts and risky security properties | Windows/AD | High | Implemented | `scripts/windows/ad/` | `Get-ADServiceAccountAudit.ps1` |
 | 5 | Windows / AD | High-risk SPN accounts | Kerberoasting exposure audit without offensive actions | Windows/AD | High | Implemented | `scripts/windows/ad/` | `Get-ADSPNExposureAudit.ps1` |
 | 6 | Windows / AD | Passwords never expire | Report `PasswordNeverExpires` accounts | Windows/AD | High | Implemented | `scripts/windows/ad/` | `Get-ADPasswordNeverExpiresReport.ps1` |
-| 7 | Windows / AD | Accounts without MFA or Conditional Access | Audit privileged accounts missing extra protection | AD/Entra ID | High | New | `scripts/windows/ad/` | `Get-PrivilegedIdentityProtectionAudit.ps1` |
+| 7 | Windows / AD | Accounts without MFA or Conditional Access | Audit privileged accounts missing extra protection | AD/Entra ID | High | Partial: on-prem AD implemented | `scripts/windows/ad/` | `Get-PrivilegedIdentityProtectionAudit.ps1` |
 | 8 | Windows | SMBv1 / guest access | Audit SMBv1, guest authentication, and signing | Windows | High | Existing / expand | `scripts/windows/server/` and `scripts/windows/workstation/` | Extend `Invoke-WindowsSecurityAudit.ps1` |
 | 9 | Windows | RDP enabled on many devices | RDP exposure audit with allowed users | Windows | High | Expand | `scripts/windows/server/` and `scripts/windows/workstation/` | `Get-WindowsRDPExposureAudit.ps1` |
 | 10 | Windows | WinRM open without need | WinRM listener and security audit | Windows | Medium | Expand | `scripts/windows/server/` | `Get-WindowsWinRMSecurityAudit.ps1` |
@@ -65,8 +65,8 @@ scripts/windows/
 
 ## Next Candidate For Implementation
 
-Continue with `scripts/windows/ad/Get-PrivilegedIdentityProtectionAudit.ps1`.
+Continue with an Entra/Microsoft Graph design for `Get-PrivilegedIdentityProtectionAudit.ps1`, or move to `Get-WindowsRDPExposureAudit.ps1` if the next milestone should stay purely on-prem Windows.
 
-Reason: privileged account protection is the next identity risk after local AD
-account hygiene. It may require Entra ID/Microsoft Graph planning, so it should
-be designed carefully before implementation.
+Reason: the on-prem privileged identity checks are implemented, but MFA,
+Conditional Access, and cloud role verification need Microsoft Graph
+permissions and a deliberate authentication model before implementation.

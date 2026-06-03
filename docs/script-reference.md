@@ -459,6 +459,57 @@ Start reading the report at:
 Do not remove `PasswordNeverExpires` blindly. Confirm owner, service
 dependency, maintenance window, rollback, and exception status first.
 
+### `scripts/windows/ad/Get-PrivilegedIdentityProtectionAudit.ps1`
+
+Audits effective user members of privileged AD groups for on-prem protection
+gaps. This version does not check Entra ID MFA or Conditional Access. It does
+not change Active Directory.
+
+Default mode: audit only.
+
+Outputs:
+
+- `privileged-identity-protection.json` under `-OutputDirectory`
+- `privileged-identities.csv` under `-OutputDirectory`
+- `privileged-group-memberships.csv` under `-OutputDirectory`
+- `privileged-identity-findings.csv` under `-OutputDirectory`
+- `privileged-identity-protection-review.md` under `-OutputDirectory`
+
+Parameters:
+
+| Parameter | Type | Default | Description |
+|---|---:|---|---|
+| `-GroupName` | string array | empty | Extra privileged group identities to audit. |
+| `-Server` | string | empty | Optional domain controller to query. |
+| `-Credential` | PSCredential | current user | Optional credential for the AD query. |
+| `-StaleDays` | int | `90` | Days since last logon before an enabled privileged identity is considered stale. |
+| `-MaxPasswordAgeDays` | int | `180` | Password age threshold used for privileged account review. |
+| `-OutputDirectory` | string | `.\reports\ad-privileged-identity-protection-COMPUTER-TIMESTAMP` | Directory for JSON, CSV, and Markdown reports. |
+| `-Quiet` | switch | off | Suppress console summary. |
+
+Examples:
+
+```powershell
+.\scripts\windows\ad\Get-PrivilegedIdentityProtectionAudit.ps1
+```
+
+```powershell
+.\scripts\windows\ad\Get-PrivilegedIdentityProtectionAudit.ps1 -GroupName "Tier 0 Admins"
+```
+
+Start reading the report at:
+
+- `Summary.CriticalIdentities`
+- `Summary.HighIdentities`
+- `Summary.CloudProtectionNotChecked`
+- `PrivilegedIdentities[].ReviewPriority`
+- `PrivilegedIdentities[].RiskFlagsText`
+- `PrivilegedIdentities[].MFAConditionalAccessStatus`
+- `Findings[].FindingType`
+
+Treat MFA and Conditional Access as not verified until the future
+Entra/Microsoft Graph expansion is added.
+
 ### `scripts/windows/gpo/Get-ADGPOHealthReport.ps1`
 
 Audits Active Directory Group Policy inventory, links, and common health risks.
@@ -1056,4 +1107,3 @@ bash scripts/monitoring/disk-space-monitor.sh --json
 ```bash
 bash scripts/monitoring/disk-space-monitor.sh --warn 75 --crit 90 --exclude-types tmpfs,devtmpfs --json
 ```
-

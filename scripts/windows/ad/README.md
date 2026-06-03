@@ -193,3 +193,28 @@ Example:
 
 Do not remove `PasswordNeverExpires` blindly. Confirm owner, service dependency,
 maintenance window, rollback, and exception status first.
+
+## `Get-PrivilegedIdentityProtectionAudit.ps1`
+
+Audits effective user members of privileged AD groups and reports on-prem
+protection gaps. This version does not check Entra ID MFA or Conditional
+Access. The script is audit-only and writes
+`privileged-identity-protection.json`, `privileged-identities.csv`,
+`privileged-group-memberships.csv`, `privileged-identity-findings.csv`, and
+`privileged-identity-protection-review.md`.
+
+It flags built-in Administrator exposure, privileged SPNs,
+`PasswordNeverExpires`, old passwords, delegation, pre-authentication disabled,
+smartcard not required, missing Protected Users membership, nested privileged
+access, disabled privileged memberships, stale activity, and missing owner
+evidence.
+
+Example:
+
+```powershell
+.\scripts\windows\ad\Get-PrivilegedIdentityProtectionAudit.ps1
+.\scripts\windows\ad\Get-PrivilegedIdentityProtectionAudit.ps1 -GroupName "Tier 0 Admins"
+```
+
+Use this as the on-prem privileged identity review. Treat MFA/Conditional
+Access as not verified until the future Entra/Microsoft Graph version is added.

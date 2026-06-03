@@ -120,6 +120,7 @@ Active Directory scripts are under `ad/`.
 | `ad/Get-ADServiceAccountAudit.ps1` | Audits service account candidates, gMSA/sMSA objects, SPNs, password age, delegation, ownership, and privilege risk. |
 | `ad/Get-ADSPNExposureAudit.ps1` | Audits SPN-bearing user accounts for Kerberos exposure indicators without offensive actions. |
 | `ad/Get-ADPasswordNeverExpiresReport.ps1` | Reports PasswordNeverExpires accounts with service, SPN, privilege, exception, and cleanup guidance. |
+| `ad/Get-PrivilegedIdentityProtectionAudit.ps1` | Audits privileged AD identities for on-prem protection gaps; MFA and Conditional Access are not checked yet. |
 
 Example:
 
@@ -130,6 +131,7 @@ Example:
 .\scripts\windows\ad\Get-ADServiceAccountAudit.ps1
 .\scripts\windows\ad\Get-ADSPNExposureAudit.ps1
 .\scripts\windows\ad\Get-ADPasswordNeverExpiresReport.ps1
+.\scripts\windows\ad\Get-PrivilegedIdentityProtectionAudit.ps1
 ```
 
 ## GPO Scripts
@@ -301,4 +303,3 @@ Examples:
 
 Use `-IncludeLoadedProfiles` only during a maintenance window after checking
 active sessions.
-
