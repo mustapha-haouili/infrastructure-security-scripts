@@ -76,6 +76,12 @@ class PowerShellMarkdownHelperTests(unittest.TestCase):
         self.assert_markdown_helper_is_not_collection_typed(script)
         self.assert_table_rows_allow_empty_results(script, "Add-MarkdownPasswordAccountTable")
 
+    def test_privileged_identity_markdown_helpers_allow_blank_and_empty_reports(self):
+        script = "scripts/windows/ad/Get-PrivilegedIdentityProtectionAudit.ps1"
+        self.assert_markdown_helper_is_not_collection_typed(script)
+        self.assert_table_rows_allow_empty_results(script, "Add-MarkdownIdentityTable")
+        self.assert_table_rows_allow_empty_results(script, "Add-MarkdownFindingTable")
+
 
 if __name__ == "__main__":
     unittest.main()

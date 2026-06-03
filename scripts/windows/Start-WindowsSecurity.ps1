@@ -199,6 +199,16 @@ function Get-ToolCatalog {
             New-ParameterDefinition -Name "Quiet" -Type "Switch" -Description "Suppress console summary."
         )
 
+        New-ToolDefinition -Id "AD-PRIVILEGED-IDENTITY-PROTECTION" -GroupId "AD" -Name "Privileged identity protection" -RelativePath "ad\Get-PrivilegedIdentityProtectionAudit.ps1" -DefaultMode "Audit" -Description "Audit on-prem privileged AD users for protection gaps; MFA and Conditional Access are not checked in this version." -Parameters @(
+            New-ParameterDefinition -Name "GroupName" -Type "StringArray" -Description "Optional extra privileged group identities to audit."
+            New-ParameterDefinition -Name "Server" -Description "Optional domain controller to query."
+            New-ParameterDefinition -Name "Credential" -Type "Credential" -Description "Optional alternate AD credential."
+            New-ParameterDefinition -Name "StaleDays" -Type "Int" -Default 90 -Description "Days since last logon before an enabled privileged identity is considered stale."
+            New-ParameterDefinition -Name "MaxPasswordAgeDays" -Type "Int" -Default 180 -Description "Password age threshold used for privileged account review."
+            New-ParameterDefinition -Name "OutputDirectory" -Description "Optional output directory. Blank uses the script default."
+            New-ParameterDefinition -Name "Quiet" -Type "Switch" -Description "Suppress console summary."
+        )
+
         New-ToolDefinition -Id "AD-GPO-HEALTH" -GroupId "AD" -Name "GPO health report" -RelativePath "gpo\Get-ADGPOHealthReport.ps1" -DefaultMode "Audit" -Description "Audit Group Policy inventory, links, stale policies, filters, version mismatches, and common health risks." -Parameters @(
             New-ParameterDefinition -Name "OutputDirectory" -Description "Optional output directory. Blank uses the script default."
             New-ParameterDefinition -Name "Domain" -Description "Optional DNS domain name to query."
