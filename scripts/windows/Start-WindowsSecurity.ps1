@@ -29,6 +29,11 @@ With -Group, run the default-safe scripts in that group.
 Use default child-script parameters instead of prompting. Required parameters
 are still prompted.
 
+.PARAMETER ConfigPath
+Optional JSON parameter file. Values in the file are used as defaults for child
+script parameters. Tool values override group values, and group values override
+global defaults.
+
 .EXAMPLE
 .\Start-WindowsSecurity.ps1
 
@@ -48,6 +53,12 @@ Open parameter prompts for the GPO health report and run it.
 .\Start-WindowsSecurity.ps1 -Group AD -RunAll
 
 Run the default-safe AD and GPO reports.
+
+.EXAMPLE
+.\Start-WindowsSecurity.ps1 -Group AD -RunAll -UseDefaults -ConfigPath .\examples\windows-security.config.example.json
+
+Run the default-safe AD and GPO reports using shared values from a JSON
+parameter file.
 #>
 
 [CmdletBinding()]
@@ -56,7 +67,8 @@ param(
     [string]$Group = "",
     [string]$ToolId = "",
     [switch]$RunAll,
-    [switch]$UseDefaults
+    [switch]$UseDefaults,
+    [string]$ConfigPath = ""
 )
 
 Set-StrictMode -Version Latest
@@ -282,6 +294,212 @@ function Get-ToolPath {
     Join-Path -Path $PSScriptRoot -ChildPath $Tool.RelativePath
 }
 
+function Read-WindowsSecurityConfig {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $null
+    }
+
+    try {
+        $resolvedPath = (Resolve-Path -LiteralPath $Path -ErrorAction Stop | Select-Object -First 1).ProviderPath
+    }
+    catch {
+        throw "ConfigPath not found: $Path"
+    }
+
+    try {
+        $content = Get-Content -LiteralPath $resolvedPath -Raw -ErrorAction Stop
+        if ([string]::IsNullOrWhiteSpace($content)) {
+            throw "The config file is empty."
+        }
+        $data = $content | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        throw "Failed to read ConfigPath '$resolvedPath': $($_.Exception.Message)"
+    }
+
+    [pscustomobject][ordered]@{
+        SourcePath = $resolvedPath
+        Data       = $data
+    }
+}
+
+function Get-ConfigPropertyValue {
+    param(
+        [AllowNull()][object]$InputObject,
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+
+    if ($null -eq $InputObject) {
+        return [pscustomobject]@{ Found = $false; Value = $null }
+    }
+
+    if ($InputObject -is [System.Collections.IDictionary]) {
+        foreach ($key in $InputObject.Keys) {
+            if ("$key" -ieq $Name) {
+                return [pscustomobject]@{ Found = $true; Value = $InputObject[$key] }
+            }
+        }
+    }
+
+    foreach ($property in @($InputObject.PSObject.Properties)) {
+        if ($property.Name -ieq $Name) {
+            return [pscustomobject]@{ Found = $true; Value = $property.Value }
+        }
+    }
+
+    [pscustomobject]@{ Found = $false; Value = $null }
+}
+
+function Get-ConfigSection {
+    param(
+        [AllowNull()][object]$Config,
+        [Parameter(Mandatory = $true)][string[]]$Path
+    )
+
+    if ($null -eq $Config) {
+        return $null
+    }
+
+    $current = $Config.Data
+    foreach ($segment in $Path) {
+        $result = Get-ConfigPropertyValue -InputObject $current -Name $segment
+        if (-not $result.Found) {
+            return $null
+        }
+        $current = $result.Value
+    }
+
+    return $current
+}
+
+function Get-ConfiguredParameterValue {
+    param(
+        [Parameter(Mandatory = $true)][object]$Tool,
+        [Parameter(Mandatory = $true)][object]$Parameter,
+        [AllowNull()][object]$Config
+    )
+
+    $configured = [pscustomobject][ordered]@{
+        HasValue = $false
+        Value    = $null
+        Source   = ""
+    }
+
+    if ($null -eq $Config) {
+        return $configured
+    }
+
+    $sections = @(
+        [pscustomobject]@{ Name = "Defaults"; Object = (Get-ConfigSection -Config $Config -Path @("Defaults")) }
+        [pscustomobject]@{ Name = "Groups.$($Tool.GroupId)"; Object = (Get-ConfigSection -Config $Config -Path @("Groups", $Tool.GroupId)) }
+        [pscustomobject]@{ Name = "Tools.$($Tool.Id)"; Object = (Get-ConfigSection -Config $Config -Path @("Tools", $Tool.Id)) }
+    )
+
+    foreach ($section in $sections) {
+        if ($null -eq $section.Object) {
+            continue
+        }
+
+        $candidate = Get-ConfigPropertyValue -InputObject $section.Object -Name $Parameter.Name
+        if ($candidate.Found) {
+            $configured.HasValue = $true
+            $configured.Value = $candidate.Value
+            $configured.Source = $section.Name
+        }
+    }
+
+    return $configured
+}
+
+function Convert-ConfigValueForParameter {
+    param(
+        [Parameter(Mandatory = $true)][object]$Parameter,
+        [AllowNull()][object]$Value
+    )
+
+    $result = [pscustomobject][ordered]@{
+        IsValid = $false
+        Value   = $null
+        Message = ""
+    }
+
+    if ($null -eq $Value) {
+        $result.Message = "value is null"
+        return $result
+    }
+
+    switch ($Parameter.Type) {
+        "Credential" {
+            $result.Message = "credential parameters are intentionally not loaded from config"
+            return $result
+        }
+        "Switch" {
+            if ($Value -is [bool]) {
+                $result.IsValid = $true
+                $result.Value = [bool]$Value
+                return $result
+            }
+
+            $text = "$Value".Trim().ToLowerInvariant()
+            if ($text -match "^(true|yes|y|1|on)$") {
+                $result.IsValid = $true
+                $result.Value = $true
+                return $result
+            }
+            if ($text -match "^(false|no|n|0|off)$") {
+                $result.IsValid = $true
+                $result.Value = $false
+                return $result
+            }
+
+            $result.Message = "expected a boolean value"
+            return $result
+        }
+        "Int" {
+            $parsed = 0
+            if ([int]::TryParse("$Value", [ref]$parsed)) {
+                $result.IsValid = $true
+                $result.Value = $parsed
+                return $result
+            }
+
+            $result.Message = "expected a whole number"
+            return $result
+        }
+        "StringArray" {
+            $items = @()
+            if ($Value -is [array]) {
+                $items = @($Value | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+            }
+            else {
+                $items = @("$Value" -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+            }
+
+            if ($items.Count -gt 0) {
+                $result.IsValid = $true
+                $result.Value = $items
+                return $result
+            }
+
+            $result.Message = "expected one or more values"
+            return $result
+        }
+        default {
+            $textValue = "$Value".Trim()
+            if ($textValue) {
+                $result.IsValid = $true
+                $result.Value = $textValue
+                return $result
+            }
+
+            $result.Message = "expected a non-empty string"
+            return $result
+        }
+    }
+}
+
 function Read-MenuInput {
     param([string]$Prompt = "Choose")
     (Read-Host $Prompt).Trim()
@@ -321,12 +539,34 @@ function Format-DefaultValue {
     return "$Value"
 }
 
+function Format-ParameterPromptDefault {
+    param(
+        [Parameter(Mandatory = $true)][object]$Parameter,
+        [AllowNull()][object]$ConfiguredValue,
+        [switch]$HasConfiguredValue
+    )
+
+    if ($HasConfiguredValue) {
+        return "$(Format-DefaultValue -Value $ConfiguredValue) (config)"
+    }
+
+    return (Format-DefaultValue -Value $Parameter.Default)
+}
+
 function Read-IntParameter {
-    param([Parameter(Mandatory = $true)][object]$Parameter)
+    param(
+        [Parameter(Mandatory = $true)][object]$Parameter,
+        [AllowNull()][object]$ConfiguredValue = $null,
+        [switch]$HasConfiguredValue
+    )
 
     while ($true) {
-        $value = (Read-Host "$($Parameter.Name) [$((Format-DefaultValue -Value $Parameter.Default))]").Trim()
+        $defaultText = Format-ParameterPromptDefault -Parameter $Parameter -ConfiguredValue $ConfiguredValue -HasConfiguredValue:$HasConfiguredValue
+        $value = (Read-Host "$($Parameter.Name) [$defaultText]").Trim()
         if (-not $value) {
+            if ($HasConfiguredValue) {
+                return [int]$ConfiguredValue
+            }
             if ($Parameter.Required) {
                 Write-Host "This parameter is required." -ForegroundColor Yellow
                 continue
@@ -342,11 +582,19 @@ function Read-IntParameter {
 }
 
 function Read-StringParameter {
-    param([Parameter(Mandatory = $true)][object]$Parameter)
+    param(
+        [Parameter(Mandatory = $true)][object]$Parameter,
+        [AllowNull()][object]$ConfiguredValue = $null,
+        [switch]$HasConfiguredValue
+    )
 
     while ($true) {
-        $value = (Read-Host "$($Parameter.Name) [$((Format-DefaultValue -Value $Parameter.Default))]").Trim()
+        $defaultText = Format-ParameterPromptDefault -Parameter $Parameter -ConfiguredValue $ConfiguredValue -HasConfiguredValue:$HasConfiguredValue
+        $value = (Read-Host "$($Parameter.Name) [$defaultText]").Trim()
         if (-not $value) {
+            if ($HasConfiguredValue) {
+                return "$ConfiguredValue"
+            }
             if ($Parameter.Required) {
                 Write-Host "This parameter is required." -ForegroundColor Yellow
                 continue
@@ -358,10 +606,18 @@ function Read-StringParameter {
 }
 
 function Read-StringArrayParameter {
-    param([Parameter(Mandatory = $true)][object]$Parameter)
+    param(
+        [Parameter(Mandatory = $true)][object]$Parameter,
+        [AllowNull()][object]$ConfiguredValue = $null,
+        [switch]$HasConfiguredValue
+    )
 
-    $value = (Read-Host "$($Parameter.Name) comma-separated [$((Format-DefaultValue -Value $Parameter.Default))]").Trim()
+    $defaultText = Format-ParameterPromptDefault -Parameter $Parameter -ConfiguredValue $ConfiguredValue -HasConfiguredValue:$HasConfiguredValue
+    $value = (Read-Host "$($Parameter.Name) comma-separated [$defaultText]").Trim()
     if (-not $value) {
+        if ($HasConfiguredValue) {
+            return @($ConfiguredValue)
+        }
         return $null
     }
 
@@ -382,9 +638,18 @@ function Read-CredentialParameter {
 }
 
 function Read-SwitchParameter {
-    param([Parameter(Mandatory = $true)][object]$Parameter)
+    param(
+        [Parameter(Mandatory = $true)][object]$Parameter,
+        [AllowNull()][object]$ConfiguredValue = $null,
+        [switch]$HasConfiguredValue
+    )
 
-    $enabled = Read-YesNo -Prompt "Enable -$($Parameter.Name)?" -Default $false
+    $defaultEnabled = $false
+    if ($HasConfiguredValue) {
+        $defaultEnabled = [bool]$ConfiguredValue
+    }
+
+    $enabled = Read-YesNo -Prompt "Enable -$($Parameter.Name)?" -Default $defaultEnabled
     if (-not $enabled) {
         return $null
     }
@@ -405,13 +670,47 @@ function Read-SwitchParameter {
 function Read-ToolParameters {
     param(
         [Parameter(Mandatory = $true)][object]$Tool,
-        [switch]$UseDefaultValues
+        [switch]$UseDefaultValues,
+        [AllowNull()][object]$Config = $null
     )
 
     $arguments = @{}
     foreach ($parameter in @($Tool.Parameters)) {
-        if ($UseDefaultValues -and -not $parameter.Required) {
-            continue
+        $configuredParameter = Get-ConfiguredParameterValue -Tool $Tool -Parameter $parameter -Config $Config
+        $configuredValue = $null
+        $hasConfiguredValue = $false
+        if ($configuredParameter.HasValue) {
+            $conversion = Convert-ConfigValueForParameter -Parameter $parameter -Value $configuredParameter.Value
+            if ($conversion.IsValid) {
+                $configuredValue = $conversion.Value
+                $hasConfiguredValue = $true
+            }
+            else {
+                Write-Host "Ignoring config value for -$($parameter.Name) from $($configuredParameter.Source): $($conversion.Message)." -ForegroundColor Yellow
+            }
+        }
+
+        if ($UseDefaultValues) {
+            if ($hasConfiguredValue) {
+                if ($parameter.Type -eq "Switch") {
+                    if ([bool]$configuredValue) {
+                        if ($parameter.HighImpact) {
+                            Write-Host "Skipping high-impact config value -$($parameter.Name) from $($configuredParameter.Source). Select the tool directly to confirm it." -ForegroundColor Yellow
+                        }
+                        else {
+                            $arguments[$parameter.Name] = $true
+                        }
+                    }
+                }
+                else {
+                    $arguments[$parameter.Name] = $configuredValue
+                }
+                continue
+            }
+
+            if (-not $parameter.Required) {
+                continue
+            }
         }
 
         Write-Host ""
@@ -419,14 +718,17 @@ function Read-ToolParameters {
         if ($parameter.Description) {
             Write-Host $parameter.Description
         }
+        if ($hasConfiguredValue) {
+            Write-Host "Configured default from $($configuredParameter.Source): $(Format-DefaultValue -Value $configuredValue)" -ForegroundColor DarkCyan
+        }
 
         $value = $null
         switch ($parameter.Type) {
-            "Int" { $value = Read-IntParameter -Parameter $parameter }
-            "Switch" { $value = Read-SwitchParameter -Parameter $parameter }
-            "StringArray" { $value = Read-StringArrayParameter -Parameter $parameter }
+            "Int" { $value = Read-IntParameter -Parameter $parameter -ConfiguredValue $configuredValue -HasConfiguredValue:$hasConfiguredValue }
+            "Switch" { $value = Read-SwitchParameter -Parameter $parameter -ConfiguredValue $configuredValue -HasConfiguredValue:$hasConfiguredValue }
+            "StringArray" { $value = Read-StringArrayParameter -Parameter $parameter -ConfiguredValue $configuredValue -HasConfiguredValue:$hasConfiguredValue }
             "Credential" { $value = Read-CredentialParameter -Parameter $parameter }
-            default { $value = Read-StringParameter -Parameter $parameter }
+            default { $value = Read-StringParameter -Parameter $parameter -ConfiguredValue $configuredValue -HasConfiguredValue:$hasConfiguredValue }
         }
 
         if ($null -ne $value) {
@@ -483,7 +785,8 @@ function Format-CommandPreview {
 function Invoke-MenuTool {
     param(
         [Parameter(Mandatory = $true)][object]$Tool,
-        [switch]$UseDefaultValues
+        [switch]$UseDefaultValues,
+        [AllowNull()][object]$Config = $null
     )
 
     $scriptPath = Get-ToolPath -Tool $Tool
@@ -496,6 +799,9 @@ function Invoke-MenuTool {
     Write-Host "Selected: $($Tool.Name)" -ForegroundColor Green
     Write-Host "Mode: $($Tool.DefaultMode)"
     Write-Host "Path: $($Tool.RelativePath)"
+    if ($null -ne $Config) {
+        Write-Host "Config: $($Config.SourcePath)"
+    }
     if ($Tool.Description) {
         Write-Host $Tool.Description
     }
@@ -505,7 +811,7 @@ function Invoke-MenuTool {
         $useDefaultParameters = -not (Read-YesNo -Prompt "Do you want to edit parameters before running?" -Default $true)
     }
 
-    $arguments = Read-ToolParameters -Tool $Tool -UseDefaultValues:$useDefaultParameters
+    $arguments = Read-ToolParameters -Tool $Tool -UseDefaultValues:$useDefaultParameters -Config $Config
     $preview = Format-CommandPreview -Tool $Tool -Arguments $arguments
 
     Write-Host ""
@@ -543,12 +849,16 @@ function Show-ToolList {
 function Show-MainMenu {
     param(
         [object[]]$Groups,
-        [object[]]$Tools
+        [object[]]$Tools,
+        [AllowNull()][object]$Config = $null
     )
 
     while (-not $script:QuitRequested) {
         Write-Host ""
         Write-Host "Windows Security Scripts" -ForegroundColor Cyan
+        if ($null -ne $Config) {
+            Write-Host "Parameter config: $($Config.SourcePath)" -ForegroundColor DarkCyan
+        }
         Write-Host "Choose a group:"
         Write-Host ""
 
@@ -571,7 +881,7 @@ function Show-MainMenu {
         if ($choice -match "^\d+$") {
             $selectedIndex = [int]$choice - 1
             if ($selectedIndex -ge 0 -and $selectedIndex -lt $Groups.Count) {
-                Show-GroupMenu -GroupItem $Groups[$selectedIndex] -Tools $Tools
+                Show-GroupMenu -GroupItem $Groups[$selectedIndex] -Tools $Tools -Config $Config
                 continue
             }
         }
@@ -582,7 +892,8 @@ function Show-MainMenu {
 function Show-GroupMenu {
     param(
         [Parameter(Mandatory = $true)][object]$GroupItem,
-        [Parameter(Mandatory = $true)][object[]]$Tools
+        [Parameter(Mandatory = $true)][object[]]$Tools,
+        [AllowNull()][object]$Config = $null
     )
 
     $groupTools = @($Tools | Where-Object { $_.GroupId -eq $GroupItem.Id } | Sort-Object Name)
@@ -595,6 +906,9 @@ function Show-GroupMenu {
     while (-not $script:QuitRequested) {
         Write-Host ""
         Write-Host "$($GroupItem.Label) Scripts" -ForegroundColor Cyan
+        if ($null -ne $Config) {
+            Write-Host "Parameter config: $($Config.SourcePath)" -ForegroundColor DarkCyan
+        }
         for ($index = 0; $index -lt $groupTools.Count; $index++) {
             $tool = $groupTools[$index]
             $runAllLabel = if ($tool.IncludeInRunAll) { "default-safe" } else { "manual" }
@@ -613,13 +927,13 @@ function Show-GroupMenu {
             return
         }
         if ($choice -match "^(a|all)$") {
-            Invoke-GroupRunAll -GroupItem $GroupItem -Tools $groupTools
+            Invoke-GroupRunAll -GroupItem $GroupItem -Tools $groupTools -Config $Config
             continue
         }
         if ($choice -match "^\d+$") {
             $selectedIndex = [int]$choice - 1
             if ($selectedIndex -ge 0 -and $selectedIndex -lt $groupTools.Count) {
-                Invoke-MenuTool -Tool $groupTools[$selectedIndex] -UseDefaultValues:$UseDefaults
+                Invoke-MenuTool -Tool $groupTools[$selectedIndex] -UseDefaultValues:$UseDefaults -Config $Config
                 continue
             }
         }
@@ -630,7 +944,8 @@ function Show-GroupMenu {
 function Invoke-GroupRunAll {
     param(
         [Parameter(Mandatory = $true)][object]$GroupItem,
-        [Parameter(Mandatory = $true)][object[]]$Tools
+        [Parameter(Mandatory = $true)][object[]]$Tools,
+        [AllowNull()][object]$Config = $null
     )
 
     $runnableTools = @($Tools | Where-Object { $_.IncludeInRunAll })
@@ -670,11 +985,11 @@ function Invoke-GroupRunAll {
                 continue
             }
             "^(c|custom|customize)$" {
-                Invoke-MenuTool -Tool $tool
+                Invoke-MenuTool -Tool $tool -Config $Config
                 continue
             }
             default {
-                Invoke-MenuTool -Tool $tool -UseDefaultValues
+                Invoke-MenuTool -Tool $tool -UseDefaultValues -Config $Config
             }
         }
     }
@@ -682,10 +997,15 @@ function Invoke-GroupRunAll {
 
 $groups = @(Get-GroupCatalog)
 $tools = @(Get-ToolCatalog)
+$config = Read-WindowsSecurityConfig -Path $ConfigPath
 
 if ($ListScripts) {
     Show-ToolList -Tools $tools
     return
+}
+
+if ($null -ne $config) {
+    Write-Host "Loaded parameter config: $($config.SourcePath)" -ForegroundColor DarkCyan
 }
 
 if ($ToolId) {
@@ -693,7 +1013,7 @@ if ($ToolId) {
     if ($selectedTool.Count -eq 0) {
         throw "Unknown ToolId '$ToolId'. Use -ListScripts to see available IDs."
     }
-    Invoke-MenuTool -Tool $selectedTool[0] -UseDefaultValues:$UseDefaults
+    Invoke-MenuTool -Tool $selectedTool[0] -UseDefaultValues:$UseDefaults -Config $config
     return
 }
 
@@ -704,11 +1024,11 @@ if ($Group) {
     }
     $groupTools = @($tools | Where-Object { $_.GroupId -eq $selectedGroup[0].Id } | Sort-Object Name)
     if ($RunAll) {
-        Invoke-GroupRunAll -GroupItem $selectedGroup[0] -Tools $groupTools
+        Invoke-GroupRunAll -GroupItem $selectedGroup[0] -Tools $groupTools -Config $config
         return
     }
-    Show-GroupMenu -GroupItem $selectedGroup[0] -Tools $tools
+    Show-GroupMenu -GroupItem $selectedGroup[0] -Tools $tools -Config $config
     return
 }
 
-Show-MainMenu -Groups $groups -Tools $tools
+Show-MainMenu -Groups $groups -Tools $tools -Config $config

@@ -69,6 +69,17 @@ List menu IDs for direct use:
 .\scripts\windows\Start-WindowsSecurity.ps1 -ListScripts
 ```
 
+When multiple Windows scripts need the same environment values, copy the
+example config and update it once:
+
+```powershell
+Copy-Item .\examples\windows-security.config.example.json .\windows-security.config.local.json
+.\scripts\windows\Start-WindowsSecurity.ps1 -Group AD -RunAll -UseDefaults -ConfigPath .\windows-security.config.local.json
+```
+
+The local `.local.json` copy is ignored by Git. Do not store credentials or
+secrets in it; the launcher ignores `Credential` parameters from config.
+
 ## Reading Windows reports
 
 The Windows audit and hardening reports include summary sections before the raw evidence:
@@ -122,4 +133,3 @@ python3 scripts/devsecops/secret-scan.py . --format json --output reports/secret
 ```
 
 The scanner returns exit code `2` when findings are detected unless `--no-fail` is used.
-

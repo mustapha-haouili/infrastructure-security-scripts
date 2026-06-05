@@ -90,6 +90,13 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 Choose `Windows Host` from the menu, then select `Windows security audit`.
 
+Optional shared Windows parameters:
+
+```powershell
+Copy-Item .\examples\windows-security.config.example.json .\windows-security.config.local.json
+.\scripts\windows\Start-WindowsSecurity.ps1 -Group AD -RunAll -UseDefaults -ConfigPath .\windows-security.config.local.json
+```
+
 ### Windows baseline dry run
 
 ```powershell
@@ -134,6 +141,7 @@ python3 scripts/monitoring/service-health-check.py --config examples/services.ex
 See [docs/script-index.md](docs/script-index.md) for a complete list of scripts and their purpose.
 See [docs/script-reference.md](docs/script-reference.md) for every script argument, output file, safety mode, and copy-ready examples.
 See [docs/windows-roadmap.md](docs/windows-roadmap.md) for the Windows AD, GPO, server, and workstation expansion plan.
+See [docs/project-plan.md](docs/project-plan.md) for the current implementation status and next build plan.
 
 Every script also has built-in help:
 
@@ -169,4 +177,3 @@ Infrastructure Security Architect
 ## Responsible use
 
 These scripts are intended for systems you own or are authorized to administer. Do not run them against third-party environments without written permission.
-

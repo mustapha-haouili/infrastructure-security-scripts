@@ -46,6 +46,7 @@ Parameters:
 | `-ToolId` | string | empty | Run one menu tool directly by ID. Use `-ListScripts` to see IDs. |
 | `-RunAll` | switch | off | With `-Group`, run the default-safe scripts in that group. |
 | `-UseDefaults` | switch | off | Use child-script defaults instead of prompting for optional parameters. Required parameters are still prompted. |
+| `-ConfigPath` | string | empty | Optional JSON file with shared child-script parameter defaults. |
 
 Examples:
 
@@ -65,9 +66,19 @@ Examples:
 .\scripts\windows\Start-WindowsSecurity.ps1 -ToolId AD-GPO-HEALTH
 ```
 
+```powershell
+Copy-Item .\examples\windows-security.config.example.json .\windows-security.config.local.json
+.\scripts\windows\Start-WindowsSecurity.ps1 -Group AD -RunAll -UseDefaults -ConfigPath .\windows-security.config.local.json
+```
+
 Use the menu when an admin should choose a group, review available scripts, and
 enter parameters without editing PowerShell commands manually. Direct paths in
 the sections below remain supported for automation and advanced use.
+
+Shared launcher config values are read from `Defaults`, then `Groups.<GroupId>`,
+then `Tools.<ToolId>`. The most specific value wins. Credential parameters are
+not loaded from config, and high-impact switches are not automatically enabled
+by `-UseDefaults`.
 
 ### `scripts/windows/host/Invoke-WindowsSecurityAudit.ps1`
 
