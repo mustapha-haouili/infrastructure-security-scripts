@@ -34,6 +34,30 @@ Useful direct launcher commands:
 .\scripts\windows\Start-WindowsSecurity.ps1 -ToolId AD-GPO-HEALTH
 ```
 
+## Shared Parameter Config
+
+Use a local JSON config when many Windows scripts need the same values, such as
+domain controller, DNS domain, search base, or output directory:
+
+```powershell
+Copy-Item .\examples\windows-security.config.example.json .\windows-security.config.local.json
+.\scripts\windows\Start-WindowsSecurity.ps1 -Group AD -RunAll -UseDefaults -ConfigPath .\windows-security.config.local.json
+```
+
+The launcher reads config values in this order:
+
+1. `Defaults`
+2. `Groups.<GroupId>`
+3. `Tools.<ToolId>`
+
+Tool-specific values override group values, and group values override global
+defaults. Interactive input still wins when the admin chooses to customize a
+script. High-impact switches such as `-Apply` are not silently enabled by
+`-UseDefaults`; select that script directly when a change must be confirmed.
+
+Do not put passwords or secrets in this file. `Credential` parameters are
+intentionally ignored by the config loader.
+
 ## Category Folders
 
 New Windows scripts should be added under these folders:

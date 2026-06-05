@@ -1,0 +1,126 @@
+{
+  "Metadata": {
+    "Purpose": "Shared parameter defaults for scripts/windows/Start-WindowsSecurity.ps1.",
+    "Usage": "Copy this file to a local path, update the values for your environment, then run Start-WindowsSecurity.ps1 with -ConfigPath.",
+    "Safety": "Do not store passwords, API keys, or reusable secrets in this file. Credential parameters are ignored by the launcher config loader."
+  },
+  "Defaults": {
+    "Server": "dc01.example.com",
+    "Domain": "example.com",
+    "SearchBase": "DC=example,DC=com",
+    "OutputDirectory": ".\\reports\\windows-shared",
+    "DaysInactive": 90,
+    "StaleDays": 90,
+    "MaxPasswordAgeDays": 180,
+    "Quiet": false
+  },
+  "Groups": {
+    "AD": {
+      "Server": "dc01.example.com",
+      "Domain": "example.com",
+      "SearchBase": "DC=example,DC=com",
+      "OutputDirectory": ".\\reports\\ad-shared"
+    },
+    "Host": {
+      "OutputDirectory": ".\\reports\\host-shared"
+    },
+    "Server": {
+      "OutputDirectory": ".\\reports\\server-shared"
+    },
+    "Workstation": {
+      "OutputDirectory": ".\\reports\\workstation-shared"
+    }
+  },
+  "Tools": {
+    "AD-INACTIVE-USERS": {
+      "DaysInactive": 120,
+      "IncludeDisabled": false,
+      "ExcludeNeverLoggedOn": false
+    },
+    "AD-STALE-COMPUTERS": {
+      "DaysInactive": 120,
+      "IncludeDisabled": false,
+      "ExcludeNeverLoggedOn": false
+    },
+    "AD-PRIVILEGED-GROUPS": {
+      "BaselinePath": ".\\reports\\ad-privileged-groups-baseline.json",
+      "GroupName": [
+        "Domain Admins",
+        "Enterprise Admins",
+        "Administrators"
+      ],
+      "IncludeRecursiveMembers": true,
+      "UpdateBaseline": false
+    },
+    "AD-SERVICE-ACCOUNTS": {
+      "StaleDays": 90,
+      "MaxPasswordAgeDays": 180,
+      "IncludeDisabled": false
+    },
+    "AD-SPN-EXPOSURE": {
+      "MaxPasswordAgeDays": 180,
+      "IncludeDisabled": false
+    },
+    "AD-PASSWORD-NEVER-EXPIRES": {
+      "MaxPasswordAgeDays": 180,
+      "IncludeDisabled": false
+    },
+    "AD-PRIVILEGED-IDENTITY-PROTECTION": {
+      "StaleDays": 90,
+      "MaxPasswordAgeDays": 180,
+      "GroupName": [
+        "Domain Admins",
+        "Enterprise Admins",
+        "Administrators"
+      ]
+    },
+    "AD-GPO-HEALTH": {
+      "Domain": "example.com",
+      "StaleDays": 365,
+      "MaxGposPerTarget": 10,
+      "LegacyKeyword": [
+        "legacy",
+        "old",
+        "deprecated",
+        "test"
+      ],
+      "SkipTargetInventory": false
+    },
+    "HOST-AUDIT": {
+      "IncludeHotfixes": false,
+      "Quiet": false
+    },
+    "HOST-EVENTS": {
+      "Days": 7,
+      "OutputDirectory": ".\\reports\\windows-events"
+    },
+    "HOST-HARDENING": {
+      "Apply": false,
+      "ReportPath": ".\\reports\\windows-hardening-preview.json",
+      "BackupDirectory": ".\\backups\\windows-hardening",
+      "SkipDefender": false,
+      "SkipAuditPolicy": false
+    },
+    "HOST-GUIDED-REMEDIATION": {
+      "OutputDirectory": ".\\reports\\windows-remediation",
+      "IncludeHotfixes": false,
+      "ApplyApproved": false,
+      "ReviewDecisions": false,
+      "NonInteractive": false,
+      "Quiet": false
+    },
+    "SERVER-RDP-CACHE": {
+      "ProfileRoot": "C:\\Users",
+      "MinimumAgeDays": 30,
+      "Apply": false,
+      "IncludeLoadedProfiles": false,
+      "IncludeRecycleBin": false,
+      "IncludeTemp": false,
+      "ExcludeProfileName": [
+        "Administrator",
+        "Public",
+        "Default"
+      ]
+    }
+  }
+}

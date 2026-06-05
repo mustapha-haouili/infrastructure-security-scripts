@@ -5,6 +5,8 @@ logs/
 *.log
 *.csv
 *.jsonl
+*.local.json
+windows-security.config.json
 
 # Python
 __pycache__/
