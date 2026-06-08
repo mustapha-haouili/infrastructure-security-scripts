@@ -6,6 +6,35 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 
 ## [Unreleased]
 
+### SecureInfra AI
+
+- Added `ad-shared` directory input support for Active Directory report bundles.
+- Added Windows-safe JSON loading for UTF-8 BOM PowerShell output and a BOM-safe CSV loader.
+- Added AD shared bundle discovery for known AD and GPO report JSON files.
+- Added consolidated AD shared normalized report metadata for detected, loaded, and missing optional files.
+- Added AD shared documentation and tests for bundle discovery, BOM loading, missing files, and Markdown output.
+- Added the `SecureInfra_AI/` layer for deterministic AI-ready infrastructure security analysis and reporting.
+- Added SecureInfra AI finding, normalized report, and future AI report schemas.
+- Added an Active Directory inactive users normalizer and deterministic risk engine.
+- Added a CLI analyzer that reads AD inactive user JSON and generates normalized JSON plus Markdown reports.
+- Added optional AI provider interface and local deterministic stub for future private AI integration.
+- Added fictional SecureInfra AI sample input, sample output reports, architecture docs, roadmap, methodology, and prompt templates.
+- Added tests for sample loading, normalization, risk rules, Markdown report generation, CLI output, and sample data safety.
+
+## [1.1.0] - 2026-06-07
+
+### Documentation And Reporting
+
+- Added `docs/methodology.md` for the audit-first and safety-first assessment workflow.
+- Added service model documentation for structured infrastructure security health checks.
+- Added fictional sample assessment reports under `examples/sample-reports/`.
+- Added fictional sample JSON outputs under `examples/sample-output/`.
+- Added JSON schemas under `schemas/` for findings, AD reports, GPO reports, Windows host audits, Linux host audits, and remediation plans.
+- Added `scripts/reporting/generate-markdown-report.py` to convert one or more JSON audit result files into a Markdown report.
+- Added release notes for `v1.1.0` under `docs/releases/`.
+- Added `ROADMAP.md` for future toolkit development.
+- Added a script documentation standard for purpose, requirements, permissions, examples, safety notes, limitations, and next steps.
+
 ### Windows
 
 - Added Windows expansion roadmap for AD, GPO, server, workstation, and shared helper categories.

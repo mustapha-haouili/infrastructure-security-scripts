@@ -8,10 +8,10 @@ printf 'Checking shell script syntax...\n'
 while IFS= read -r -d '' script; do
     bash -n "$script"
     printf '  ok %s\n' "$script"
-done < <(find scripts tests -type f -name '*.sh' -print0)
+done < <(find scripts SecureInfra_AI tests -type f -name '*.sh' -print0)
 
 printf '\nChecking Python syntax...\n'
-python3 -m compileall -q scripts tests
+python3 -m compileall -q scripts SecureInfra_AI tests
 printf '  ok python compileall\n'
 
 printf '\nRunning Python unit tests...\n'

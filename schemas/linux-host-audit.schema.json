@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/linux-host-audit.schema.json",
+  "title": "Linux Host Audit Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "report_id",
+    "generated_at",
+    "hostname",
+    "summary",
+    "findings"
+  ],
+  "properties": {
+    "report_id": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "hostname": {
+      "type": "string"
+    },
+    "assessment_type": {
+      "type": "string",
+      "const": "linux-host"
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "distribution": {
+          "type": "string"
+        },
+        "kernel": {
+          "type": "string"
+        },
+        "severity_counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "inventory": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "listening_services": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "finding.schema.json"
+      }
+    }
+  }
+}

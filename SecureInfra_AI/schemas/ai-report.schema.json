@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/secureinfra-ai/schemas/ai-report.schema.json",
+  "title": "SecureInfra AI Assisted Report",
+  "description": "Future AI-assisted report wrapper. Phase 1 does not require AI.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "report_id",
+    "generated_at_utc",
+    "language",
+    "ai_provider",
+    "source_report_id",
+    "sections",
+    "safety_notes"
+  ],
+  "properties": {
+    "report_id": {
+      "type": "string"
+    },
+    "generated_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "language": {
+      "type": "string",
+      "enum": [
+        "en",
+        "de"
+      ]
+    },
+    "ai_provider": {
+      "type": "string"
+    },
+    "source_report_id": {
+      "type": "string"
+    },
+    "sections": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "safety_notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

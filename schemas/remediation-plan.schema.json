@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/remediation-plan.schema.json",
+  "title": "Remediation Plan",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "plan_id",
+    "generated_at",
+    "scope",
+    "findings",
+    "actions"
+  ],
+  "properties": {
+    "plan_id": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "approved_by": {
+          "type": "string"
+        },
+        "approved_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "change_ticket": {
+          "type": "string"
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "finding.schema.json"
+      }
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "action_id",
+          "finding_id",
+          "title",
+          "priority",
+          "status",
+          "implementation_mode",
+          "rollback_plan",
+          "verification_step"
+        ],
+        "properties": {
+          "action_id": {
+            "type": "string"
+          },
+          "finding_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "P1",
+              "P2",
+              "P3",
+              "P4",
+              "Deferred"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Proposed",
+              "Approved",
+              "In Progress",
+              "Completed",
+              "Deferred",
+              "Rejected"
+            ]
+          },
+          "implementation_mode": {
+            "type": "string",
+            "enum": [
+              "Audit Only",
+              "Dry Run",
+              "Approved Apply",
+              "Manual Change"
+            ]
+          },
+          "owner": {
+            "type": "string"
+          },
+          "operational_impact": {
+            "type": "string"
+          },
+          "rollback_plan": {
+            "type": "string"
+          },
+          "verification_step": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

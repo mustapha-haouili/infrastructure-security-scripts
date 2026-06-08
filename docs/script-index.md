@@ -60,3 +60,15 @@ in organized category folders for advanced or direct use.
 |---|---|---|
 | `service-health-check.py` | Check HTTP and TCP service health from a JSON config file | Audit |
 | `disk-space-monitor.sh` | Check filesystem usage and return a monitoring-friendly exit code | Audit |
+
+## Reporting
+
+| Script | Purpose | Default mode |
+|---|---|---|
+| `generate-markdown-report.py` | Convert one or more JSON audit result files into a Markdown assessment report | Report-only |
+
+## SecureInfra AI
+
+| Script | Purpose | Default mode |
+|---|---|---|
+| `SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py` | Normalize AD inactive user JSON, apply deterministic risk rules, and generate Markdown reports | Report-only |

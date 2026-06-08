@@ -1,0 +1,193 @@
+{
+  "GeneratedAtUtc": "2026-06-08T09:00:00Z",
+  "SourceScript": "Get-ADInactiveUserReport.ps1",
+  "Domain": "example.local",
+  "Company": "Example GmbH",
+  "Summary": {
+    "TotalUsersReviewed": 125,
+    "InactiveUsers": 6,
+    "CriticalPriorityUsers": 2,
+    "HighPriorityReviewUsers": 2,
+    "HoldSystemManagedUsers": 1
+  },
+  "InactiveUsers": [
+    {
+      "SamAccountName": "alex.admin",
+      "Enabled": true,
+      "InactiveDays": 184,
+      "ReviewPriority": "Critical",
+      "AccountCategory": "PrivilegedUser",
+      "LifecycleStage": "Unknown owner",
+      "DeletionReadiness": "Not ready",
+      "CanDeleteNow": false,
+      "PotentialDeletionCandidate": false,
+      "PasswordNeverExpires": true,
+      "AdminCount": 1,
+      "HasSPN": false,
+      "PrivilegedGroups": [
+        "Domain Admins"
+      ],
+      "DependencySignals": [
+        "Privileged group membership"
+      ],
+      "RiskFlags": [
+        "Privileged",
+        "PasswordNeverExpires"
+      ],
+      "ReviewReasons": [
+        "Enabled privileged user inactive for more than 90 days"
+      ],
+      "RecommendedAction": "Validate owner, approval record, and need for privileged access.",
+      "DeletionGuidance": "Do not delete. Review privileged access first.",
+      "DistinguishedName": "CN=Alex Admin,OU=Admins,DC=example,DC=local",
+      "ObjectSid": "S-1-5-21-1111111111-2222222222-3333333333-1101"
+    },
+    {
+      "SamAccountName": "svc-reporting-old",
+      "Enabled": true,
+      "InactiveDays": 146,
+      "ReviewPriority": "High",
+      "AccountCategory": "ServiceAccount",
+      "LifecycleStage": "Legacy service",
+      "DeletionReadiness": "Not ready",
+      "CanDeleteNow": false,
+      "PotentialDeletionCandidate": false,
+      "PasswordNeverExpires": true,
+      "AdminCount": 0,
+      "HasSPN": true,
+      "PrivilegedGroups": [],
+      "DependencySignals": [
+        "SPN present",
+        "Service dependency possible"
+      ],
+      "RiskFlags": [
+        "SPN",
+        "PasswordNeverExpires"
+      ],
+      "ReviewReasons": [
+        "Enabled service account candidate with stale logon evidence"
+      ],
+      "RecommendedAction": "Confirm service owner and dependency before any change.",
+      "DeletionGuidance": "Do not delete until service dependency review is complete.",
+      "DistinguishedName": "CN=svc-reporting-old,OU=Service Accounts,DC=example,DC=local",
+      "ObjectSid": "S-1-5-21-1111111111-2222222222-3333333333-1201"
+    },
+    {
+      "SamAccountName": "app.sql.legacy",
+      "Enabled": true,
+      "InactiveDays": 111,
+      "ReviewPriority": "High",
+      "AccountCategory": "ApplicationAccount",
+      "LifecycleStage": "Application dependency unknown",
+      "DeletionReadiness": "Not ready",
+      "CanDeleteNow": false,
+      "PotentialDeletionCandidate": false,
+      "PasswordNeverExpires": false,
+      "AdminCount": 0,
+      "HasSPN": true,
+      "PrivilegedGroups": [],
+      "DependencySignals": [
+        "SPN present"
+      ],
+      "RiskFlags": [
+        "SPN"
+      ],
+      "ReviewReasons": [
+        "Inactive account with SPN"
+      ],
+      "RecommendedAction": "Review application owner and SPN requirement.",
+      "DeletionGuidance": "Do not delete until application owner approval exists.",
+      "DistinguishedName": "CN=app.sql.legacy,OU=Applications,DC=example,DC=local",
+      "ObjectSid": "S-1-5-21-1111111111-2222222222-3333333333-1202"
+    },
+    {
+      "SamAccountName": "julia.reed",
+      "Enabled": false,
+      "InactiveDays": 203,
+      "ReviewPriority": "Medium",
+      "AccountCategory": "StandardUser",
+      "LifecycleStage": "Disabled pending review",
+      "DeletionReadiness": "Owner review required",
+      "CanDeleteNow": false,
+      "PotentialDeletionCandidate": true,
+      "PasswordNeverExpires": false,
+      "AdminCount": 0,
+      "HasSPN": false,
+      "PrivilegedGroups": [],
+      "DependencySignals": [
+        "Mailbox review required"
+      ],
+      "RiskFlags": [
+        "MailEnabled"
+      ],
+      "ReviewReasons": [
+        "Disabled inactive account still needs owner review"
+      ],
+      "RecommendedAction": "Confirm mailbox and data retention requirements.",
+      "DeletionGuidance": "Delete only after retention and owner review.",
+      "DistinguishedName": "CN=Julia Reed,OU=Users,DC=example,DC=local",
+      "ObjectSid": "S-1-5-21-1111111111-2222222222-3333333333-1301"
+    },
+    {
+      "SamAccountName": "HealthMailbox-EXAMPLE-01",
+      "Enabled": true,
+      "InactiveDays": 365,
+      "ReviewPriority": "Hold",
+      "AccountCategory": "Exchange HealthMailbox",
+      "LifecycleStage": "System managed",
+      "DeletionReadiness": "Hold",
+      "CanDeleteNow": false,
+      "PotentialDeletionCandidate": false,
+      "PasswordNeverExpires": false,
+      "AdminCount": 0,
+      "HasSPN": false,
+      "PrivilegedGroups": [],
+      "DependencySignals": [
+        "System-managed Exchange health mailbox"
+      ],
+      "RiskFlags": [
+        "SystemManaged"
+      ],
+      "ReviewReasons": [
+        "Exchange HealthMailbox accounts are system managed"
+      ],
+      "RecommendedAction": "Keep on hold unless Exchange administrators approve a specific action.",
+      "DeletionGuidance": "Do not delete as normal inactive user cleanup.",
+      "DistinguishedName": "CN=HealthMailbox-EXAMPLE-01,OU=Monitoring Mailboxes,DC=example,DC=local",
+      "ObjectSid": "S-1-5-21-1111111111-2222222222-3333333333-1401"
+    },
+    {
+      "SamAccountName": "Administrator",
+      "Enabled": true,
+      "InactiveDays": 170,
+      "ReviewPriority": "Critical",
+      "AccountCategory": "BuiltInAdministrator",
+      "LifecycleStage": "Break-glass account",
+      "DeletionReadiness": "Hold",
+      "CanDeleteNow": false,
+      "PotentialDeletionCandidate": false,
+      "PasswordNeverExpires": true,
+      "AdminCount": 1,
+      "HasSPN": false,
+      "PrivilegedGroups": [
+        "Domain Admins"
+      ],
+      "DependencySignals": [
+        "Built-in account",
+        "Break-glass policy review required"
+      ],
+      "RiskFlags": [
+        "BuiltInAdministrator",
+        "Privileged",
+        "PasswordNeverExpires"
+      ],
+      "ReviewReasons": [
+        "Built-in Administrator enabled and inactive"
+      ],
+      "RecommendedAction": "Review break-glass policy, monitoring, and access controls.",
+      "DeletionGuidance": "Must not be deleted. Requires break-glass policy review.",
+      "DistinguishedName": "CN=Administrator,CN=Users,DC=example,DC=local",
+      "ObjectSid": "S-1-5-21-1111111111-2222222222-3333333333-500"
+    }
+  ]
+}

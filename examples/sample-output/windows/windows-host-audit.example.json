@@ -1,0 +1,77 @@
+{
+  "report_id": "sample-windows-host-audit-001",
+  "generated_at": "2026-06-07T10:00:00Z",
+  "hostname": "EX-WIN-SRV01",
+  "assessment_type": "windows-host",
+  "summary": {
+    "posture": "Review Required",
+    "severity_counts": {
+      "Critical": 0,
+      "High": 2,
+      "Medium": 2,
+      "Low": 1,
+      "Informational": 3
+    },
+    "high_priority_review": 2
+  },
+  "core_settings": {
+    "firewall_profile_state": "Review",
+    "smbv1_state": "Enabled",
+    "rdp_state": "Enabled",
+    "audit_policy_visibility": "Partial"
+  },
+  "security_services": [
+    {
+      "name": "WinDefend",
+      "display_name": "Microsoft Defender Antivirus Service",
+      "status": "Running",
+      "start_type": "Automatic"
+    }
+  ],
+  "listening_tcp_ports": [
+    {
+      "local_address": "192.0.2.10",
+      "port": 3389,
+      "process": "TermService",
+      "review_note": "Confirm administrative access requirement."
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "WIN-HOST-001",
+      "title": "SMBv1 requires review",
+      "category": "Legacy Protocol Exposure",
+      "severity": "High",
+      "affected_object": "EX-WIN-SRV01",
+      "description": "SMBv1 is enabled on the sample host.",
+      "technical_details": "The audit detected SMBv1 as enabled in the fictional sample state.",
+      "business_impact": "Legacy protocols can increase lateral movement and compatibility risk.",
+      "recommendation": "Disable SMBv1 after confirming no approved legacy dependency exists.",
+      "remediation_priority": "P1",
+      "remediation_status": "Open",
+      "evidence": {
+        "setting": "SMBv1",
+        "state": "Enabled"
+      },
+      "timestamp": "2026-06-07T10:00:00Z"
+    },
+    {
+      "finding_id": "WIN-HOST-002",
+      "title": "RDP exposure requires owner validation",
+      "category": "Remote Access",
+      "severity": "Medium",
+      "affected_object": "EX-WIN-SRV01:3389",
+      "description": "RDP is listening on the sample host.",
+      "technical_details": "TCP 3389 was listed as open in the fictional sample output.",
+      "business_impact": "Unrestricted remote administration increases exposure if access is not controlled.",
+      "recommendation": "Confirm RDP requirement and restrict access through approved administration paths.",
+      "remediation_priority": "P2",
+      "remediation_status": "Open",
+      "evidence": {
+        "port": 3389,
+        "protocol": "tcp"
+      },
+      "timestamp": "2026-06-07T10:00:00Z"
+    }
+  ]
+}

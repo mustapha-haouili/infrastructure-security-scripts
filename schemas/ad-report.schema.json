@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/ad-report.schema.json",
+  "title": "Active Directory Audit Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "report_id",
+    "generated_at",
+    "domain",
+    "summary",
+    "findings"
+  ],
+  "properties": {
+    "report_id": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "domain": {
+      "type": "string"
+    },
+    "assessment_type": {
+      "type": "string",
+      "const": "active-directory"
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "total_users": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "inactive_users": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stale_computers": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "privileged_accounts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "severity_counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "finding.schema.json"
+      }
+    },
+    "inactive_users": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "stale_computers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "privileged_groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    }
+  }
+}

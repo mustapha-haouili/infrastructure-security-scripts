@@ -1,0 +1,88 @@
+{
+  "report_id": "sample-ad-health-check-001",
+  "generated_at": "2026-06-07T10:00:00Z",
+  "domain": "example.local",
+  "assessment_type": "active-directory",
+  "scope": {
+    "users": 125,
+    "computers": 82,
+    "privileged_groups": 14
+  },
+  "summary": {
+    "total_users": 125,
+    "inactive_users": 18,
+    "stale_computers": 11,
+    "privileged_accounts": 6,
+    "severity_counts": {
+      "Critical": 0,
+      "High": 4,
+      "Medium": 7,
+      "Low": 3,
+      "Informational": 2
+    }
+  },
+  "inactive_users": [
+    {
+      "sam_account_name": "julia.reed",
+      "distinguished_name": "CN=Julia Reed,OU=Users,DC=example,DC=local",
+      "last_logon_age_days": 184,
+      "review_priority": "High",
+      "recommended_action": "Confirm owner and disable after approval."
+    }
+  ],
+  "stale_computers": [
+    {
+      "name": "EX-WS-014",
+      "distinguished_name": "CN=EX-WS-014,OU=Workstations,DC=example,DC=local",
+      "last_logon_age_days": 143,
+      "review_priority": "Medium",
+      "recommended_action": "Confirm device status with endpoint operations."
+    }
+  ],
+  "privileged_groups": [
+    {
+      "name": "Domain Admins",
+      "direct_member_count": 3,
+      "baseline_status": "Changed",
+      "review_note": "Validate new member against approved change record."
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "AD-001",
+      "title": "Inactive enabled users require review",
+      "category": "Identity Lifecycle",
+      "severity": "High",
+      "affected_object": "example.local",
+      "description": "18 enabled users are older than the inactivity threshold in this sample.",
+      "technical_details": "The fictional sample threshold is 90 days.",
+      "business_impact": "Unused enabled accounts can retain access after role changes or departure.",
+      "recommendation": "Validate ownership and disable confirmed unused accounts before deletion.",
+      "remediation_priority": "P1",
+      "remediation_status": "Open",
+      "evidence": {
+        "inactive_users": 18,
+        "threshold_days": 90
+      },
+      "timestamp": "2026-06-07T10:00:00Z"
+    },
+    {
+      "finding_id": "AD-002",
+      "title": "Privileged membership baseline changed",
+      "category": "Privileged Access",
+      "severity": "High",
+      "affected_object": "Domain Admins",
+      "description": "The sample privileged group baseline contains one unvalidated change.",
+      "technical_details": "A fictional new member was present in the current snapshot.",
+      "business_impact": "Unvalidated privileged access can increase administrative exposure.",
+      "recommendation": "Confirm approval and expected duration before accepting the new baseline.",
+      "remediation_priority": "P1",
+      "remediation_status": "Open",
+      "evidence": {
+        "group": "Domain Admins",
+        "change_type": "Added"
+      },
+      "timestamp": "2026-06-07T10:00:00Z"
+    }
+  ]
+}

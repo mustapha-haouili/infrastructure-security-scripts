@@ -1,0 +1,73 @@
+{
+  "report_id": "sample-gpo-health-001",
+  "generated_at": "2026-06-07T10:00:00Z",
+  "domain": "example.local",
+  "assessment_type": "group-policy",
+  "summary": {
+    "total_gpos": 42,
+    "total_links": 67,
+    "total_findings": 5,
+    "severity_counts": {
+      "Critical": 0,
+      "High": 1,
+      "Medium": 2,
+      "Low": 2,
+      "Informational": 0
+    }
+  },
+  "gpos": [
+    {
+      "display_name": "EX Baseline - Legacy Browser Settings",
+      "id": "00000000-0000-0000-0000-000000000101",
+      "last_modified_days": 820,
+      "direct_link_count": 1,
+      "is_stale": true
+    }
+  ],
+  "links": [
+    {
+      "target": "OU=Workstations,DC=example,DC=local",
+      "gpo_name": "EX Workstation Baseline",
+      "enabled": true,
+      "enforced": false
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "GPO-001",
+      "title": "AD and SYSVOL version mismatch",
+      "category": "Group Policy Health",
+      "severity": "High",
+      "affected_object": "EX Server Baseline",
+      "description": "The sample GPO has inconsistent AD and SYSVOL version evidence.",
+      "technical_details": "Computer version values differ in the fictional sample inventory.",
+      "business_impact": "Version mismatch can indicate policy replication or consistency issues.",
+      "recommendation": "Investigate replication health and confirm policy consistency.",
+      "remediation_priority": "P1",
+      "remediation_status": "Open",
+      "evidence": {
+        "ad_version": 18,
+        "sysvol_version": 16
+      },
+      "timestamp": "2026-06-07T10:00:00Z"
+    },
+    {
+      "finding_id": "GPO-002",
+      "title": "Stale GPO requires owner review",
+      "category": "Group Policy Lifecycle",
+      "severity": "Medium",
+      "affected_object": "EX Baseline - Legacy Browser Settings",
+      "description": "The sample GPO has not been modified for more than 365 days.",
+      "technical_details": "Last modified age is 820 days in the fictional sample.",
+      "business_impact": "Stale policies can hide outdated settings and increase troubleshooting effort.",
+      "recommendation": "Confirm owner, export the GPO, test removal, and retire only after approval.",
+      "remediation_priority": "P2",
+      "remediation_status": "Open",
+      "evidence": {
+        "last_modified_days": 820,
+        "stale_threshold_days": 365
+      },
+      "timestamp": "2026-06-07T10:00:00Z"
+    }
+  ]
+}

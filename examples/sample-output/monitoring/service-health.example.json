@@ -1,0 +1,32 @@
+{
+  "generated_at_utc": "2026-06-07T10:00:00Z",
+  "results": [
+    {
+      "name": "Example HTTPS Portal",
+      "type": "http",
+      "target": "https://portal.example.test/health",
+      "ok": true,
+      "status": "200",
+      "latency_ms": 82,
+      "detail": "expected"
+    },
+    {
+      "name": "Example API TCP",
+      "type": "tcp",
+      "target": "198.51.100.30:443",
+      "ok": true,
+      "status": "open",
+      "latency_ms": 41,
+      "detail": "connected"
+    },
+    {
+      "name": "Example Legacy Service",
+      "type": "tcp",
+      "target": "198.51.100.40:8443",
+      "ok": false,
+      "status": "closed",
+      "latency_ms": 3000,
+      "detail": "fictional timeout for sample report"
+    }
+  ]
+}

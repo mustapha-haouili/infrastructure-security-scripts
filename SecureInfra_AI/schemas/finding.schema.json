@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/secureinfra-ai/schemas/finding.schema.json",
+  "title": "SecureInfra AI Finding",
+  "description": "Normalized defensive infrastructure security finding.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "finding_id",
+    "title",
+    "category",
+    "severity",
+    "affected_object",
+    "object_type",
+    "source_script",
+    "evidence",
+    "risk_factors",
+    "business_impact",
+    "technical_impact",
+    "recommendation",
+    "remediation_priority",
+    "requires_owner_review",
+    "requires_change_approval",
+    "safe_to_auto_remediate",
+    "not_safe_for_auto_remediation_reason",
+    "status",
+    "timestamp_utc"
+  ],
+  "properties": {
+    "finding_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "category": {
+      "type": "string",
+      "minLength": 1
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "Critical",
+        "High",
+        "Medium",
+        "Low",
+        "Info",
+        "Hold"
+      ]
+    },
+    "affected_object": {
+      "type": "string"
+    },
+    "object_type": {
+      "type": "string"
+    },
+    "source_script": {
+      "type": "string"
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "risk_factors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "business_impact": {
+      "type": "string"
+    },
+    "technical_impact": {
+      "type": "string"
+    },
+    "recommendation": {
+      "type": "string"
+    },
+    "remediation_priority": {
+      "type": "string",
+      "enum": [
+        "Immediate Review",
+        "High Priority",
+        "Planned Remediation",
+        "Monitor",
+        "Hold"
+      ]
+    },
+    "requires_owner_review": {
+      "type": "boolean"
+    },
+    "requires_change_approval": {
+      "type": "boolean"
+    },
+    "safe_to_auto_remediate": {
+      "type": "boolean"
+    },
+    "not_safe_for_auto_remediation_reason": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "timestamp_utc": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

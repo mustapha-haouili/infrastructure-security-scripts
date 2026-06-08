@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/windows-host-audit.schema.json",
+  "title": "Windows Host Audit Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "report_id",
+    "generated_at",
+    "hostname",
+    "summary",
+    "findings"
+  ],
+  "properties": {
+    "report_id": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "hostname": {
+      "type": "string"
+    },
+    "assessment_type": {
+      "type": "string",
+      "const": "windows-host"
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "posture": {
+          "type": "string"
+        },
+        "severity_counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "high_priority_review": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "core_settings": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "security_services": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "listening_tcp_ports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "finding.schema.json"
+      }
+    }
+  }
+}
