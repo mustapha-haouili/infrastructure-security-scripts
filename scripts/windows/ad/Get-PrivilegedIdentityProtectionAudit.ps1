@@ -45,6 +45,11 @@ Suppress console summary.
 .\Get-PrivilegedIdentityProtectionAudit.ps1 -GroupName "Tier 0 Admins"
 #>
 
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+    "PSAvoidUsingUsernameAndPasswordParams",
+    "",
+    Justification = "MaxPasswordAgeDays is a numeric audit threshold, not a password value; credentials use PSCredential."
+)]
 [CmdletBinding()]
 param(
     [string[]]$GroupName = @(),
