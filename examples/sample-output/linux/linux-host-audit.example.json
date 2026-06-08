@@ -1,0 +1,68 @@
+{
+  "report_id": "sample-linux-host-audit-001",
+  "generated_at": "2026-06-07T10:00:00Z",
+  "hostname": "ex-linux-app01",
+  "assessment_type": "linux-host",
+  "summary": {
+    "distribution": "Ubuntu 24.04 LTS",
+    "kernel": "6.8.0-example",
+    "severity_counts": {
+      "Critical": 0,
+      "High": 1,
+      "Medium": 3,
+      "Low": 2,
+      "Informational": 4
+    }
+  },
+  "inventory": {
+    "primary_ipv4": "198.51.100.20",
+    "uptime_days": 43,
+    "package_manager": "apt"
+  },
+  "listening_services": [
+    {
+      "address": "0.0.0.0",
+      "port": 8080,
+      "process": "example-app",
+      "review_note": "Confirm service owner and exposure requirement."
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "LINUX-001",
+      "title": "SSH password authentication requires review",
+      "category": "Remote Access",
+      "severity": "High",
+      "affected_object": "ex-linux-app01",
+      "description": "The sample SSH configuration allows password authentication.",
+      "technical_details": "The fictional audit found PasswordAuthentication set to yes.",
+      "business_impact": "Remote access posture can increase exposure if authentication controls are weak.",
+      "recommendation": "Confirm key-based access and disable SSH password authentication after approval.",
+      "remediation_priority": "P1",
+      "remediation_status": "Open",
+      "evidence": {
+        "setting": "PasswordAuthentication",
+        "state": "yes"
+      },
+      "timestamp": "2026-06-07T10:00:00Z"
+    },
+    {
+      "finding_id": "LINUX-002",
+      "title": "Unexpected listening service requires owner validation",
+      "category": "Service Exposure",
+      "severity": "Medium",
+      "affected_object": "0.0.0.0:8080",
+      "description": "A sample application service is listening on all interfaces.",
+      "technical_details": "TCP 8080 appears in the fictional listening service inventory.",
+      "business_impact": "Unreviewed services can expand exposed attack surface.",
+      "recommendation": "Confirm the service owner and restrict binding or firewall access if not required.",
+      "remediation_priority": "P2",
+      "remediation_status": "Open",
+      "evidence": {
+        "port": 8080,
+        "process": "example-app"
+      },
+      "timestamp": "2026-06-07T10:00:00Z"
+    }
+  ]
+}

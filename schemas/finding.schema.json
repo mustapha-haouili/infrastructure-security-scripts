@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/finding.schema.json",
+  "title": "Security Finding",
+  "description": "Common finding format for infrastructure security audit reports.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "finding_id",
+    "title",
+    "category",
+    "severity",
+    "affected_object",
+    "description",
+    "technical_details",
+    "business_impact",
+    "recommendation",
+    "remediation_priority",
+    "remediation_status",
+    "evidence",
+    "timestamp"
+  ],
+  "properties": {
+    "finding_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "category": {
+      "type": "string",
+      "minLength": 1
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "Critical",
+        "High",
+        "Medium",
+        "Low",
+        "Informational",
+        "Unknown"
+      ]
+    },
+    "affected_object": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "technical_details": {
+      "type": "string"
+    },
+    "business_impact": {
+      "type": "string"
+    },
+    "recommendation": {
+      "type": "string"
+    },
+    "remediation_priority": {
+      "type": "string",
+      "enum": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "Deferred",
+        "Not Applicable"
+      ]
+    },
+    "remediation_status": {
+      "type": "string",
+      "enum": [
+        "Open",
+        "In Review",
+        "Approved",
+        "Deferred",
+        "Remediated",
+        "Accepted Risk",
+        "Not Applicable"
+      ]
+    },
+    "evidence": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {}
+        },
+        {
+          "type": "object",
+          "additionalProperties": true
+        }
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

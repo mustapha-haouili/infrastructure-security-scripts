@@ -3,6 +3,11 @@
 This page documents every operational script in the repository, including
 purpose, safety mode, parameters, outputs, and examples.
 
+Use [script-documentation-standard.md](script-documentation-standard.md) when
+adding or updating script documentation so purpose, requirements, permissions,
+safety notes, limitations, and next steps stay consistent across script
+families.
+
 Use this workflow before production changes:
 
 1. Run audit or dry-run mode first.
@@ -1118,3 +1123,109 @@ bash scripts/monitoring/disk-space-monitor.sh --json
 ```bash
 bash scripts/monitoring/disk-space-monitor.sh --warn 75 --crit 90 --exclude-types tmpfs,devtmpfs --json
 ```
+
+## Reporting Scripts
+
+### `scripts/reporting/generate-markdown-report.py`
+
+Converts one or more JSON audit result files into a Markdown assessment report.
+It is report-only and does not change systems.
+
+Default mode: report-only.
+
+Requirements:
+
+- Python 3
+- Read access to JSON input files
+- Write access to the output directory
+
+Outputs:
+
+- Markdown report under `reports/` by default
+- Custom Markdown output path when `--output` is provided
+
+Arguments:
+
+| Argument | Default | Description |
+|---|---|---|
+| `json_files` | required | One or more JSON audit result files. |
+| `--output FILE` | `reports/assessment-report-TIMESTAMP.md` | Markdown output path. |
+| `--title TEXT` | `Infrastructure Security Assessment Report` | Custom report title. |
+| `-h`, `--help` | n/a | Show built-in help. |
+
+Examples:
+
+```bash
+python3 scripts/reporting/generate-markdown-report.py examples/sample-output/windows/windows-host-audit.example.json
+```
+
+```bash
+python3 scripts/reporting/generate-markdown-report.py examples/sample-output/active-directory/ad-health-check.example.json examples/sample-output/group-policy/gpo-health.example.json --output reports/example-assessment.md
+```
+
+```bash
+python3 scripts/reporting/generate-markdown-report.py reports/windows-audit.json --title "Example GmbH Infrastructure Security Review"
+```
+
+Start reading the generated report at:
+
+- `Executive Summary`
+- `Findings By Severity`
+- `Technical Findings`
+
+Review generated Markdown before sharing it outside the administrator team.
+Input JSON may contain sensitive operational evidence even when the report
+generator itself is safe and read-only.
+
+## SecureInfra AI Scripts
+
+### `SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py`
+
+Normalizes JSON audit output, applies deterministic risk rules, writes a
+normalized JSON report, and generates Markdown reports. Phase 1 supports Active
+Directory inactive user audit JSON. AI is not required.
+
+Default mode: report-only.
+
+Requirements:
+
+- Python 3
+- Read access to a JSON input file
+- Write access to the output directory
+
+Outputs:
+
+- `normalized-report.json`
+- `executive-summary.md`
+- `technical-findings.md`
+- `remediation-plan.md`
+
+Arguments:
+
+| Argument | Default | Description |
+|---|---|---|
+| `--input FILE` | required | JSON audit result file to analyze. |
+| `--type TYPE` | required | Input report type. Supports `ad-inactive-users` and `ad-shared`. |
+| `--output DIR` | `SecureInfra_AI/reports` | Output directory for normalized JSON and Markdown reports. |
+| `--language LANG` | `en` | Report language. Phase 1 supports `en`; `de` is reserved for future support. |
+| `--format FORMAT` | `markdown` | Report format. Phase 1 supports `markdown`. |
+
+Example:
+
+```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input SecureInfra_AI/examples/sample-input/active-directory/sample-ad-inactive-users.json --type ad-inactive-users --output SecureInfra_AI/reports
+```
+
+```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports/ad-shared --type ad-shared --output reports/output --language en --format markdown
+```
+
+Safety notes:
+
+- The analyzer does not modify systems.
+- The risk engine is deterministic and does not rely on AI.
+- AI stubs are optional and do not make remediation decisions.
+- Privileged, SPN-bearing, built-in, and system-managed accounts are not safe
+  for automatic remediation.
+- Human owner review and approved change control are required before account
+  changes.

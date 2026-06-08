@@ -4,7 +4,8 @@ A practical collection of enterprise infrastructure security, automation, harden
 
 This repository is designed for defensive security operations, infrastructure administration, and repeatable baseline checks across enterprise environments.
 
-Current version: `1.0.0`. See [CHANGELOG.md](CHANGELOG.md) for the release baseline.
+Current version: `1.1.0`. See [CHANGELOG.md](CHANGELOG.md) and
+[v1.1.0 release notes](docs/releases/v1.1.0.md) for the release baseline.
 
 ## Focus areas
 
@@ -31,13 +32,16 @@ Current version: `1.0.0`. See [CHANGELOG.md](CHANGELOG.md) for the release basel
 ```text
 infrastructure-security-scripts/
 |-- .github/workflows/          # CI checks for scripts
-|-- docs/                       # Usage notes and script index
-|-- examples/                   # Example configuration files
+|-- SecureInfra_AI/             # AI-ready deterministic analysis and reporting layer
+|-- docs/                       # Methodology, usage notes, service model, and script index
+|-- examples/                   # Example configuration, sample reports, and sample outputs
+|-- schemas/                    # JSON schemas for findings, reports, and remediation plans
 |-- scripts/
 |   |-- windows/                # Windows audit and hardening scripts
 |   |-- linux/                  # Linux audit, hardening, and inventory scripts
 |   |-- devsecops/              # Docker, Kubernetes, and secret scanning scripts
-|   `-- monitoring/             # Service and disk monitoring scripts
+|   |-- monitoring/             # Service and disk monitoring scripts
+|   `-- reporting/              # Markdown report generation helpers
 `-- tests/                      # Lightweight static checks and unit tests
 ```
 
@@ -136,12 +140,27 @@ bash scripts/devsecops/kubernetes-rbac-audit.sh --output-dir reports
 python3 scripts/monitoring/service-health-check.py --config examples/services.example.json
 ```
 
+### Markdown report generation
+
+```bash
+python3 scripts/reporting/generate-markdown-report.py examples/sample-output/windows/windows-host-audit.example.json --output reports/example-assessment.md
+```
+
+### SecureInfra AI analyzer
+
+```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input SecureInfra_AI/examples/sample-input/active-directory/sample-ad-inactive-users.json --type ad-inactive-users --output SecureInfra_AI/reports
+```
+
 ## Script index
 
 See [docs/script-index.md](docs/script-index.md) for a complete list of scripts and their purpose.
 See [docs/script-reference.md](docs/script-reference.md) for every script argument, output file, safety mode, and copy-ready examples.
+See [SecureInfra_AI/README.md](SecureInfra_AI/README.md) for the AI-ready deterministic reporting layer.
+See [docs/methodology.md](docs/methodology.md) for the audit-first assessment workflow.
+See [docs/service-model/secureinfra-check-overview.md](docs/service-model/secureinfra-check-overview.md) for the infrastructure health check model.
+See [ROADMAP.md](ROADMAP.md) for planned toolkit improvements.
 See [docs/windows-roadmap.md](docs/windows-roadmap.md) for the Windows AD, GPO, server, and workstation expansion plan.
-See [docs/project-plan.md](docs/project-plan.md) for the current implementation status and next build plan.
 
 Every script also has built-in help:
 

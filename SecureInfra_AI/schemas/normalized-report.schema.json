@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/secureinfra-ai/schemas/normalized-report.schema.json",
+  "title": "SecureInfra AI Normalized Report",
+  "description": "Normalized report containing deterministic findings and metadata.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "report_id",
+    "tool_name",
+    "report_type",
+    "source_files",
+    "generated_at_utc",
+    "environment_summary",
+    "summary",
+    "findings",
+    "metadata",
+    "notes"
+  ],
+  "properties": {
+    "report_id": {
+      "type": "string"
+    },
+    "tool_name": {
+      "type": "string"
+    },
+    "report_type": {
+      "type": "string"
+    },
+    "source_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "generated_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "environment_summary": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "finding.schema.json"
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "report_type_metadata": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

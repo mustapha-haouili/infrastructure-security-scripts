@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/gpo-report.schema.json",
+  "title": "Group Policy Audit Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "report_id",
+    "generated_at",
+    "domain",
+    "summary",
+    "gpos",
+    "findings"
+  ],
+  "properties": {
+    "report_id": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "domain": {
+      "type": "string"
+    },
+    "assessment_type": {
+      "type": "string",
+      "const": "group-policy"
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "total_gpos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_links": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_findings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "severity_counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "gpos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "finding.schema.json"
+      }
+    }
+  }
+}
