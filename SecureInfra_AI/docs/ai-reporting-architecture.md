@@ -25,8 +25,10 @@ systems or collect new information.
 
 ### Normalizer
 
-Normalizers convert script-specific output into common findings. The first
-normalizer supports Active Directory inactive user reports.
+Normalizers convert script-specific output into common findings. Current
+normalizers support Active Directory inactive users, password-never-expires
+accounts, service accounts, SPN exposure, stale computers, privileged group
+changes, privileged identity protection, and GPO health.
 
 ### Risk Engine
 

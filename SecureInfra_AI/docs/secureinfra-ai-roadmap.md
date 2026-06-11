@@ -14,8 +14,9 @@ This roadmap describes planned improvements for the AI-ready reporting layer.
 
 ## Phase 2 - Additional Normalizers
 
-- Active Directory privileged group reports.
-- Group Policy health reports.
+- Completed Active Directory privileged group reports.
+- Completed Active Directory privileged identity protection reports.
+- Completed Group Policy health reports.
 - Windows host audit reports.
 - Linux host audit reports.
 - Secret scan reports.
@@ -27,7 +28,10 @@ This roadmap describes planned improvements for the AI-ready reporting layer.
 - Detect known AD report files in a shared report folder.
 - Handle Windows PowerShell JSON files with UTF-8 BOM.
 - Normalize `inactive-users.json` into detailed findings.
-- Load other known JSON reports and list them for future normalizer support.
+- Normalize `password-never-expires.json`, `service-accounts.json`,
+  `spn-exposure.json`, and `stale-computers.json` into detailed findings.
+- Normalize `privileged-groups.json`, `privileged-identity-protection.json`,
+  and `gpo-health.json` into detailed findings.
 - Report missing optional files without stopping analysis.
 
 ## Phase 3 - Report Standardization

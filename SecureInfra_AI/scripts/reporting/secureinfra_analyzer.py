@@ -2,8 +2,8 @@
 """
 Analyze JSON audit results and generate SecureInfra AI Markdown reports.
 
-Phase 1 supports Active Directory inactive user reports. Risk classification is
-deterministic and does not require AI.
+Supported report types are normalized with deterministic rules and do not
+require AI.
 """
 
 from __future__ import annotations
@@ -16,10 +16,27 @@ from pathlib import Path
 from secureinfra.bundles.ad_shared_bundle import normalize_ad_shared_bundle
 from secureinfra.loaders.json_loader import load_json_file
 from secureinfra.normalizers.ad_inactive_users import normalize_ad_inactive_users
+from secureinfra.normalizers.ad_password_never_expires import normalize_password_never_expires
+from secureinfra.normalizers.ad_privileged_groups import normalize_privileged_groups
+from secureinfra.normalizers.ad_privileged_identity import normalize_privileged_identity
+from secureinfra.normalizers.ad_service_accounts import normalize_service_accounts
+from secureinfra.normalizers.ad_spn_exposure import normalize_spn_exposure
+from secureinfra.normalizers.ad_stale_computers import normalize_stale_computers
+from secureinfra.normalizers.gpo_health import normalize_gpo_health
 from secureinfra.report_generator.markdown_report import generate_markdown_reports
 
 
-SUPPORTED_TYPES = {"ad-inactive-users", "ad-shared"}
+NORMALIZER_BY_TYPE = {
+    "ad-inactive-users": normalize_ad_inactive_users,
+    "ad-password-never-expires": normalize_password_never_expires,
+    "ad-privileged-groups": normalize_privileged_groups,
+    "ad-privileged-identity": normalize_privileged_identity,
+    "ad-service-accounts": normalize_service_accounts,
+    "ad-spn-exposure": normalize_spn_exposure,
+    "ad-stale-computers": normalize_stale_computers,
+    "gpo-health": normalize_gpo_health,
+}
+SUPPORTED_TYPES = set(NORMALIZER_BY_TYPE) | {"ad-shared"}
 SUPPORTED_LANGUAGES = {"en"}
 FUTURE_LANGUAGES = {"de"}
 SUPPORTED_FORMATS = {"markdown"}
@@ -37,6 +54,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         epilog="""Examples:
   %(prog)s --input SecureInfra_AI/examples/sample-input/active-directory/sample-ad-inactive-users.json --type ad-inactive-users --output SecureInfra_AI/reports
   %(prog)s --input reports/ad-shared --type ad-shared --output reports/output --language en --format markdown
+  %(prog)s --input reports/ad-shared/service-accounts.json --type ad-service-accounts --output reports/output
+  %(prog)s --input reports/ad-shared/gpo-health.json --type gpo-health --output reports/output
   %(prog)s --input report.json --type ad-inactive-users --language en --format markdown
 """,
     )
@@ -58,11 +77,11 @@ def validate_args(args: argparse.Namespace) -> None:
 
 
 def validate_input_path(input_path: Path, report_type: str) -> None:
-    if report_type == "ad-inactive-users":
+    if report_type in NORMALIZER_BY_TYPE:
         if not input_path.exists():
             raise FileNotFoundError(f"Input JSON file not found: {input_path}")
         if not input_path.is_file():
-            raise ValueError("--type ad-inactive-users requires --input to be a JSON file")
+            raise ValueError(f"--type {report_type} requires --input to be a JSON file")
     elif report_type == "ad-shared":
         if not input_path.exists():
             raise FileNotFoundError(f"AD shared input directory not found: {input_path}")
@@ -76,9 +95,9 @@ def analyze(args: argparse.Namespace) -> tuple[dict, list[Path]]:
     output_dir = Path(args.output)
     validate_input_path(input_path, args.type)
 
-    if args.type == "ad-inactive-users":
+    if args.type in NORMALIZER_BY_TYPE:
         data = load_json_file(input_path)
-        normalized_report = normalize_ad_inactive_users(data, source_file=input_path)
+        normalized_report = NORMALIZER_BY_TYPE[args.type](data, source_file=input_path)
     elif args.type == "ad-shared":
         normalized_report = normalize_ad_shared_bundle(input_path)
     else:

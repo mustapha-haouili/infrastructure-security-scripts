@@ -26,8 +26,8 @@ Optional credential for the AD query.
 Days since last logon before an enabled privileged identity is considered
 stale. Default: 90.
 
-.PARAMETER MaxPasswordAgeDays
-Password age threshold used for privileged account review. Default: 180.
+.PARAMETER MaxCredentialAgeDays
+Credential age threshold used for privileged account review. Default: 180.
 
 .PARAMETER OutputDirectory
 Directory where privileged-identity-protection.json,
@@ -45,11 +45,6 @@ Suppress console summary.
 .\Get-PrivilegedIdentityProtectionAudit.ps1 -GroupName "Tier 0 Admins"
 #>
 
-[Diagnostics.CodeAnalysis.SuppressMessageAttribute(
-    "PSAvoidUsingUsernameAndPasswordParams",
-    "",
-    Justification = "MaxPasswordAgeDays is a numeric audit threshold, not a password value; credentials use PSCredential."
-)]
 [CmdletBinding()]
 param(
     [string[]]$GroupName = @(),
@@ -58,7 +53,7 @@ param(
     [ValidateRange(1, 3650)]
     [int]$StaleDays = 90,
     [ValidateRange(1, 3650)]
-    [int]$MaxPasswordAgeDays = 180,
+    [int]$MaxCredentialAgeDays = 180,
     [string]$OutputDirectory = ".\reports\ad-privileged-identity-protection-$env:COMPUTERNAME-$(Get-Date -Format 'yyyyMMdd-HHmmss')",
     [switch]$Quiet
 )
@@ -590,7 +585,7 @@ function Get-IdentityCategory {
 
 function Get-ProtectionAssessment {
     param(
-        [Parameter(Mandatory = $true)][object]$User,
+        [Parameter(Mandatory = $true)][object]$AccountRecord,
         [Parameter(Mandatory = $true)][string]$IdentityCategory,
         [Parameter(Mandatory = $true)][string[]]$EffectiveGroups,
         [Parameter(Mandatory = $true)][string[]]$SourceGroupRisks,
@@ -598,25 +593,25 @@ function Get-ProtectionAssessment {
         [AllowNull()][string]$UserQueryError,
         [bool]$HasNestedAccess,
         [bool]$IsProtectedUsersMember,
-        [AllowNull()][object]$PasswordAgeDays,
+        [AllowNull()][object]$CredentialAgeDays,
         [AllowNull()][object]$InactiveDays
     )
 
     $flags = New-Object System.Collections.Generic.List[string]
     $reasons = New-Object System.Collections.Generic.List[string]
-    $enabled = [bool](Get-ObjectValue -InputObject $User -Name "Enabled")
+    $enabled = [bool](Get-ObjectValue -InputObject $AccountRecord -Name "Enabled")
     $criticalGroup = @($SourceGroupRisks | Where-Object { $_ -eq "Critical" }).Count -gt 0
-    $passwordNeverExpires = [bool](Get-ObjectValue -InputObject $User -Name "PasswordNeverExpires")
-    $doesNotRequirePreAuth = [bool](Get-ObjectValue -InputObject $User -Name "DoesNotRequirePreAuth")
-    $trustedForDelegation = [bool](Get-ObjectValue -InputObject $User -Name "TrustedForDelegation")
-    $trustedToAuthForDelegation = [bool](Get-ObjectValue -InputObject $User -Name "TrustedToAuthForDelegation")
-    $accountNotDelegated = [bool](Get-ObjectValue -InputObject $User -Name "AccountNotDelegated")
-    $smartcardRequired = [bool](Get-ObjectValue -InputObject $User -Name "SmartcardLogonRequired")
-    $allowReversiblePasswordEncryption = [bool](Get-ObjectValue -InputObject $User -Name "AllowReversiblePasswordEncryption")
-    $spns = @(Get-ObjectValue -InputObject $User -Name "ServicePrincipalName" | Where-Object { $_ })
-    $manager = Get-ObjectValue -InputObject $User -Name "Manager"
-    $description = Get-ObjectValue -InputObject $User -Name "Description"
-    $info = Get-ObjectValue -InputObject $User -Name "info"
+    $passwordNeverExpires = [bool](Get-ObjectValue -InputObject $AccountRecord -Name "PasswordNeverExpires")
+    $doesNotRequirePreAuth = [bool](Get-ObjectValue -InputObject $AccountRecord -Name "DoesNotRequirePreAuth")
+    $trustedForDelegation = [bool](Get-ObjectValue -InputObject $AccountRecord -Name "TrustedForDelegation")
+    $trustedToAuthForDelegation = [bool](Get-ObjectValue -InputObject $AccountRecord -Name "TrustedToAuthForDelegation")
+    $accountNotDelegated = [bool](Get-ObjectValue -InputObject $AccountRecord -Name "AccountNotDelegated")
+    $smartcardRequired = [bool](Get-ObjectValue -InputObject $AccountRecord -Name "SmartcardLogonRequired")
+    $allowReversiblePasswordEncryption = [bool](Get-ObjectValue -InputObject $AccountRecord -Name "AllowReversiblePasswordEncryption")
+    $spns = @(Get-ObjectValue -InputObject $AccountRecord -Name "ServicePrincipalName" | Where-Object { $_ })
+    $manager = Get-ObjectValue -InputObject $AccountRecord -Name "Manager"
+    $description = Get-ObjectValue -InputObject $AccountRecord -Name "Description"
+    $info = Get-ObjectValue -InputObject $AccountRecord -Name "info"
     $missingOwner = -not ($manager -or $description -or $info)
 
     if (-not $UserQuerySucceeded) {
@@ -645,7 +640,7 @@ function Get-ProtectionAssessment {
         $flags.Add("PasswordNeverExpires") | Out-Null
         $reasons.Add("Privileged identity has PasswordNeverExpires set.") | Out-Null
     }
-    if ($PasswordAgeDays -ne $null -and [int]$PasswordAgeDays -gt $MaxPasswordAgeDays) {
+    if ($CredentialAgeDays -ne $null -and [int]$CredentialAgeDays -gt $MaxCredentialAgeDays) {
         $flags.Add("OldPassword") | Out-Null
         $reasons.Add("Password age exceeds the configured privileged-account review threshold.") | Out-Null
     }
@@ -700,7 +695,7 @@ function Get-ProtectionAssessment {
     elseif ($IdentityCategory -eq "BuiltInAdministrator" -or $doesNotRequirePreAuth -or $trustedForDelegation -or ($criticalGroup -and ($passwordNeverExpires -or $spns.Count -gt 0 -or $allowReversiblePasswordEncryption))) {
         $priority = "Critical"
     }
-    elseif ($criticalGroup -and ((-not $smartcardRequired) -or (-not $IsProtectedUsersMember) -or (-not $accountNotDelegated) -or ($PasswordAgeDays -ne $null -and [int]$PasswordAgeDays -gt $MaxPasswordAgeDays))) {
+    elseif ($criticalGroup -and ((-not $smartcardRequired) -or (-not $IsProtectedUsersMember) -or (-not $accountNotDelegated) -or ($CredentialAgeDays -ne $null -and [int]$CredentialAgeDays -gt $MaxCredentialAgeDays))) {
         $priority = "High"
     }
     elseif ($enabled -and ($trustedToAuthForDelegation -or $HasNestedAccess -or $missingOwner -or ($InactiveDays -ne $null -and [int]$InactiveDays -gt $StaleDays))) {
@@ -750,7 +745,7 @@ function ConvertTo-PrivilegedIdentityRow {
     $inactiveDays = Get-AgeDays -Value $lastLogonDate -Now $Now
     $spns = @(Get-ObjectValue -InputObject $user -Name "ServicePrincipalName" | Where-Object { $_ })
     $isProtectedUsersMember = Test-ProtectedUsersMember -User $user -ProtectionGroups $protectionGroups
-    $assessment = Get-ProtectionAssessment -User $user -IdentityCategory $identityCategory -EffectiveGroups $effectiveGroups -SourceGroupRisks $sourceGroupRisks -UserQuerySucceeded ([bool]$detail.Succeeded) -UserQueryError "$($detail.Error)" -HasNestedAccess ([bool]$Record.HasNestedAccess) -IsProtectedUsersMember $isProtectedUsersMember -PasswordAgeDays $passwordAgeDays -InactiveDays $inactiveDays
+    $assessment = Get-ProtectionAssessment -AccountRecord $user -IdentityCategory $identityCategory -EffectiveGroups $effectiveGroups -SourceGroupRisks $sourceGroupRisks -UserQuerySucceeded ([bool]$detail.Succeeded) -UserQueryError "$($detail.Error)" -HasNestedAccess ([bool]$Record.HasNestedAccess) -IsProtectedUsersMember $isProtectedUsersMember -CredentialAgeDays $passwordAgeDays -InactiveDays $inactiveDays
 
     [pscustomobject][ordered]@{
         ReviewPriority          = $assessment.ReviewPriority
@@ -1159,7 +1154,7 @@ $report = [ordered]@{
         RunBy              = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
         Server             = if ($Server) { $Server } else { $null }
         StaleDays          = $StaleDays
-        MaxPasswordAgeDays = $MaxPasswordAgeDays
+        MaxCredentialAgeDays = $MaxCredentialAgeDays
         ExtraGroups        = @($GroupName)
         OutputDirectory    = $resolvedOutputDirectory
         JsonPath           = $jsonPath

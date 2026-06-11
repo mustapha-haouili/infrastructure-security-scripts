@@ -154,8 +154,8 @@ def render_executive_summary(report: dict[str, Any], language: str = "en") -> st
                 "",
                 "## Limitations",
                 "",
-                "- Only report types with implemented normalizers are converted into detailed findings. Other detected files are loaded and listed for future normalizer support.",
-                "- Current detailed normalization is limited to `inactive-users.json`.",
+                "- Only known AD/GPO JSON report shapes with implemented normalizers are converted into detailed findings.",
+                "- Current detailed normalization covers AD inactive users, password-never-expires accounts, service accounts, SPN exposure, stale computers, privileged groups, privileged identity protection, and GPO health.",
                 "- Missing optional files are reported for visibility and do not stop analysis.",
             ]
         )

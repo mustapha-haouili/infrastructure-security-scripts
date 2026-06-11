@@ -13,6 +13,11 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 - Added AD shared bundle discovery for known AD and GPO report JSON files.
 - Added consolidated AD shared normalized report metadata for detected, loaded, and missing optional files.
 - Added AD shared documentation and tests for bundle discovery, BOM loading, missing files, and Markdown output.
+- Added SecureInfra AI normalizers for PasswordNeverExpires, service account, SPN exposure, and stale computer reports.
+- Added direct analyzer types for `ad-password-never-expires`, `ad-service-accounts`, `ad-spn-exposure`, and `ad-stale-computers`.
+- Added SecureInfra AI normalizers for privileged group changes, privileged identity protection findings, and GPO health findings.
+- Added direct analyzer types for `ad-privileged-groups`, `ad-privileged-identity`, and `gpo-health`.
+- Renamed the privileged identity audit threshold parameter to `-MaxCredentialAgeDays` to avoid PowerShell analyzer credential-parameter false positives.
 - Added the `SecureInfra_AI/` layer for deterministic AI-ready infrastructure security analysis and reporting.
 - Added SecureInfra AI finding, normalized report, and future AI report schemas.
 - Added an Active Directory inactive users normalizer and deterministic risk engine.
