@@ -8,7 +8,7 @@ audit outputs, applies deterministic risk rules, and generates Markdown reports.
 It prepares the project for future local or private AI support, but Phase 1 does
 not require an AI model.
 
-## Phase 1 Capabilities
+## Current Capabilities
 
 - Read JSON audit output files.
 - Normalize Active Directory inactive user reports into a common finding format.
@@ -16,8 +16,10 @@ not require an AI model.
 - Generate executive summary, technical findings, and remediation plan
   Markdown reports.
 - Provide AI provider interfaces and deterministic local stubs for future use.
-- Analyze an AD shared report folder with `--type ad-shared`, currently
-  normalizing `inactive-users.json` and listing other detected files.
+- Analyze an AD shared report folder with `--type ad-shared`, normalizing known
+  AD/GPO JSON reports for inactive users, password-never-expires accounts,
+  service accounts, SPN exposure, stale computers, privileged groups,
+  privileged identity protection, and GPO health.
 
 ## Safety Boundary
 
@@ -47,8 +49,17 @@ python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py \
   --format markdown
 ```
 
+Run one supported AD/GPO report directly:
+
+```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py \
+  --input reports/ad-shared/service-accounts.json \
+  --type ad-service-accounts \
+  --output reports/output
+```
+
 Generated runtime reports are written to `SecureInfra_AI/reports/`, which is
 ignored by Git.
 
 See [docs/ad-shared-bundle-analysis.md](docs/ad-shared-bundle-analysis.md) for
-bundle behavior, supported files, current limitations, and safety notes.
+bundle behavior, supported files, and safety notes.

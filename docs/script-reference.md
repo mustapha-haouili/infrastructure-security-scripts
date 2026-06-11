@@ -499,7 +499,7 @@ Parameters:
 | `-Server` | string | empty | Optional domain controller to query. |
 | `-Credential` | PSCredential | current user | Optional credential for the AD query. |
 | `-StaleDays` | int | `90` | Days since last logon before an enabled privileged identity is considered stale. |
-| `-MaxPasswordAgeDays` | int | `180` | Password age threshold used for privileged account review. |
+| `-MaxCredentialAgeDays` | int | `180` | Credential age threshold used for privileged account review. |
 | `-OutputDirectory` | string | `.\reports\ad-privileged-identity-protection-COMPUTER-TIMESTAMP` | Directory for JSON, CSV, and Markdown reports. |
 | `-Quiet` | switch | off | Suppress console summary. |
 
@@ -1205,7 +1205,7 @@ Arguments:
 | Argument | Default | Description |
 |---|---|---|
 | `--input FILE` | required | JSON audit result file to analyze. |
-| `--type TYPE` | required | Input report type. Supports `ad-inactive-users` and `ad-shared`. |
+| `--type TYPE` | required | Input report type. Supports `ad-inactive-users`, `ad-password-never-expires`, `ad-privileged-groups`, `ad-privileged-identity`, `ad-service-accounts`, `ad-spn-exposure`, `ad-stale-computers`, `gpo-health`, and `ad-shared`. |
 | `--output DIR` | `SecureInfra_AI/reports` | Output directory for normalized JSON and Markdown reports. |
 | `--language LANG` | `en` | Report language. Phase 1 supports `en`; `de` is reserved for future support. |
 | `--format FORMAT` | `markdown` | Report format. Phase 1 supports `markdown`. |
@@ -1218,6 +1218,14 @@ python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input SecureI
 
 ```bash
 python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports/ad-shared --type ad-shared --output reports/output --language en --format markdown
+```
+
+```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports/ad-shared/service-accounts.json --type ad-service-accounts --output reports/output
+```
+
+```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports/ad-shared/gpo-health.json --type gpo-health --output reports/output
 ```
 
 Safety notes:

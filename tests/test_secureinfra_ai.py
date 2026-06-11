@@ -37,23 +37,159 @@ class SecureInfraAITests(unittest.TestCase):
         sample_data = load_json_file(SAMPLE_INPUT)
         if include_inactive_users:
             (bundle_dir / "inactive-users.json").write_text(json.dumps(sample_data), encoding="utf-8-sig")
-        for file_name in [
-            "password-never-expires.json",
-            "service-accounts.json",
-            "spn-exposure.json",
-            "privileged-groups.json",
-            "gpo-health.json",
-        ]:
-            (bundle_dir / file_name).write_text(
-                json.dumps(
+        reports = {
+            "password-never-expires.json": {
+                "GeneratedAtUtc": "2026-06-08T09:00:00Z",
+                "Domain": "example.local",
+                "Summary": {"SampleRecords": 1},
+                "PasswordNeverExpiresAccounts": [
                     {
-                        "GeneratedAtUtc": "2026-06-08T09:00:00Z",
-                        "Domain": "example.local",
-                        "Summary": {"SampleRecords": 1},
+                        "ReviewPriority": "High",
+                        "AccountCategory": "ServiceAccountCandidate",
+                        "SamAccountName": "svc-fixed-password",
+                        "Enabled": True,
+                        "PasswordNeverExpires": True,
+                        "PasswordAgeDays": 420,
+                        "HasSPN": False,
+                        "PrivilegedGroupCount": 0,
+                        "RiskFlags": ["PasswordNeverExpires", "OldPassword"],
+                        "RecommendedAction": "Validate owner and exception status before rotation planning.",
+                        "DistinguishedName": "CN=svc-fixed-password,OU=Service Accounts,DC=example,DC=local",
                     }
-                ),
-                encoding="utf-8-sig",
-            )
+                ],
+            },
+            "service-accounts.json": {
+                "GeneratedAtUtc": "2026-06-08T09:00:00Z",
+                "Domain": "example.local",
+                "Summary": {"SampleRecords": 1},
+                "ServiceAccounts": [
+                    {
+                        "ReviewPriority": "High",
+                        "AccountType": "UserServiceAccount",
+                        "SamAccountName": "svc-legacy-api",
+                        "Enabled": True,
+                        "HasSPN": True,
+                        "SPNCount": 1,
+                        "PasswordNeverExpires": True,
+                        "PasswordAgeDays": 365,
+                        "PrivilegedGroupCount": 0,
+                        "OwnerEvidenceMissing": True,
+                        "RiskFlags": ["SPN", "PasswordNeverExpires", "MissingOwner"],
+                        "RecommendedAction": "Confirm service owner and dependency before any change.",
+                        "DistinguishedName": "CN=svc-legacy-api,OU=Service Accounts,DC=example,DC=local",
+                    }
+                ],
+            },
+            "spn-exposure.json": {
+                "GeneratedAtUtc": "2026-06-08T09:00:00Z",
+                "Domain": "example.local",
+                "Summary": {"SampleRecords": 1},
+                "SPNAccounts": [
+                    {
+                        "ExposurePriority": "High",
+                        "SamAccountName": "app-web-legacy",
+                        "Enabled": True,
+                        "SPNCount": 2,
+                        "ServicePrincipalNames": ["HTTP/app.example.local", "HTTP/app-web-legacy.example.local"],
+                        "PasswordNeverExpires": True,
+                        "PasswordAgeDays": 300,
+                        "PrivilegedGroupCount": 0,
+                        "EncryptionRisk": "UnknownOrDefault",
+                        "RiskFlags": ["SPN", "PasswordNeverExpires", "EncryptionReview"],
+                        "RecommendedAction": "Confirm application owner, SPN requirement, and rotation plan.",
+                        "DistinguishedName": "CN=app-web-legacy,OU=Applications,DC=example,DC=local",
+                    }
+                ],
+            },
+            "stale-computers.json": {
+                "GeneratedAtUtc": "2026-06-08T09:00:00Z",
+                "Domain": "example.local",
+                "Summary": {"SampleRecords": 1},
+                "StaleComputers": [
+                    {
+                        "ReviewPriority": "Medium",
+                        "ComputerCategory": "Server",
+                        "Name": "EXAMPLE-SRV-OLD01",
+                        "DNSHostName": "example-srv-old01.example.local",
+                        "Enabled": True,
+                        "InactiveDays": 180,
+                        "CleanupReadiness": "Owner review required",
+                        "CanDeleteNow": False,
+                        "PotentialCleanupCandidate": False,
+                        "IsDomainController": False,
+                        "IsServerOS": True,
+                        "HasSPN": True,
+                        "SPNCount": 1,
+                        "RiskFlags": ["Server", "SPN"],
+                        "RecommendedAction": "Confirm server owner and service dependency before cleanup.",
+                        "DistinguishedName": "CN=EXAMPLE-SRV-OLD01,OU=Servers,DC=example,DC=local",
+                    }
+                ],
+            },
+            "privileged-groups.json": {
+                "GeneratedAtUtc": "2026-06-08T09:00:00Z",
+                "Domain": "example.local",
+                "Summary": {"SampleRecords": 1, "TotalChanges": 1},
+                "Changes": [
+                    {
+                        "ChangeType": "Added",
+                        "ActionPriority": "P1 - Immediate validation",
+                        "Severity": "Critical",
+                        "GroupName": "Domain Admins",
+                        "GroupSID": "S-1-5-21-1111111111-2222222222-3333333333-512",
+                        "GroupTier": "Tier0",
+                        "MemberName": "Alex Admin",
+                        "MemberSamAccountName": "alex.admin",
+                        "MemberObjectClass": "user",
+                        "MemberSID": "S-1-5-21-1111111111-2222222222-3333333333-1101",
+                        "MemberDN": "CN=Alex Admin,OU=Admins,DC=example,DC=local",
+                        "RiskFlagsText": "CriticalGroup",
+                        "AdminAction": "Validate change ticket and privileged access approval before modifying membership.",
+                        "VerificationStep": "Review group membership and recent privileged group change events.",
+                    }
+                ],
+            },
+            "privileged-identity-protection.json": {
+                "GeneratedAtUtc": "2026-06-08T09:00:00Z",
+                "Domain": "example.local",
+                "Summary": {"SampleRecords": 1, "PrivilegedIdentityCount": 1},
+                "Findings": [
+                    {
+                        "FindingType": "PrivilegedIdentityProtectionGap",
+                        "Severity": "High",
+                        "ActionPriority": "P2 - Protection gap review",
+                        "Subject": "julia.admin",
+                        "GroupName": "Domain Admins",
+                        "Evidence": "Smartcard logon is not required and Protected Users membership was not observed.",
+                        "AdminAction": "Validate owner evidence and privileged protection controls before any account change.",
+                        "VerificationStep": "Review privileged group membership, smartcard requirement, and Protected Users membership.",
+                    }
+                ],
+            },
+            "gpo-health.json": {
+                "GeneratedAtUtc": "2026-06-08T09:00:00Z",
+                "Domain": "example.local",
+                "Summary": {"SampleRecords": 1, "TotalFindings": 1},
+                "Findings": [
+                    {
+                        "Severity": "High",
+                        "ActionPriority": "P2 - Replication review",
+                        "FindingType": "AdSysvolVersionMismatch",
+                        "GpoId": "{11111111-2222-3333-4444-555555555555}",
+                        "GpoName": "EX Workstation Baseline",
+                        "TargetPath": "OU=Workstations,DC=example,DC=local",
+                        "Title": "AD and SYSVOL GPO versions differ",
+                        "Evidence": "User AD/SYSVOL=18/16; Computer AD/SYSVOL=20/20.",
+                        "AdminAction": "Check DFSR/SYSVOL replication and GPO consistency before relying on this policy.",
+                        "ChangeRisk": "High",
+                        "VerificationStep": "Compare GPO status in GPMC and replication health.",
+                        "Recommendation": "Review SYSVOL replication health and validate the policy before production changes.",
+                    }
+                ],
+            },
+        }
+        for file_name, payload in reports.items():
+            (bundle_dir / file_name).write_text(json.dumps(payload), encoding="utf-8-sig")
         return bundle_dir
 
     def test_sample_json_loads_correctly(self):
@@ -162,6 +298,7 @@ class SecureInfraAITests(unittest.TestCase):
 
             self.assertIn("inactive_users", detected)
             self.assertIn("password_never_expires", detected)
+            self.assertIn("privileged_identity_protection", detected)
             self.assertIn("gpo_health", detected)
 
     def test_ad_shared_directory_input_includes_inactive_user_findings(self):
@@ -188,15 +325,69 @@ class SecureInfraAITests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             normalized = json.loads((output_dir / "normalized-report.json").read_text(encoding="utf-8"))
             self.assertEqual(normalized["report_type"], "ad-shared")
-            self.assertEqual(normalized["summary"]["normalized_finding_count"], 6)
-            self.assertEqual(normalized["summary"]["severity_counts"]["Critical"], 2)
+            self.assertEqual(normalized["summary"]["normalized_finding_count"], 13)
+            self.assertEqual(normalized["summary"]["severity_counts"]["Critical"], 3)
             self.assertIn("inactive_users", normalized["metadata"]["detected_files"])
-            self.assertIn("stale-computers.json", normalized["metadata"]["missing_files"])
-            self.assertIn("File detected and loaded", " ".join(normalized["notes"]))
+            self.assertEqual(normalized["metadata"]["missing_files"], [])
+            self.assertIn("gpo-health.json was normalized into detailed findings", " ".join(normalized["notes"]))
+            self.assertTrue(any(item["finding_id"].startswith("AD-PNE-") for item in normalized["findings"]))
+            self.assertTrue(any(item["finding_id"].startswith("AD-SVC-") for item in normalized["findings"]))
+            self.assertTrue(any(item["finding_id"].startswith("AD-SPN-") for item in normalized["findings"]))
+            self.assertTrue(any(item["finding_id"].startswith("AD-COMP-") for item in normalized["findings"]))
+            self.assertTrue(any(item["finding_id"].startswith("AD-PGROUP-") for item in normalized["findings"]))
+            self.assertTrue(any(item["finding_id"].startswith("AD-PID-") for item in normalized["findings"]))
+            self.assertTrue(any(item["finding_id"].startswith("GPO-HEALTH-") for item in normalized["findings"]))
             self.assertTrue((output_dir / "executive-summary.md").exists())
             executive = (output_dir / "executive-summary.md").read_text(encoding="utf-8")
             self.assertIn("Detected AD Report Files", executive)
             self.assertIn("Limitations", executive)
+
+    def test_direct_service_account_cli_generates_findings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle_dir = self.create_ad_shared_bundle(Path(tmp))
+            output_dir = Path(tmp) / "output"
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = secureinfra_analyzer.main(
+                    [
+                        "--input",
+                        str(bundle_dir / "service-accounts.json"),
+                        "--type",
+                        "ad-service-accounts",
+                        "--output",
+                        str(output_dir),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            normalized = json.loads((output_dir / "normalized-report.json").read_text(encoding="utf-8"))
+            self.assertEqual(normalized["report_type"], "ad-service-accounts")
+            self.assertEqual(normalized["summary"]["normalized_finding_count"], 1)
+            self.assertEqual(normalized["findings"][0]["safe_to_auto_remediate"], False)
+
+    def test_direct_gpo_health_cli_generates_findings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle_dir = self.create_ad_shared_bundle(Path(tmp))
+            output_dir = Path(tmp) / "output"
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = secureinfra_analyzer.main(
+                    [
+                        "--input",
+                        str(bundle_dir / "gpo-health.json"),
+                        "--type",
+                        "gpo-health",
+                        "--output",
+                        str(output_dir),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            normalized = json.loads((output_dir / "normalized-report.json").read_text(encoding="utf-8"))
+            self.assertEqual(normalized["report_type"], "gpo-health")
+            self.assertEqual(normalized["summary"]["normalized_finding_count"], 1)
+            self.assertEqual(normalized["findings"][0]["finding_id"], "GPO-HEALTH-0001")
+            self.assertEqual(normalized["findings"][0]["safe_to_auto_remediate"], False)
 
     def test_ad_shared_missing_optional_files_do_not_crash(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -204,7 +395,7 @@ class SecureInfraAITests(unittest.TestCase):
 
             report = normalize_ad_shared_bundle(bundle_dir)
 
-            self.assertEqual(report["summary"]["normalized_finding_count"], 0)
+            self.assertEqual(report["summary"]["normalized_finding_count"], 7)
             self.assertIn("inactive-users.json", report["metadata"]["missing_files"])
             self.assertIn("inactive-users.json was not found", " ".join(report["notes"]))
 

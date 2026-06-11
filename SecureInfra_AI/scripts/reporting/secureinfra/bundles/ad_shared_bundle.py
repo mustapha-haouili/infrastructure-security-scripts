@@ -6,7 +6,15 @@ from pathlib import Path
 from typing import Any
 
 from secureinfra.loaders.json_loader import load_json_file
-from secureinfra.normalizers.ad_inactive_users import normalize_ad_inactive_users, severity_counts, utc_now
+from secureinfra.normalizers.ad_common import severity_counts, utc_now
+from secureinfra.normalizers.ad_inactive_users import normalize_ad_inactive_users
+from secureinfra.normalizers.ad_password_never_expires import normalize_password_never_expires
+from secureinfra.normalizers.ad_privileged_groups import normalize_privileged_groups
+from secureinfra.normalizers.ad_privileged_identity import normalize_privileged_identity
+from secureinfra.normalizers.ad_service_accounts import normalize_service_accounts
+from secureinfra.normalizers.ad_spn_exposure import normalize_spn_exposure
+from secureinfra.normalizers.ad_stale_computers import normalize_stale_computers
+from secureinfra.normalizers.gpo_health import normalize_gpo_health
 
 
 KNOWN_AD_SHARED_FILES = {
@@ -20,7 +28,17 @@ KNOWN_AD_SHARED_FILES = {
     "gpo_health": "gpo-health.json",
 }
 
-IMPLEMENTED_NORMALIZERS = {"inactive_users"}
+NORMALIZERS = {
+    "inactive_users": normalize_ad_inactive_users,
+    "password_never_expires": normalize_password_never_expires,
+    "service_accounts": normalize_service_accounts,
+    "spn_exposure": normalize_spn_exposure,
+    "stale_computers": normalize_stale_computers,
+    "privileged_groups": normalize_privileged_groups,
+    "privileged_identity_protection": normalize_privileged_identity,
+    "gpo_health": normalize_gpo_health,
+}
+IMPLEMENTED_NORMALIZERS = set(NORMALIZERS)
 
 
 def discover_ad_shared_bundle(input_dir: str | Path) -> dict[str, Path]:
@@ -52,8 +70,8 @@ def summary_from_loaded_json(data: Any) -> dict[str, Any]:
 def normalize_ad_shared_bundle(input_dir: str | Path) -> dict[str, Any]:
     """Normalize an AD shared report directory.
 
-    Phase 1.5 only converts inactive-users.json into detailed findings. Other
-    known JSON files are loaded safely and listed for future normalizer support.
+    Known AD/GPO report types are converted into detailed findings. Missing
+    optional files are reported for visibility and do not stop analysis.
     """
     bundle_dir = Path(input_dir)
     detected_paths = discover_ad_shared_bundle(bundle_dir)
@@ -61,7 +79,7 @@ def normalize_ad_shared_bundle(input_dir: str | Path) -> dict[str, Any]:
     loaded_files: dict[str, str] = {}
     loaded_summaries: dict[str, dict[str, Any]] = {}
     notes: list[str] = [
-        "Only report types with implemented normalizers are converted into detailed findings. Other detected files are loaded and listed for future normalizer support.",
+        "Detected AD/GPO report types with implemented normalizers are converted into detailed findings.",
         "Human owner review and approved change control are required before remediation.",
     ]
     findings: list[dict[str, Any]] = []
@@ -76,17 +94,17 @@ def normalize_ad_shared_bundle(input_dir: str | Path) -> dict[str, Any]:
         loaded_files[key] = str(path)
         loaded_summaries[key] = summary_from_loaded_json(data)
 
-        if key == "inactive_users":
-            inactive_report = normalize_ad_inactive_users(data, source_file=path)
-            findings.extend(inactive_report["findings"])
-            generated_at_utc = inactive_report.get("generated_at_utc", generated_at_utc)
+        if key in NORMALIZERS:
+            normalized_report = NORMALIZERS[key](data, source_file=path)
+            findings.extend(normalized_report["findings"])
+            generated_at_utc = normalized_report.get("generated_at_utc", generated_at_utc)
             environment_summary.update(
                 {
-                    "company": inactive_report.get("environment_summary", {}).get("company", ""),
-                    "domain": inactive_report.get("environment_summary", {}).get("domain", ""),
+                    "company": normalized_report.get("environment_summary", {}).get("company", environment_summary.get("company", "")),
+                    "domain": normalized_report.get("environment_summary", {}).get("domain", environment_summary.get("domain", "")),
                 }
             )
-            notes.append("inactive-users.json was normalized into detailed findings.")
+            notes.append(f"{path.name} was normalized into detailed findings.")
         else:
             notes.append(f"File detected and loaded: {path.name}. Detailed normalizer is not implemented yet.")
 
