@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SecureInfra Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" role="img">
+              <path d="M12 2.4 19.4 5v6.1c0 4.7-3 8.9-7.4 10.5C7.6 20 4.6 15.8 4.6 11.1V5L12 2.4Z"></path>
+              <path d="M8.6 12.1 10.8 14.3 15.8 9.2"></path>
+            </svg>
+          </div>
+          <div>
+            <h1>SecureInfra Dashboard</h1>
+            <p id="workspaceStatus">No report files loaded</p>
+          </div>
+        </div>
+        <div class="actions">
+          <input id="folderInput" type="file" webkitdirectory multiple hidden>
+          <input id="fileInput" type="file" accept=".json,application/json" multiple hidden>
+          <button class="icon-button primary" id="openFolderButton" type="button" title="Open report folder">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.8 6.2h5.4l1.8 2h9.2v9.6a2 2 0 0 1-2 2H5.8a2 2 0 0 1-2-2V6.2Z"></path><path d="M3.8 8.2V5.7a1.5 1.5 0 0 1 1.5-1.5h3.4l1.6 1.7"></path></svg>
+            <span>Open Folder</span>
+          </button>
+          <button class="icon-button" id="openFilesButton" type="button" title="Open JSON files">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.8h6l4 4v12.4H7V3.8Z"></path><path d="M13 3.8v4h4"></path><path d="M9.5 13h5"></path><path d="M9.5 16h5"></path></svg>
+            <span>Open Files</span>
+          </button>
+          <button class="icon-button" id="loadSampleButton" type="button" title="Load sample data">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.2V5.8a1.8 1.8 0 0 1 1.8-1.8h12.4A1.8 1.8 0 0 1 20 5.8v13.4"></path><path d="M7.5 8h9"></path><path d="M7.5 11.5h5"></path><path d="M4 17h16"></path></svg>
+            <span>Sample</span>
+          </button>
+        </div>
+      </header>
+
+      <main class="dashboard">
+        <aside class="sidebar" aria-label="Dashboard filters">
+          <section class="filter-section">
+            <h2>Scope</h2>
+            <label class="field">
+              <span>Search</span>
+              <input id="searchInput" type="search" placeholder="Account, GPO, group, source">
+            </label>
+            <label class="field">
+              <span>Scope</span>
+              <select id="scopeFilter"></select>
+            </label>
+            <label class="field">
+              <span>Machine</span>
+              <select id="machineFilter"></select>
+            </label>
+            <label class="field">
+              <span>Severity</span>
+              <select id="severityFilter"></select>
+            </label>
+            <label class="field">
+              <span>Source</span>
+              <select id="sourceFilter"></select>
+            </label>
+            <label class="field">
+              <span>Object type</span>
+              <select id="objectFilter"></select>
+            </label>
+            <label class="field">
+              <span>Status</span>
+              <select id="statusFilter"></select>
+            </label>
+          </section>
+
+          <section class="filter-section">
+            <h2>Source Files</h2>
+            <div id="sourceList" class="source-list"></div>
+          </section>
+        </aside>
+
+        <section class="content">
+          <section class="metric-grid" aria-label="Dashboard metrics">
+            <article class="metric-card">
+              <span>Total Findings</span>
+              <strong id="metricTotal">0</strong>
+              <small id="metricFiles">0 JSON files</small>
+            </article>
+            <article class="metric-card critical">
+              <span>Critical</span>
+              <strong id="metricCritical">0</strong>
+              <small>Immediate review</small>
+            </article>
+            <article class="metric-card high">
+              <span>High</span>
+              <strong id="metricHigh">0</strong>
+              <small>Priority review</small>
+            </article>
+            <article class="metric-card linked">
+              <span>Linked Objects</span>
+              <strong id="metricLinked">0</strong>
+              <small>Shared evidence keys</small>
+            </article>
+          </section>
+
+          <section class="analysis-grid">
+            <div class="panel severity-panel">
+              <div class="panel-heading">
+                <h2>Severity Distribution</h2>
+                <span id="visibleCount">0 visible</span>
+              </div>
+              <div id="severityBars" class="severity-bars"></div>
+            </div>
+
+            <div class="panel relation-panel">
+              <div class="panel-heading">
+                <h2>Related Evidence</h2>
+                <span id="relationCount">0 groups</span>
+              </div>
+              <div id="relationList" class="relation-list"></div>
+            </div>
+          </section>
+
+          <section class="panel coverage-panel">
+            <div class="panel-heading">
+              <h2>Collection Coverage</h2>
+              <span id="coverageStatus">No bundle</span>
+            </div>
+            <div id="coverageSummary" class="coverage-summary"></div>
+          </section>
+
+          <section class="panel history-panel">
+            <div class="panel-heading">
+              <h2>Historical Comparison</h2>
+              <span id="historyStatus">No baseline</span>
+            </div>
+            <div id="historySummary" class="history-summary"></div>
+          </section>
+
+          <section class="workbench">
+            <div class="table-panel">
+              <div class="panel-heading">
+                <h2>Findings</h2>
+                <button class="icon-only" id="clearFiltersButton" type="button" title="Clear filters">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14"></path><path d="M8 12h8"></path><path d="M10 18h4"></path></svg>
+                </button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Severity</th>
+                      <th>Finding</th>
+                      <th>Object</th>
+                      <th>Source</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="findingsTable"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <aside class="detail-panel" id="detailPanel" aria-label="Finding detail">
+              <div class="empty-detail">
+                <svg viewBox="0 0 80 80" aria-hidden="true">
+                  <path d="M40 8 64 16v20c0 16-10 29-24 36C26 65 16 52 16 36V16l24-8Z"></path>
+                  <path d="M30 39h20"></path>
+                  <path d="M30 49h13"></path>
+                  <path d="M29 29h22"></path>
+                </svg>
+                <h2>No finding selected</h2>
+                <p>Load reports and select a row.</p>
+              </div>
+            </aside>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <template id="detailTemplate">
+      <div class="detail-header">
+        <div>
+          <span class="severity-pill"></span>
+          <h2></h2>
+          <p></p>
+        </div>
+      </div>
+      <dl class="detail-meta"></dl>
+      <section>
+        <h3>Recommendation</h3>
+        <p class="recommendation"></p>
+      </section>
+      <section>
+        <h3>Safety</h3>
+        <p class="safety"></p>
+      </section>
+      <section>
+        <h3>Evidence</h3>
+        <div class="evidence-grid"></div>
+      </section>
+      <section>
+        <h3>Related Findings</h3>
+        <div class="related-findings"></div>
+      </section>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>

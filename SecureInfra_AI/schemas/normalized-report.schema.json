@@ -51,6 +51,211 @@
         "$ref": "finding.schema.json"
       }
     },
+    "correlations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "correlation_id",
+          "correlation_type",
+          "key",
+          "normalized_key",
+          "title",
+          "severity",
+          "finding_ids",
+          "finding_count",
+          "source_scripts",
+          "affected_objects",
+          "rationale",
+          "recommended_review"
+        ],
+        "properties": {
+          "correlation_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "correlation_type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "normalized_key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "Critical",
+              "High",
+              "Medium",
+              "Low",
+              "Info",
+              "Hold"
+            ]
+          },
+          "finding_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "finding_count": {
+            "type": "integer"
+          },
+          "source_scripts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "affected_objects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "recommended_review": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "history_comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "comparison_id",
+        "current_report_id",
+        "previous_report_id",
+        "previous_source_file",
+        "current_generated_at_utc",
+        "previous_generated_at_utc",
+        "matched_on",
+        "new_finding_ids",
+        "persistent_finding_ids",
+        "resolved_finding_ids",
+        "new_count",
+        "persistent_count",
+        "resolved_count",
+        "resolved_findings",
+        "notes"
+      ],
+      "properties": {
+        "comparison_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "current_report_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "previous_report_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "previous_source_file": {
+          "type": "string"
+        },
+        "current_generated_at_utc": {
+          "type": "string"
+        },
+        "previous_generated_at_utc": {
+          "type": "string"
+        },
+        "matched_on": {
+          "type": "string",
+          "enum": [
+            "finding_id"
+          ]
+        },
+        "new_finding_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "persistent_finding_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "resolved_finding_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "new_count": {
+          "type": "integer"
+        },
+        "persistent_count": {
+          "type": "integer"
+        },
+        "resolved_count": {
+          "type": "integer"
+        },
+        "resolved_findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "finding_id",
+              "title",
+              "severity",
+              "affected_object",
+              "source_script"
+            ],
+            "properties": {
+              "finding_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "Critical",
+                  "High",
+                  "Medium",
+                  "Low",
+                  "Info",
+                  "Hold"
+                ]
+              },
+              "affected_object": {
+                "type": "string"
+              },
+              "source_script": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "metadata": {
       "type": "object",
       "additionalProperties": true
