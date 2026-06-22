@@ -6,35 +6,53 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 
 ## [Unreleased]
 
-### SecureInfra AI
+Future changes after v1.2.0-beta.1 will be documented here.
 
-- Added `ad-shared` directory input support for Active Directory report bundles.
+## [1.2.0-beta.1] - 2026-06-20
+
+### SecureInfra AI
+- Added ad-shared directory input support for Active Directory report bundles.
 - Added Windows-safe JSON loading for UTF-8 BOM PowerShell output and a BOM-safe CSV loader.
 - Added AD shared bundle discovery for known AD and GPO report JSON files.
 - Added consolidated AD shared normalized report metadata for detected, loaded, and missing optional files.
 - Added AD shared documentation and tests for bundle discovery, BOM loading, missing files, and Markdown output.
 - Added SecureInfra AI normalizers for PasswordNeverExpires, service account, SPN exposure, and stale computer reports.
-- Added direct analyzer types for `ad-password-never-expires`, `ad-service-accounts`, `ad-spn-exposure`, and `ad-stale-computers`.
+- Added direct analyzer types for ad-password-never-expires, ad-service-accounts, ad-spn-exposure, and ad-stale-computers.
 - Added SecureInfra AI normalizers for privileged group changes, privileged identity protection findings, and GPO health findings.
-- Added direct analyzer types for `ad-privileged-groups`, `ad-privileged-identity`, and `gpo-health`.
+- Added direct analyzer types for ad-privileged-groups, ad-privileged-identity, and gpo-health.
 - Added dependency-free normalized report schema validation before SecureInfra AI writes JSON and Markdown outputs.
 - Added a local static SecureInfra Dashboard for JSON report triage, severity metrics, filtering, evidence detail, and related-finding links.
 - Added dashboard scope filtering and client-bundle collection coverage status for loaded, missing, failed, and not-collected scope files.
 - Added deterministic cross-source correlation groups to normalized reports and dashboard related-finding views.
-- Added historical comparison for repeated SecureInfra AI runs, including `--previous-normalized-report`, `history_comparison`, Markdown summaries, and dashboard trend display.
-- Added `client-bundle` analyzer support for full SecureInfra client collection folders and zip archives, combining supported AD, host, server, and workstation evidence into one normalized report.
-- Added beta standalone SecureInfra AI analyzer types for `windows-host-audit`, `windows-server-audit`, `windows-workstation-audit`, and `windows-network-exposure`.
+- Added historical comparison for repeated SecureInfra AI runs, including --previous-normalized-report, history_comparison, Markdown summaries, and dashboard trend display.
+- Added client-bundle analyzer support for full SecureInfra client collection folders and zip archives, combining supported AD, host, server, and workstation evidence into one normalized report.
+- Added multi-bundle analyzer support for fleet-style review of multiple client bundles.
+- Added beta standalone SecureInfra AI analyzer types for windows-host-audit, windows-server-audit, windows-workstation-audit, and windows-network-exposure.
 - Added strict dependency-free normalized output schemas and fictional sample inputs for the beta standalone Windows analyzer types.
-- Added `Start-SecureInfraClientCollection.ps1` to run supported safe client-side checks, create manifest and summary files, and package a send-back zip bundle.
-- Added Windows local administrator inventory and RDP exposure audit scripts, exposed through server and workstation collection scopes.
-- Renamed the privileged identity audit threshold parameter to `-MaxCredentialAgeDays` to avoid PowerShell analyzer credential-parameter false positives.
-- Added the `SecureInfra_AI/` layer for deterministic AI-ready infrastructure security analysis and reporting.
+- Added the SecureInfra_AI/ layer for deterministic AI-ready infrastructure security analysis and reporting.
 - Added SecureInfra AI finding, normalized report, and future AI report schemas.
 - Added an Active Directory inactive users normalizer and deterministic risk engine.
 - Added a CLI analyzer that reads AD inactive user JSON and generates normalized JSON plus Markdown reports.
 - Added optional AI provider interface and local deterministic stub for future private AI integration.
 - Added fictional SecureInfra AI sample input, sample output reports, architecture docs, roadmap, methodology, and prompt templates.
-- Added tests for sample loading, normalization, risk rules, Markdown report generation, CLI output, and sample data safety.
+- Added tests for sample loading, normalization, risk rules, Markdown report generation, CLI output, Windows standalone analyzers, schema validation, and sample data safety.
+
+### Windows
+- Added Start-SecureInfraClientCollection.ps1 to run supported safe client-side checks, create manifest and summary files, and package a send-back zip bundle.
+- Added Windows local administrator inventory and RDP exposure audit scripts, exposed through server and workstation collection scopes.
+- Added Windows server, workstation, and local network exposure evidence collection support.
+- Renamed the privileged identity audit threshold parameter to -MaxCredentialAgeDays to avoid PowerShell analyzer credential-parameter false positives.
+
+### Documentation
+- Added documentation for AD shared bundle analysis.
+- Added documentation for multi-bundle fleet analysis.
+- Added SecureInfra AI architecture and roadmap updates.
+- Updated README, ROADMAP, script index, and script reference documentation for the beta SecureInfra AI workflow.
+
+### Safety
+- Kept the public workflow defensive, audit-first, and local-by-default.
+- Kept beta Windows standalone analyzers report-only.
+- Kept fictional sample data separate from real customer or production data.
 
 ## [1.1.0] - 2026-06-07
 
