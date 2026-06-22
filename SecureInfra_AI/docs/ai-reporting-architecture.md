@@ -11,6 +11,9 @@ JSON audit output
   -> report-type normalizer
   -> deterministic risk engine
   -> normalized report
+  -> cross-source correlation
+  -> optional historical comparison
+  -> schema validation
   -> Markdown report generator
 ```
 
@@ -38,6 +41,28 @@ Examples include:
 - Enabled inactive privileged accounts are Critical.
 - Enabled inactive accounts with SPNs are High unless a higher rule applies.
 - Exchange HealthMailbox and system-managed accounts are Hold.
+
+### Schema Validator
+
+The analyzer validates normalized reports against the local JSON schemas before
+writing `normalized-report.json` or Markdown outputs. Validation is
+dependency-free and fails closed when a normalizer emits missing required
+fields, invalid enums, unexpected fields, or malformed date-time values.
+
+### Correlation Builder
+
+The correlation builder adds deterministic `correlations` to normalized reports.
+It groups findings that reference the same account, group, GPO, SPN, SID, or
+target path, and marks whether the relationship spans multiple source scripts.
+These links are advisory review aids. They do not authorize remediation.
+
+### Historical Comparison
+
+When the analyzer receives `--previous-normalized-report`, it compares the
+current and previous normalized reports by `finding_id`. The output adds
+`history_comparison` with new, persistent, and resolved finding IDs plus summary
+counts. The comparison is an advisory trend aid and does not change remediation
+safety requirements.
 
 ### Report Generator
 

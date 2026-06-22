@@ -13,13 +13,30 @@ not require an AI model.
 - Read JSON audit output files.
 - Normalize Active Directory inactive user reports into a common finding format.
 - Apply transparent rule-based risk classification.
+- Validate normalized reports against the local SecureInfra AI JSON schemas
+  before writing output.
+- Add deterministic cross-source correlation groups to normalized reports.
+- Compare current normalized reports with a previous `normalized-report.json`
+  to identify new, persistent, and resolved findings.
 - Generate executive summary, technical findings, and remediation plan
   Markdown reports.
+- Review JSON outputs in a local static dashboard with severity metrics,
+  filtering, evidence detail, official related-finding links, and historical
+  comparison counts.
 - Provide AI provider interfaces and deterministic local stubs for future use.
+- Analyze a full SecureInfra client collection folder or zip with
+  `--type client-bundle`, combining supported AD, host, server, workstation,
+  and network evidence into one normalized dashboard report.
+- Analyze many SecureInfra client collection folders or zips with
+  `--type multi-bundle`, producing one fleet report with machine inventory,
+  per-host coverage, scope totals, and top risky machines.
 - Analyze an AD shared report folder with `--type ad-shared`, normalizing known
   AD/GPO JSON reports for inactive users, password-never-expires accounts,
   service accounts, SPN exposure, stale computers, privileged groups,
   privileged identity protection, and GPO health.
+- Analyze individual Windows JSON reports with beta standalone analyzer types:
+  `windows-host-audit`, `windows-server-audit`,
+  `windows-workstation-audit`, and `windows-network-exposure`.
 
 ## Safety Boundary
 
@@ -49,6 +66,34 @@ python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py \
   --format markdown
 ```
 
+Analyze a full client collection bundle:
+
+```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py \
+  --input reports/secureinfra-client-collection-CLIENT-20260619-120000.zip \
+  --type client-bundle \
+  --output reports/client-output
+```
+
+Analyze many client collection bundles:
+
+```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py \
+  --input reports/client-bundles \
+  --type multi-bundle \
+  --output reports/fleet-output
+```
+
+Compare the current run with a previous normalized report:
+
+```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py \
+  --input reports/ad-shared \
+  --type ad-shared \
+  --output reports/output \
+  --previous-normalized-report reports/previous/normalized-report.json
+```
+
 Run one supported AD/GPO report directly:
 
 ```bash
@@ -58,8 +103,41 @@ python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py \
   --output reports/output
 ```
 
+Run one supported Windows report directly. These standalone Windows analyzer
+types are beta and report-only:
+
+```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py \
+  --input reports/windows-security-audit.json \
+  --type windows-host-audit \
+  --output reports/windows-host-output
+
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py \
+  --input reports/windows-server-security.json \
+  --type windows-server-audit \
+  --output reports/windows-server-output
+
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py \
+  --input reports/windows-workstation-security.json \
+  --type windows-workstation-audit \
+  --output reports/windows-workstation-output
+
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py \
+  --input reports/windows-network-exposure.json \
+  --type windows-network-exposure \
+  --output reports/windows-network-output
+```
+
 Generated runtime reports are written to `SecureInfra_AI/reports/`, which is
 ignored by Git.
 
+Open the local dashboard:
+
+```text
+SecureInfra_AI/dashboard/index.html
+```
+
 See [docs/ad-shared-bundle-analysis.md](docs/ad-shared-bundle-analysis.md) for
-bundle behavior, supported files, and safety notes.
+AD bundle behavior, supported files, and safety notes. See
+[docs/multi-bundle-fleet-analysis.md](docs/multi-bundle-fleet-analysis.md) for
+many-host fleet analysis.

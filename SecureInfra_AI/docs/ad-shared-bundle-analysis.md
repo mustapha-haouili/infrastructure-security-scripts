@@ -78,6 +78,22 @@ The analyzer writes:
 - `technical-findings.md`
 - `remediation-plan.md`
 
+`normalized-report.json` includes deterministic `correlations` when multiple
+findings reference the same account, group, GPO, SPN, SID, or target path.
+
+To compare against the last analyzer run, pass the previous normalized report:
+
+```powershell
+python .\SecureInfra_AI\scripts\reporting\secureinfra_analyzer.py `
+  --input .\reports\ad-shared `
+  --type ad-shared `
+  --output .\reports\output `
+  --previous-normalized-report .\reports\previous\normalized-report.json
+```
+
+The new `normalized-report.json` then includes `history_comparison` with new,
+persistent, and resolved finding IDs. The dashboard reads this object directly.
+
 ## Safety Notes
 
 - The analyzer is report-only and does not modify Active Directory.
@@ -94,7 +110,4 @@ The analyzer writes:
 
 Next planned improvements:
 
-- Stronger normalized-report schema validation.
-- Cross-source correlation across related AD/GPO findings.
-- Historical comparison for repeated bundle runs.
 - Windows host, Linux host, secret scan, and monitoring report normalizers.
