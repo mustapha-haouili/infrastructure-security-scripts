@@ -47,7 +47,7 @@ Parameters:
 | Parameter | Type | Default | Description |
 |---|---:|---|---|
 | `-ListScripts` | switch | off | Print every menu tool and exit. |
-| `-Group` | string | empty | Open one group directly, such as `AD`, `Host`, `Server`, or `Workstation`. |
+| `-Group` | string | empty | Open one group directly, such as `AD`, `Host`, `Server`, `Workstation`, or `Network`. |
 | `-ToolId` | string | empty | Run one menu tool directly by ID. Use `-ListScripts` to see IDs. |
 | `-RunAll` | switch | off | With `-Group`, run the default-safe scripts in that group. |
 | `-UseDefaults` | switch | off | Use child-script defaults instead of prompting for optional parameters. Required parameters are still prompted. |
@@ -84,6 +84,74 @@ Shared launcher config values are read from `Defaults`, then `Groups.<GroupId>`,
 then `Tools.<ToolId>`. The most specific value wins. Credential parameters are
 not loaded from config, and high-impact switches are not automatically enabled
 by `-UseDefaults`.
+
+### `scripts/windows/Start-SecureInfraClientCollection.ps1`
+
+Runs supported safe Windows evidence checks and packages the result into one
+client send-back bundle. It is the recommended client-side entry point for
+collection before reviewer-side normalization and reporting.
+
+Default mode: audit and dry run only.
+
+Outputs:
+
+- Structured collection folder under `-OutputDirectory`
+- `client-info.json`
+- `collection-summary.json`
+- `manifest.json`
+- `ad-shared/` for AD/GPO evidence compatible with SecureInfra AI
+- `host/`, `server/`, `workstation/`, and `network/` folders for supported
+  local Windows evidence
+- Zip archive next to the collection folder unless `-SkipArchive` is used
+
+Parameters:
+
+| Parameter | Type | Default | Description |
+|---|---:|---|---|
+| `-Scope` | string array | `All` | Scopes to collect. Supported values: `All`, `AD`, `Host`, `Server`, `Workstation`, `Network`. Current implemented scopes are `AD`, `Host`, `Server`, `Workstation`, and `Network`. |
+| `-OutputDirectory` | string | `.\reports\secureinfra-client-collection-COMPUTER-TIMESTAMP` | Collection output directory. |
+| `-BaselineDirectory` | string | `.\reports\secureinfra-client-baselines` | Persistent local baseline directory used by the privileged group audit. |
+| `-PrivilegedGroupBaselinePath` | string | empty | Optional explicit privileged group baseline path. |
+| `-SearchBase` | string | empty | Optional AD OU or domain distinguished name for AD scripts. |
+| `-Server` | string | empty | Optional domain controller for AD/GPO scripts. |
+| `-Domain` | string | empty | Optional DNS domain name for GPO health. |
+| `-DaysInactive` | int | `90` | Days inactive threshold for inactive users. |
+| `-StaleDays` | int | `90` | Staleness threshold for computers, service accounts, and privileged identities. |
+| `-MaxPasswordAgeDays` | int | `180` | Password age threshold for service, SPN, and PasswordNeverExpires reviews. |
+| `-MaxCredentialAgeDays` | int | `180` | Credential age threshold for privileged identity review. |
+| `-GpoStaleDays` | int | `365` | GPO stale threshold. |
+| `-EventDays` | int | `7` | Windows event history window. |
+| `-RdpCacheMinimumAgeDays` | int | `14` | Minimum age threshold for RDP cache dry-run reporting. |
+| `-IncludeDisabled` | switch | off | Include disabled AD users/computers/accounts where supported. |
+| `-IncludeHotfixes` | switch | off | Include installed hotfix evidence in the host audit. |
+| `-SkipArchive` | switch | off | Do not create the zip archive. |
+| `-StopOnError` | switch | off | Stop after the first failed collection task. Default behavior records failures and continues. |
+| `-Quiet` | switch | off | Reduce collector console output. |
+
+Examples:
+
+```powershell
+.\scripts\windows\Start-SecureInfraClientCollection.ps1
+```
+
+```powershell
+.\scripts\windows\Start-SecureInfraClientCollection.ps1 -Scope AD,Host,Server
+```
+
+```powershell
+.\scripts\windows\Start-SecureInfraClientCollection.ps1 -Scope Network,Server,Workstation
+```
+
+```powershell
+.\scripts\windows\Start-SecureInfraClientCollection.ps1 -Scope AD -SearchBase "OU=Users,DC=example,DC=local" -Server "dc01.example.local"
+```
+
+Safety notes:
+
+- The collector does not pass `-Apply` to child scripts.
+- The collector does not pass `-UpdateBaseline` to the privileged group audit.
+- If an AD module, GPO module, or permission is missing, that task is recorded
+  as failed and the collector continues unless `-StopOnError` is used.
 
 ### `scripts/windows/host/Invoke-WindowsSecurityAudit.ps1`
 
@@ -128,6 +196,170 @@ Start reading the report at:
 - `Summary.Posture`
 - `Summary.SeverityCounts`
 - `Findings`
+
+### `scripts/windows/host/Get-WindowsLocalAdminInventory.ps1`
+
+Inventories local Administrators group membership and writes JSON, CSV, and
+Markdown reports. It does not change local users, groups, or policy.
+
+Default mode: audit only.
+
+Outputs:
+
+- `windows-local-admins.json` under `-OutputDirectory`
+- `windows-local-admins.csv` under `-OutputDirectory`
+- `windows-local-admins-review.md` under `-OutputDirectory`
+
+Parameters:
+
+| Parameter | Type | Default | Description |
+|---|---:|---|---|
+| `-OutputDirectory` | string | `.\reports\windows-local-admins-COMPUTER-TIMESTAMP` | Directory for JSON, CSV, and Markdown reports. |
+| `-Quiet` | switch | off | Suppress console summary. |
+
+Examples:
+
+```powershell
+.\scripts\windows\host\Get-WindowsLocalAdminInventory.ps1
+```
+
+```powershell
+.\scripts\windows\host\Get-WindowsLocalAdminInventory.ps1 -OutputDirectory .\reports\server01-local-admins -Quiet
+```
+
+Start reading the report at:
+
+- `Summary.MemberCount`
+- `Summary.FindingCount`
+- `LocalAdministrators`
+- `Findings`
+
+Review domain groups, direct domain users, unresolved SIDs, and enabled local
+admin users with the system owner before changing membership.
+
+### `scripts/windows/host/Get-WindowsRDPExposureAudit.ps1`
+
+Audits local Remote Desktop exposure, including enablement, Network Level
+Authentication, configured port, service state, Remote Desktop Users group
+membership, firewall rules, and active listeners. It does not change RDP
+configuration.
+
+Default mode: audit only.
+
+Outputs:
+
+- `windows-rdp-exposure.json` under `-OutputDirectory`
+- `windows-rdp-exposure-findings.csv` under `-OutputDirectory`
+- `windows-rdp-exposure-review.md` under `-OutputDirectory`
+
+Parameters:
+
+| Parameter | Type | Default | Description |
+|---|---:|---|---|
+| `-OutputDirectory` | string | `.\reports\windows-rdp-exposure-COMPUTER-TIMESTAMP` | Directory for JSON, CSV, and Markdown reports. |
+| `-Quiet` | switch | off | Suppress console summary. |
+
+Examples:
+
+```powershell
+.\scripts\windows\host\Get-WindowsRDPExposureAudit.ps1
+```
+
+```powershell
+.\scripts\windows\host\Get-WindowsRDPExposureAudit.ps1 -OutputDirectory .\reports\server01-rdp -Quiet
+```
+
+Start reading the report at:
+
+- `Summary.RdpEnabled`
+- `Summary.NetworkLevelAuthenticationRequired`
+- `Summary.ListenerCount`
+- `RemoteDesktopUsers`
+- `Findings`
+
+RDP changes can break administration paths. Confirm business need, network
+restriction, and owner approval before disabling or modifying RDP access.
+
+### `scripts/windows/network/Get-WindowsNetworkExposureAudit.ps1`
+
+Audits local network exposure evidence without scanning remote hosts. It reads
+adapters, IP/DNS configuration, default routes, firewall profiles, network
+profiles, and listening TCP ports.
+
+Default mode: audit only.
+
+Outputs:
+
+- `windows-network-exposure.json` under `-OutputDirectory`
+- `windows-network-exposure-findings.csv` under `-OutputDirectory`
+- `windows-network-exposure-review.md` under `-OutputDirectory`
+
+Parameters:
+
+| Parameter | Type | Default | Description |
+|---|---:|---|---|
+| `-OutputDirectory` | string | `.\reports\windows-network-exposure-COMPUTER-TIMESTAMP` | Directory for JSON, CSV, and Markdown reports. |
+| `-Quiet` | switch | off | Suppress console summary. |
+
+Example:
+
+```powershell
+.\scripts\windows\network\Get-WindowsNetworkExposureAudit.ps1
+```
+
+### `scripts/windows/server/Get-WindowsServerSecurityInventory.ps1`
+
+Audits server roles/features where available, services, scheduled tasks, SMB
+shares, and SMB share access. It does not change services, tasks, roles,
+shares, or permissions.
+
+Default mode: audit only.
+
+Outputs:
+
+- `windows-server-security.json` under `-OutputDirectory`
+- `windows-server-security-findings.csv` under `-OutputDirectory`
+- `windows-server-security-review.md` under `-OutputDirectory`
+
+Parameters:
+
+| Parameter | Type | Default | Description |
+|---|---:|---|---|
+| `-OutputDirectory` | string | `.\reports\windows-server-security-COMPUTER-TIMESTAMP` | Directory for JSON, CSV, and Markdown reports. |
+| `-Quiet` | switch | off | Suppress console summary. |
+
+Example:
+
+```powershell
+.\scripts\windows\server\Get-WindowsServerSecurityInventory.ps1
+```
+
+### `scripts/windows/workstation/Get-WindowsWorkstationSecurityInventory.ps1`
+
+Audits Defender, BitLocker, firewall profiles, local users, Remote Assistance,
+LLMNR policy, and PowerShell Script Block Logging policy. It does not change
+endpoint configuration.
+
+Default mode: audit only.
+
+Outputs:
+
+- `windows-workstation-security.json` under `-OutputDirectory`
+- `windows-workstation-security-findings.csv` under `-OutputDirectory`
+- `windows-workstation-security-review.md` under `-OutputDirectory`
+
+Parameters:
+
+| Parameter | Type | Default | Description |
+|---|---:|---|---|
+| `-OutputDirectory` | string | `.\reports\windows-workstation-security-COMPUTER-TIMESTAMP` | Directory for JSON, CSV, and Markdown reports. |
+| `-Quiet` | switch | off | Suppress console summary. |
+
+Example:
+
+```powershell
+.\scripts\windows\workstation\Get-WindowsWorkstationSecurityInventory.ps1
+```
 
 ### `scripts/windows/ad/Get-ADInactiveUserReport.ps1`
 
@@ -1182,8 +1414,9 @@ generator itself is safe and read-only.
 ### `SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py`
 
 Normalizes JSON audit output, applies deterministic risk rules, writes a
-normalized JSON report, and generates Markdown reports. Phase 1 supports Active
-Directory inactive user audit JSON. AI is not required.
+normalized JSON report, and generates Markdown reports. It supports focused
+AD/GPO inputs, full SecureInfra client collection folders or zip archives, and
+many-bundle fleet input directories. AI is not required.
 
 Default mode: report-only.
 
@@ -1200,15 +1433,25 @@ Outputs:
 - `technical-findings.md`
 - `remediation-plan.md`
 
+The analyzer validates the normalized report against the local SecureInfra AI
+JSON schemas before writing output. Schema failures stop report generation and
+return a non-zero exit code.
+
+Normalized reports can include a top-level `correlations` array that links
+findings sharing the same account, group, GPO, SPN, SID, or target path.
+When `--previous-normalized-report` is supplied, the output also includes
+`history_comparison` with new, persistent, and resolved finding IDs.
+
 Arguments:
 
 | Argument | Default | Description |
 |---|---|---|
-| `--input FILE` | required | JSON audit result file to analyze. |
-| `--type TYPE` | required | Input report type. Supports `ad-inactive-users`, `ad-password-never-expires`, `ad-privileged-groups`, `ad-privileged-identity`, `ad-service-accounts`, `ad-spn-exposure`, `ad-stale-computers`, `gpo-health`, and `ad-shared`. |
+| `--input FILE` | required | JSON audit result file, AD shared directory, client collection directory, client collection zip, or fleet directory containing many client bundles to analyze. |
+| `--type TYPE` | required | Input report type. Supports `ad-inactive-users`, `ad-password-never-expires`, `ad-privileged-groups`, `ad-privileged-identity`, `ad-service-accounts`, `ad-spn-exposure`, `ad-stale-computers`, `gpo-health`, `ad-shared`, `client-bundle`, and `multi-bundle`. |
 | `--output DIR` | `SecureInfra_AI/reports` | Output directory for normalized JSON and Markdown reports. |
 | `--language LANG` | `en` | Report language. Phase 1 supports `en`; `de` is reserved for future support. |
 | `--format FORMAT` | `markdown` | Report format. Phase 1 supports `markdown`. |
+| `--previous-normalized-report FILE` | empty | Optional previous `normalized-report.json` used to compare repeated runs by `finding_id`. |
 
 Example:
 
@@ -1217,7 +1460,19 @@ python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input SecureI
 ```
 
 ```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports/secureinfra-client-collection-CLIENT-20260619-120000.zip --type client-bundle --output reports/secureinfra-ai-client
+```
+
+```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports/client-bundles --type multi-bundle --output reports/secureinfra-ai-fleet
+```
+
+```bash
 python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports/ad-shared --type ad-shared --output reports/output --language en --format markdown
+```
+
+```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports/ad-shared --type ad-shared --output reports/output --previous-normalized-report reports/previous/normalized-report.json
 ```
 
 ```bash
@@ -1232,6 +1487,8 @@ Safety notes:
 
 - The analyzer does not modify systems.
 - The risk engine is deterministic and does not rely on AI.
+- `multi-bundle` mode preserves per-host evidence and reports missing or failed
+  bundles without stopping the rest of the fleet analysis.
 - AI stubs are optional and do not make remediation decisions.
 - Privileged, SPN-bearing, built-in, and system-managed accounts are not safe
   for automatic remediation.

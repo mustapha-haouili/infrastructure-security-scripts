@@ -12,13 +12,19 @@ in organized category folders for advanced or direct use.
 
 | Script | Purpose | Default mode |
 |---|---|---|
-| `Start-WindowsSecurity.ps1` | Interactive menu for AD/GPO, host, server, and workstation scripts | Menu |
+| `Start-WindowsSecurity.ps1` | Interactive menu for AD/GPO, host, server, workstation, and network scripts | Menu |
+| `Start-SecureInfraClientCollection.ps1` | Run supported safe checks and package one client evidence bundle | Audit and dry run |
 | `host/Invoke-WindowsSecurityAudit.ps1` | Collect Windows baseline security information and export JSON | Audit |
+| `host/Get-WindowsLocalAdminInventory.ps1` | Inventory local Administrators group membership and review risky entries | Audit |
+| `host/Get-WindowsRDPExposureAudit.ps1` | Audit local RDP exposure, NLA, allowed users, firewall rules, and listeners | Audit |
+| `network/Get-WindowsNetworkExposureAudit.ps1` | Audit local network adapters, IP/DNS/routes, firewall profiles, network profiles, and listeners | Audit |
+| `server/Get-WindowsServerSecurityInventory.ps1` | Audit server roles/features, services, scheduled tasks, SMB shares, and broad share access | Audit |
 | `host/Set-WindowsBaselineHardening.ps1` | Apply selected Windows baseline hardening controls | Dry run |
 | `host/New-WindowsRemediationPlan.ps1` | Create remediation plans from Windows audit reports | Audit |
 | `host/Start-WindowsSecurityRemediation.ps1` | Guided audit, approval, preview, and apply workflow | Dry run until final approval |
 | `host/Export-WindowsEventSecurityReport.ps1` | Export important Windows Security and System event log activity | Audit |
 | `server/Clear-RDPUserProfileCache.ps1` | Audit and optionally clean safe per-user cache locations on RDP/Terminal Server hosts | Dry run |
+| `workstation/Get-WindowsWorkstationSecurityInventory.ps1` | Audit Defender, BitLocker, firewall, local users, LLMNR, PowerShell logging, and Remote Assistance | Audit |
 
 ### Windows AD
 
@@ -71,4 +77,4 @@ in organized category folders for advanced or direct use.
 
 | Script | Purpose | Default mode |
 |---|---|---|
-| `SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py` | Normalize AD inactive user JSON, apply deterministic risk rules, and generate Markdown reports | Report-only |
+| `SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py` | Normalize AD/GPO JSON, full client bundles, or many-bundle fleet folders, apply deterministic risk rules, and generate Markdown reports | Report-only |

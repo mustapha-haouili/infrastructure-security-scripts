@@ -22,8 +22,8 @@ Use one root script for normal Windows administration:
 .\scripts\windows\Start-WindowsSecurity.ps1
 ```
 
-The launcher shows group menus for AD/GPO, Windows Host, Server, and
-Workstation scripts. After a script is selected, it displays the supported
+The launcher shows group menus for AD/GPO, Windows Host, Server, Workstation,
+and Network scripts. After a script is selected, it displays the supported
 parameters and lets the admin enter values before running it.
 
 Useful direct launcher commands:
@@ -32,6 +32,42 @@ Useful direct launcher commands:
 .\scripts\windows\Start-WindowsSecurity.ps1 -ListScripts
 .\scripts\windows\Start-WindowsSecurity.ps1 -Group AD -RunAll
 .\scripts\windows\Start-WindowsSecurity.ps1 -ToolId AD-GPO-HEALTH
+.\scripts\windows\Start-WindowsSecurity.ps1 -ToolId CLIENT-COLLECTION
+```
+
+## Client Collection Bundle
+
+Use the client collection launcher when a customer or internal admin needs one
+safe command that gathers supported evidence and packages it for review:
+
+```powershell
+.\scripts\windows\Start-SecureInfraClientCollection.ps1
+```
+
+The collector is audit/dry-run only. It does not use `-Apply`, does not update
+AD baselines, and does not delete files. It creates:
+
+- `client-info.json`
+- `collection-summary.json`
+- `manifest.json`
+- `ad-shared/` with AD/GPO JSON files compatible with SecureInfra AI
+- `host/`, `server/`, `workstation/`, and `network/` folders for supported
+  local Windows evidence
+- a `.zip` archive next to the collection folder
+
+Selected scopes can be run with:
+
+```powershell
+.\scripts\windows\Start-SecureInfraClientCollection.ps1 -Scope AD,Host,Server
+```
+
+Current implemented scopes are `AD`, `Host`, `Server`, `Workstation`, and
+`Network`.
+
+Analyze the resulting folder or zip with SecureInfra AI:
+
+```powershell
+python .\SecureInfra_AI\scripts\reporting\secureinfra_analyzer.py --input .\reports\secureinfra-client-collection-CLIENT-20260619-120000.zip --type client-bundle --output .\reports\secureinfra-ai-client
 ```
 
 ## Shared Parameter Config
@@ -66,7 +102,8 @@ New Windows scripts should be added under these folders:
 |---|---|
 | `ad/` | Active Directory identity, computer-account, privileged-group, service-account, and SPN audits. |
 | `gpo/` | Group Policy and policy baseline comparison scripts. |
-| `host/` | Cross-host audit, hardening, workflow, remediation plan, and event scripts. |
+| `host/` | Cross-host audit, local admin inventory, RDP exposure, hardening, workflow, remediation plan, and event scripts. |
+| `network/` | Local network exposure, firewall profile, route, adapter, and listener checks. |
 | `server/` | Server-focused exposure, remote-management, service, certificate, and patch state audits. |
 | `workstation/` | Workstation endpoint posture scripts. |
 | `shared/` | Reusable PowerShell helpers and modules. |

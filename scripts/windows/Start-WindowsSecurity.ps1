@@ -9,15 +9,16 @@ default-safe scripts in a category, prompts for supported parameters, previews
 the command, and then starts the selected script.
 
 Implementation scripts remain in their category folders such as ad, gpo, host,
-server, and workstation. This launcher does not change system configuration by
-itself. Any child script that can apply changes still requires its own explicit
-parameter, such as -Apply or -ApplyApproved.
+server, workstation, and network. This launcher does not change system
+configuration by itself. Any child script that can apply changes still requires
+its own explicit parameter, such as -Apply or -ApplyApproved.
 
 .PARAMETER ListScripts
 Print all scripts known to the menu and exit.
 
 .PARAMETER Group
-Open a specific group menu by group ID, such as AD, Host, Server, or Workstation.
+Open a specific group menu by group ID, such as AD, Host, Server, Workstation,
+or Network.
 
 .PARAMETER ToolId
 Run a specific menu tool by ID, such as AD-INACTIVE-USERS or HOST-AUDIT.
@@ -142,6 +143,11 @@ function Get-GroupCatalog {
             Label       = "Windows Workstation"
             Description = "Workstation endpoint posture checks"
         }
+        [pscustomobject][ordered]@{
+            Id          = "Network"
+            Label       = "Network"
+            Description = "Local network exposure and listener checks"
+        }
     )
 }
 
@@ -232,6 +238,20 @@ function Get-ToolCatalog {
             New-ParameterDefinition -Name "Quiet" -Type "Switch" -Description "Suppress console summary."
         )
 
+        New-ToolDefinition -Id "CLIENT-COLLECTION" -GroupId "Host" -Name "SecureInfra client collection bundle" -RelativePath "Start-SecureInfraClientCollection.ps1" -DefaultMode "Audit and dry run" -Description "Run supported safe checks and package one client evidence bundle for analysis." -IncludeInRunAll $false -Parameters @(
+            New-ParameterDefinition -Name "Scope" -Type "StringArray" -Default "All" -Description "Comma-separated scopes: All, AD, Host, Server, Workstation, Network."
+            New-ParameterDefinition -Name "OutputDirectory" -Description "Collection output directory. Blank uses the script default."
+            New-ParameterDefinition -Name "BaselineDirectory" -Description "Persistent baseline directory for repeated client runs."
+            New-ParameterDefinition -Name "SearchBase" -Description "Optional AD OU or domain distinguished name to search."
+            New-ParameterDefinition -Name "Server" -Description "Optional domain controller to query."
+            New-ParameterDefinition -Name "Domain" -Description "Optional DNS domain name for GPO queries."
+            New-ParameterDefinition -Name "IncludeDisabled" -Type "Switch" -Description "Include disabled AD users/computers/accounts where supported."
+            New-ParameterDefinition -Name "IncludeHotfixes" -Type "Switch" -Description "Include installed hotfix evidence in host audit."
+            New-ParameterDefinition -Name "SkipArchive" -Type "Switch" -Description "Do not create the zip archive."
+            New-ParameterDefinition -Name "StopOnError" -Type "Switch" -Description "Stop collection after the first failed task."
+            New-ParameterDefinition -Name "Quiet" -Type "Switch" -Description "Reduce collector output."
+        )
+
         New-ToolDefinition -Id "HOST-AUDIT" -GroupId "Host" -Name "Windows security audit" -RelativePath "host\Invoke-WindowsSecurityAudit.ps1" -DefaultMode "Audit" -Description "Collect local Windows security posture evidence and write JSON." -Parameters @(
             New-ParameterDefinition -Name "OutputPath" -Description "Optional JSON report path. Blank uses the script default."
             New-ParameterDefinition -Name "IncludeHotfixes" -Type "Switch" -Description "Include installed hotfix evidence."
@@ -276,6 +296,21 @@ function Get-ToolCatalog {
             New-ParameterDefinition -Name "Quiet" -Type "Switch" -Description "Reduce console output."
         )
 
+        New-ToolDefinition -Id "SERVER-LOCAL-ADMINS" -GroupId "Server" -Name "Local administrators inventory" -RelativePath "host\Get-WindowsLocalAdminInventory.ps1" -DefaultMode "Audit" -Description "Inventory local Administrators group membership and review risky entries." -Parameters @(
+            New-ParameterDefinition -Name "OutputDirectory" -Description "Optional output directory. Blank uses the script default."
+            New-ParameterDefinition -Name "Quiet" -Type "Switch" -Description "Suppress console summary."
+        )
+
+        New-ToolDefinition -Id "SERVER-SECURITY-INVENTORY" -GroupId "Server" -Name "Server security inventory" -RelativePath "server\Get-WindowsServerSecurityInventory.ps1" -DefaultMode "Audit" -Description "Audit server roles, services, scheduled tasks, SMB shares, and broad share access." -Parameters @(
+            New-ParameterDefinition -Name "OutputDirectory" -Description "Optional output directory. Blank uses the script default."
+            New-ParameterDefinition -Name "Quiet" -Type "Switch" -Description "Suppress console summary."
+        )
+
+        New-ToolDefinition -Id "SERVER-RDP-EXPOSURE" -GroupId "Server" -Name "RDP exposure audit" -RelativePath "host\Get-WindowsRDPExposureAudit.ps1" -DefaultMode "Audit" -Description "Audit local Remote Desktop exposure, NLA, allowed users, firewall rules, and listeners." -Parameters @(
+            New-ParameterDefinition -Name "OutputDirectory" -Description "Optional output directory. Blank uses the script default."
+            New-ParameterDefinition -Name "Quiet" -Type "Switch" -Description "Suppress console summary."
+        )
+
         New-ToolDefinition -Id "SERVER-RDP-CACHE" -GroupId "Server" -Name "RDP profile cache cleanup report" -RelativePath "server\Clear-RDPUserProfileCache.ps1" -DefaultMode "Dry run" -Description "Audit and optionally clean safe per-user cache locations on RDP/Terminal Server hosts." -Parameters @(
             New-ParameterDefinition -Name "ProfileRoot" -Default "C:\Users" -Description "Root directory containing user profile folders."
             New-ParameterDefinition -Name "MinimumAgeDays" -Type "Int" -Default 14 -Description "Only report or delete files older than this many days."
@@ -285,6 +320,26 @@ function Get-ToolCatalog {
             New-ParameterDefinition -Name "IncludeRecycleBin" -Type "Switch" -Description "Include each user's Recycle Bin when available."
             New-ParameterDefinition -Name "IncludeTemp" -Type "Switch" -Description "Include per-user AppData\Local\Temp."
             New-ParameterDefinition -Name "ExcludeProfileName" -Type "StringArray" -Description "Comma-separated profile folder names to skip."
+        )
+
+        New-ToolDefinition -Id "WORKSTATION-LOCAL-ADMINS" -GroupId "Workstation" -Name "Local administrators inventory" -RelativePath "host\Get-WindowsLocalAdminInventory.ps1" -DefaultMode "Audit" -Description "Inventory local Administrators group membership and review risky entries." -Parameters @(
+            New-ParameterDefinition -Name "OutputDirectory" -Description "Optional output directory. Blank uses the script default."
+            New-ParameterDefinition -Name "Quiet" -Type "Switch" -Description "Suppress console summary."
+        )
+
+        New-ToolDefinition -Id "WORKSTATION-SECURITY-INVENTORY" -GroupId "Workstation" -Name "Workstation security inventory" -RelativePath "workstation\Get-WindowsWorkstationSecurityInventory.ps1" -DefaultMode "Audit" -Description "Audit Defender, BitLocker, firewall, local users, LLMNR, PowerShell logging, and Remote Assistance posture." -Parameters @(
+            New-ParameterDefinition -Name "OutputDirectory" -Description "Optional output directory. Blank uses the script default."
+            New-ParameterDefinition -Name "Quiet" -Type "Switch" -Description "Suppress console summary."
+        )
+
+        New-ToolDefinition -Id "WORKSTATION-RDP-EXPOSURE" -GroupId "Workstation" -Name "RDP exposure audit" -RelativePath "host\Get-WindowsRDPExposureAudit.ps1" -DefaultMode "Audit" -Description "Audit local Remote Desktop exposure, NLA, allowed users, firewall rules, and listeners." -Parameters @(
+            New-ParameterDefinition -Name "OutputDirectory" -Description "Optional output directory. Blank uses the script default."
+            New-ParameterDefinition -Name "Quiet" -Type "Switch" -Description "Suppress console summary."
+        )
+
+        New-ToolDefinition -Id "NETWORK-EXPOSURE" -GroupId "Network" -Name "Network exposure audit" -RelativePath "network\Get-WindowsNetworkExposureAudit.ps1" -DefaultMode "Audit" -Description "Audit local adapters, IP/DNS/routes, firewall profiles, network profiles, and listening TCP ports." -Parameters @(
+            New-ParameterDefinition -Name "OutputDirectory" -Description "Optional output directory. Blank uses the script default."
+            New-ParameterDefinition -Name "Quiet" -Type "Switch" -Description "Suppress console summary."
         )
     )
 }
