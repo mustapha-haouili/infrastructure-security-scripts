@@ -21,6 +21,10 @@ scripts toolkit. Versions are targets, not contractual commitments.
 - Improve report generator support for multiple input formats.
 - Add historical comparison helpers for repeated assessments.
 - Expand SecureInfra AI normalizers beyond AD inactive user reports.
+- Add a client-side collection bundle workflow that packages supported safe
+  checks for reviewer-side analysis.
+- Add beta standalone SecureInfra AI analyzer types for Windows host, server,
+  workstation, and network exposure JSON reports.
 
 ## v1.3.0 - Windows Security Health Check Enhancements
 

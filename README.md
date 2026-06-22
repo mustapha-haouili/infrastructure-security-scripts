@@ -94,6 +94,42 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 Choose `Windows Host` from the menu, then select `Windows security audit`.
 
+### Client evidence collection
+
+For client-side collection, run the safe bundle launcher. It runs supported
+audit/dry-run checks, writes a structured result folder, and creates a zip file
+the client can send back for analysis.
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\scripts\windows\Start-SecureInfraClientCollection.ps1
+```
+
+Run selected scopes only:
+
+```powershell
+.\scripts\windows\Start-SecureInfraClientCollection.ps1 -Scope AD,Host,Server
+```
+
+The current collector supports AD/GPO, Windows host, server, workstation, and
+local network exposure evidence.
+
+Analyze the full client collection folder or zip:
+
+```powershell
+python .\SecureInfra_AI\scripts\reporting\secureinfra_analyzer.py --input .\reports\secureinfra-client-collection-CLIENT-20260619-120000.zip --type client-bundle --output .\reports\secureinfra-ai-client
+```
+
+Analyze many client bundles from many servers or workstations:
+
+```powershell
+python .\SecureInfra_AI\scripts\reporting\secureinfra_analyzer.py --input .\reports\client-bundles --type multi-bundle --output .\reports\secureinfra-ai-fleet
+```
+
+Put every returned collection folder or `.zip` file under one parent folder
+such as `reports\client-bundles`. The fleet analyzer creates one normalized
+report with machine inventory, per-host coverage, and unique finding IDs.
+
 Optional shared Windows parameters:
 
 ```powershell
@@ -151,6 +187,38 @@ python3 scripts/reporting/generate-markdown-report.py examples/sample-output/win
 ```bash
 python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input SecureInfra_AI/examples/sample-input/active-directory/sample-ad-inactive-users.json --type ad-inactive-users --output SecureInfra_AI/reports
 ```
+
+Full client bundle:
+
+```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports/secureinfra-client-collection-CLIENT-20260619-120000.zip --type client-bundle --output reports/secureinfra-ai-client
+```
+
+Fleet of client bundles:
+
+```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports/client-bundles --type multi-bundle --output reports/secureinfra-ai-fleet
+```
+
+Beta standalone Windows report analyzers:
+
+```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports/windows-security-audit.json --type windows-host-audit --output reports/secureinfra-ai-host
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports/windows-server-security.json --type windows-server-audit --output reports/secureinfra-ai-server
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports/windows-workstation-security.json --type windows-workstation-audit --output reports/secureinfra-ai-workstation
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports/windows-network-exposure.json --type windows-network-exposure --output reports/secureinfra-ai-network
+```
+
+These analyzer types are report-only and normalize existing JSON evidence from
+the corresponding Windows audit scripts.
+
+### SecureInfra Dashboard
+
+Open `SecureInfra_AI/dashboard/index.html` in a browser to review JSON reports
+locally with severity metrics, filtering, evidence detail, and related-finding
+links. Normalized reports generated with `--previous-normalized-report` also
+show new, persistent, and resolved findings. Normalized `multi-bundle` reports
+add machine filtering and fleet collection coverage.
 
 ## Script index
 
