@@ -128,6 +128,12 @@ Analyze the full client collection folder or zip:
 python .\SecureInfra_AI\scripts\reporting\secureinfra_analyzer.py --input .\reports\secureinfra-client-collection-CLIENT-20260619-120000.zip --type client-bundle --output .\reports\secureinfra-ai-client
 ```
 
+Client collection zip files are treated as untrusted input. SecureInfra AI
+validates entries before extraction, rejects traversal or absolute paths,
+limits archives to 512 entries, limits each uncompressed file to 25 MiB, and
+accepts only current report-output extensions: `.json`, `.csv`, `.md`, `.txt`,
+and `.log`. Bundle content is parsed as evidence only and is never executed.
+
 Analyze many client bundles from many servers or workstations:
 
 ```powershell
@@ -227,6 +233,12 @@ locally with severity metrics, filtering, evidence detail, and related-finding
 links. Normalized reports generated with `--previous-normalized-report` also
 show new, persistent, and resolved findings. Normalized `multi-bundle` reports
 add machine filtering and fleet collection coverage.
+
+The dashboard is a local static viewer. It uses a Content Security Policy and
+renders report-controlled values as text, not executable HTML. The CSP allows
+inline styles for compatibility with the current static UI, so keep using it as
+a local report viewer for trusted operators rather than as a hosted multi-user
+portal.
 
 ## Script index
 

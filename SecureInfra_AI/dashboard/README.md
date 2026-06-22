@@ -40,3 +40,18 @@ Supported inputs include:
 
 This dashboard is read-only. Remediation still requires human owner review and
 approved change control.
+
+## Local Security Model
+
+The dashboard is intended for local, static use by a reviewer. It does not make
+network requests or upload report data. Report-controlled values are rendered as
+text rather than executable HTML.
+
+`index.html` includes a Content Security Policy that blocks network connections,
+plugins, frames, forms, and non-local scripts. Inline styles remain allowed so
+the existing static UI and dynamic chart styling continue to work when opened
+directly from disk. This is a compatibility choice, not a claim that the
+dashboard is suitable as a hosted multi-user portal.
+
+Treat all loaded JSON as untrusted evidence. Do not add dashboard features that
+render report fields through executable HTML.

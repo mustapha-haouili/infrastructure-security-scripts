@@ -45,6 +45,11 @@ not require an AI model.
 - No password, secret, token, private key, or customer data collection.
 - No destructive decision-making by AI.
 - Human review and approved change control are required before remediation.
+- Client collection zip files are treated as untrusted input. The analyzer
+  validates every entry before extraction, rejects traversal and absolute paths,
+  limits archives to 512 entries, limits each uncompressed file to 25 MiB, and
+  allows only `.json`, `.csv`, `.md`, `.txt`, and `.log` report artifacts.
+- Bundle content is never executed; it is loaded only as report evidence.
 
 ## Example
 
@@ -136,6 +141,11 @@ Open the local dashboard:
 ```text
 SecureInfra_AI/dashboard/index.html
 ```
+
+The dashboard is a static, local report viewer. It includes a Content Security
+Policy and renders report-controlled values as text instead of executable HTML.
+The CSP keeps inline styles enabled for current local UI compatibility; do not
+treat the dashboard as a hardened hosted portal.
 
 See [docs/ad-shared-bundle-analysis.md](docs/ad-shared-bundle-analysis.md) for
 AD bundle behavior, supported files, and safety notes. See

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import tempfile
 import zipfile
+import shutil
 from contextlib import contextmanager
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Iterator
 
 from secureinfra.bundles.ad_shared_bundle import normalize_ad_shared_bundle
@@ -94,6 +95,15 @@ CATEGORY_BY_KEY = {
     "workstation_windows_rdp_exposure": "Workstation Remote Access",
 }
 
+# Client bundles are report-only evidence packages. Keep limits conservative
+# enough for normal collector output while rejecting archive bombs and non-report
+# content before anything is extracted.
+MAX_ZIP_ENTRIES = 512
+MAX_ZIP_MEMBER_SIZE_BYTES = 25 * 1024 * 1024
+ALLOWED_ZIP_EXTENSIONS = {".json", ".csv", ".md", ".txt", ".log"}
+ALLOWED_ZIP_ROOT_FILES = {"client-info.json", "collection-summary.json", "manifest.json"}
+ALLOWED_ZIP_TOP_LEVEL_DIRS = {"ad-shared", "host", "server", "workstation", "network", "logs"}
+
 
 @contextmanager
 def prepared_client_bundle_path(input_path: str | Path) -> Iterator[tuple[Path, str]]:
@@ -115,11 +125,75 @@ def prepared_client_bundle_path(input_path: str | Path) -> Iterator[tuple[Path, 
 
 def safe_extract_zip(archive: zipfile.ZipFile, target_dir: Path) -> None:
     target_root = target_dir.resolve()
-    for member in archive.infolist():
-        destination = (target_dir / member.filename).resolve()
+    members = archive.infolist()
+    if len(members) > MAX_ZIP_ENTRIES:
+        raise ValueError(f"Unsafe zip archive: too many entries ({len(members)} > {MAX_ZIP_ENTRIES})")
+
+    validated_members = []
+    for member in members:
+        parts = validate_zip_member(member)
+        destination = (target_dir / Path(*parts)).resolve()
         if target_root != destination and target_root not in destination.parents:
             raise ValueError(f"Unsafe zip entry path: {member.filename}")
-    archive.extractall(target_dir)
+        validated_members.append((member, destination))
+
+    for member, destination in validated_members:
+        if member.is_dir():
+            destination.mkdir(parents=True, exist_ok=True)
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with archive.open(member) as source, destination.open("wb") as output:
+            shutil.copyfileobj(source, output)
+
+
+def validate_zip_member(member: zipfile.ZipInfo) -> list[str]:
+    raw_name = member.filename
+    normalized_name = raw_name.replace("\\", "/")
+    windows_path = PureWindowsPath(raw_name)
+    if raw_name.startswith(("/", "\\")) or windows_path.is_absolute() or windows_path.drive:
+        raise ValueError(f"Unsafe zip entry absolute path: {raw_name}")
+
+    parts = [part for part in normalized_name.split("/") if part and part != "."]
+    if not parts or any(part == ".." for part in parts):
+        raise ValueError(f"Unsafe zip entry path: {raw_name}")
+
+    if member.file_size > MAX_ZIP_MEMBER_SIZE_BYTES:
+        raise ValueError(
+            f"Unsafe zip entry too large: {raw_name} ({member.file_size} > {MAX_ZIP_MEMBER_SIZE_BYTES} bytes)"
+        )
+
+    if member.is_dir():
+        if not is_allowed_zip_relative_path(parts, is_directory=True):
+            raise ValueError(f"Unsafe zip entry path is not allowed: {raw_name}")
+        return parts
+
+    suffix = Path(parts[-1]).suffix.lower()
+    if suffix not in ALLOWED_ZIP_EXTENSIONS:
+        raise ValueError(f"Unsafe zip entry extension: {raw_name}")
+    if not is_allowed_zip_relative_path(parts, is_directory=False):
+        raise ValueError(f"Unsafe zip entry path is not allowed: {raw_name}")
+    return parts
+
+
+def is_allowed_zip_relative_path(parts: list[str], is_directory: bool) -> bool:
+    if not parts:
+        return False
+    if is_directory and len(parts) == 1:
+        return True
+    if is_allowed_zip_path_without_wrapper(parts, is_directory):
+        return True
+    if len(parts) > 1:
+        return is_allowed_zip_path_without_wrapper(parts[1:], is_directory)
+    return False
+
+
+def is_allowed_zip_path_without_wrapper(parts: list[str], is_directory: bool) -> bool:
+    first = parts[0].lower()
+    if is_directory:
+        return first in ALLOWED_ZIP_TOP_LEVEL_DIRS
+    if len(parts) == 1:
+        return first in ALLOWED_ZIP_ROOT_FILES
+    return first in ALLOWED_ZIP_TOP_LEVEL_DIRS
 
 
 def find_collection_root(root: Path) -> Path:
