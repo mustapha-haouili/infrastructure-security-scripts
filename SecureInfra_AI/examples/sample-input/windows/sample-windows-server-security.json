@@ -1,0 +1,104 @@
+{
+  "ToolName": "Get-WindowsServerSecurityInventory",
+  "ReportType": "windows-server-security-inventory",
+  "GeneratedAtUtc": "2026-06-15T09:00:00Z",
+  "ComputerName": "LAB-SRV01",
+  "Summary": {
+    "InstalledFeatureCount": 2,
+    "ServiceCount": 3,
+    "CustomServiceAccountCount": 1,
+    "ScheduledTaskCount": 2,
+    "SmbShareCount": 2,
+    "SmbShareAccessEntryCount": 3,
+    "FindingCount": 2,
+    "SeverityCounts": {
+      "Critical": 0,
+      "High": 1,
+      "Medium": 1,
+      "Low": 0,
+      "Info": 0
+    }
+  },
+  "InstalledFeatures": [
+    {
+      "Name": "Web-Server",
+      "DisplayName": "Web Server (IIS)",
+      "InstallState": "Installed"
+    },
+    {
+      "Name": "FS-FileServer",
+      "DisplayName": "File Server",
+      "InstallState": "Installed"
+    }
+  ],
+  "Services": [
+    {
+      "Name": "CorpReportingService",
+      "DisplayName": "Corp Example Reporting Service",
+      "State": "Running",
+      "StartMode": "Auto",
+      "StartName": "CORP\\svc-reporting",
+      "PathName": "C:\\Program Files\\Corp Example\\Reporting\\reporting.exe"
+    },
+    {
+      "Name": "LabLegacyTaskAgent",
+      "DisplayName": "Lab Legacy Task Agent",
+      "State": "Stopped",
+      "StartMode": "Manual",
+      "StartName": "LocalSystem",
+      "PathName": "C:\\Program Files\\Lab Tools\\task-agent.exe"
+    }
+  ],
+  "ScheduledTasks": [
+    {
+      "TaskPath": "\\Lab\\",
+      "TaskName": "RefreshInventory",
+      "State": "Ready",
+      "RunLevel": "Highest",
+      "UserId": "CORP\\inventory.operator"
+    }
+  ],
+  "SmbShares": [
+    {
+      "Name": "LabShare",
+      "Path": "D:\\LabShare",
+      "Description": "Fictional lab share",
+      "Special": false
+    }
+  ],
+  "SmbShareAccess": [
+    {
+      "ShareName": "LabShare",
+      "AccountName": "Authenticated Users",
+      "AccessControlType": "Allow",
+      "AccessRight": "Change"
+    }
+  ],
+  "Findings": [
+    {
+      "FindingType": "ServiceRunsAsCustomAccount",
+      "Severity": "High",
+      "Name": "CorpReportingService",
+      "Title": "Service runs as a custom or domain account",
+      "Evidence": "CorpReportingService starts as CORP\\svc-reporting; StartMode=Auto.",
+      "Recommendation": "Confirm owner, credential rotation, least privilege, and dependency before changing the service account.",
+      "RequiresOwnerReview": true,
+      "SafeToAutoRemediate": false
+    },
+    {
+      "FindingType": "BroadSmbShareAccess",
+      "Severity": "Medium",
+      "Name": "LabShare",
+      "Title": "SMB share grants broad access",
+      "Evidence": "LabShare grants Change to Authenticated Users.",
+      "Recommendation": "Validate business need and narrow share permissions through approved change control.",
+      "RequiresOwnerReview": true,
+      "SafeToAutoRemediate": false
+    }
+  ],
+  "ReportErrors": [],
+  "Notes": [
+    "This report is audit-only and does not change server configuration.",
+    "Service, scheduled task, and share permission changes require owner review and approved change control."
+  ]
+}

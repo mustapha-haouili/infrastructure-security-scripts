@@ -1,0 +1,130 @@
+{
+  "ToolName": "Get-WindowsNetworkExposureAudit",
+  "ReportType": "windows-network-exposure",
+  "GeneratedAtUtc": "2026-06-15T09:00:00Z",
+  "ComputerName": "LAB-SRV01",
+  "Summary": {
+    "AdapterCount": 1,
+    "IpConfigurationCount": 1,
+    "DefaultRouteCount": 1,
+    "FirewallProfileCount": 3,
+    "DisabledFirewallProfileCount": 1,
+    "PublicNetworkProfileCount": 1,
+    "ListeningTcpPortCount": 3,
+    "RiskyListenerCount": 2,
+    "FindingCount": 3,
+    "SeverityCounts": {
+      "Critical": 0,
+      "High": 2,
+      "Medium": 1,
+      "Low": 0,
+      "Info": 0
+    }
+  },
+  "NetworkAdapters": [
+    {
+      "Name": "Ethernet0",
+      "InterfaceDescription": "Fictional Lab Adapter",
+      "Status": "Up",
+      "MacAddress": "00-11-22-33-44-55",
+      "LinkSpeed": "10 Gbps"
+    }
+  ],
+  "IPConfigurations": [
+    {
+      "InterfaceAlias": "Ethernet0",
+      "IPv4Address": [
+        "10.10.10.25"
+      ],
+      "IPv4DefaultGateway": "10.10.10.1",
+      "DNSServer": [
+        "10.10.10.10"
+      ]
+    }
+  ],
+  "DnsClientServers": [
+    {
+      "InterfaceAlias": "Ethernet0",
+      "ServerAddresses": [
+        "10.10.10.10"
+      ]
+    }
+  ],
+  "DefaultRoutes": [
+    {
+      "InterfaceAlias": "Ethernet0",
+      "DestinationPrefix": "0.0.0.0/0",
+      "NextHop": "10.10.10.1",
+      "RouteMetric": 10
+    }
+  ],
+  "FirewallProfiles": [
+    {
+      "Name": "Public",
+      "Enabled": false,
+      "DefaultInboundAction": "Allow"
+    },
+    {
+      "Name": "Domain",
+      "Enabled": true,
+      "DefaultInboundAction": "Block"
+    }
+  ],
+  "NetworkProfiles": [
+    {
+      "Name": "Lab Guest Network",
+      "InterfaceAlias": "Ethernet0",
+      "NetworkCategory": "Public",
+      "IPv4Connectivity": "Internet"
+    }
+  ],
+  "ListeningTcpPorts": [
+    {
+      "LocalAddress": "0.0.0.0",
+      "LocalPort": 3389,
+      "OwningProcess": 1200,
+      "ProcessName": "svchost"
+    },
+    {
+      "LocalAddress": "10.10.10.25",
+      "LocalPort": 8443,
+      "OwningProcess": 4300,
+      "ProcessName": "labapp"
+    }
+  ],
+  "Findings": [
+    {
+      "FindingType": "FirewallProfileDisabled",
+      "Severity": "High",
+      "Title": "Windows Firewall profile is disabled",
+      "Evidence": "Public profile Enabled=False.",
+      "Recommendation": "Enable the firewall profile after validating approved rules and remote administration requirements.",
+      "RequiresOwnerReview": true,
+      "SafeToAutoRemediate": false
+    },
+    {
+      "FindingType": "PublicNetworkProfileActive",
+      "Severity": "Medium",
+      "Title": "Public network profile is active",
+      "Evidence": "Ethernet0 is using the Public network category.",
+      "Recommendation": "Confirm the network classification is intended and firewall rules are restrictive.",
+      "RequiresOwnerReview": true,
+      "SafeToAutoRemediate": false
+    },
+    {
+      "FindingType": "RiskyListeningPort",
+      "Severity": "High",
+      "Title": "Sensitive TCP port is listening",
+      "Evidence": "TCP 3389 is listening on all interfaces by process svchost.",
+      "Recommendation": "Confirm the listener is required and restricted by host and network firewall policy.",
+      "RequiresOwnerReview": true,
+      "SafeToAutoRemediate": false
+    }
+  ],
+  "ReportErrors": [],
+  "Notes": [
+    "This report is audit-only and does not scan remote hosts.",
+    "Network and firewall changes require owner review and approved change control.",
+    "The example subnet is fictional: 10.10.10.0/24."
+  ]
+}

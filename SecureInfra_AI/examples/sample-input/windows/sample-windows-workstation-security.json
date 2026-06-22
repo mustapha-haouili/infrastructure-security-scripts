@@ -1,0 +1,101 @@
+{
+  "ToolName": "Get-WindowsWorkstationSecurityInventory",
+  "ReportType": "windows-workstation-security-inventory",
+  "GeneratedAtUtc": "2026-06-15T09:00:00Z",
+  "ComputerName": "LAB-WS01",
+  "Summary": {
+    "DefenderRealTimeProtectionEnabled": false,
+    "BitLockerFixedVolumeCount": 1,
+    "BitLockerUnprotectedFixedVolumeCount": 1,
+    "FirewallProfileCount": 3,
+    "DisabledFirewallProfileCount": 1,
+    "LocalUserCount": 3,
+    "EnabledLocalUserCount": 2,
+    "FindingCount": 3,
+    "SeverityCounts": {
+      "Critical": 0,
+      "High": 2,
+      "Medium": 1,
+      "Low": 0,
+      "Info": 0
+    }
+  },
+  "DefenderStatus": {
+    "AMServiceEnabled": true,
+    "AntivirusEnabled": true,
+    "RealTimeProtectionEnabled": false
+  },
+  "BitLockerVolumes": [
+    {
+      "MountPoint": "C:",
+      "VolumeStatus": "FullyDecrypted",
+      "ProtectionStatus": "Off",
+      "EncryptionPercentage": 0,
+      "EncryptionMethod": "None"
+    }
+  ],
+  "FirewallProfiles": [
+    {
+      "Name": "Public",
+      "Enabled": false
+    },
+    {
+      "Name": "Domain",
+      "Enabled": true
+    }
+  ],
+  "LocalUsers": [
+    {
+      "Name": "local.support",
+      "Enabled": true,
+      "SID": "S-1-5-21-1111111111-2222222222-3333333333-1001"
+    }
+  ],
+  "RemoteAssistance": {
+    "fAllowToGetHelp": 0
+  },
+  "LlmnrPolicy": {
+    "EnableMulticast": 1
+  },
+  "PowerShellLogging": {
+    "EnableScriptBlockLogging": 0
+  },
+  "Findings": [
+    {
+      "FindingType": "DefenderRealTimeProtectionDisabled",
+      "Severity": "High",
+      "Name": "Defender",
+      "Title": "Defender real-time protection is disabled",
+      "Evidence": "RealTimeProtectionEnabled=False.",
+      "Recommendation": "Re-enable real-time protection unless an approved endpoint security exception exists.",
+      "RequiresOwnerReview": true,
+      "SafeToAutoRemediate": false
+    },
+    {
+      "FindingType": "BitLockerVolumeNotProtected",
+      "Severity": "High",
+      "Name": "C:",
+      "Title": "Fixed volume is not fully protected by BitLocker",
+      "Evidence": "C: ProtectionStatus=Off; VolumeStatus=FullyDecrypted.",
+      "Recommendation": "Confirm encryption policy and enable BitLocker only through approved endpoint management workflow.",
+      "RequiresOwnerReview": true,
+      "SafeToAutoRemediate": false
+    },
+    {
+      "FindingType": "LlmnrNotDisabledByPolicy",
+      "Severity": "Medium",
+      "Name": "LLMNR",
+      "Title": "LLMNR is not disabled by policy",
+      "Evidence": "EnableMulticast=1.",
+      "Recommendation": "Disable LLMNR via approved policy after validating name-resolution dependencies.",
+      "RequiresOwnerReview": true,
+      "SafeToAutoRemediate": false
+    }
+  ],
+  "ReportErrors": [],
+  "Notes": [
+    "This report is audit-only and does not change workstation configuration.",
+    "Endpoint hardening changes require owner review and approved change control.",
+    "Fictional lab domain marker: corp.example.test."
+  ]
+}

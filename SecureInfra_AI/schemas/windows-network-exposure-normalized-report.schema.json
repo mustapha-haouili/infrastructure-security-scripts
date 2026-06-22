@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/secureinfra-ai/schemas/windows-network-exposure-normalized-report.schema.json",
+  "title": "SecureInfra AI Windows Network Exposure Normalized Report",
+  "description": "Strict normalized report contract for beta standalone Windows network exposure analysis.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "report_id",
+    "tool_name",
+    "report_type",
+    "source_files",
+    "generated_at_utc",
+    "environment_summary",
+    "summary",
+    "report_type_metadata",
+    "findings",
+    "metadata",
+    "notes"
+  ],
+  "properties": {
+    "report_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tool_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "report_type": {
+      "type": "string",
+      "enum": [
+        "windows-network-exposure"
+      ]
+    },
+    "source_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "generated_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "environment_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "company",
+        "domain",
+        "computer_name",
+        "scope",
+        "source_script",
+        "source_report_type",
+        "input_finding_count"
+      ],
+      "properties": {
+        "company": {
+          "type": "string"
+        },
+        "domain": {
+          "type": "string"
+        },
+        "computer_name": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "Network"
+          ]
+        },
+        "source_script": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_report_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input_finding_count": {
+          "type": "integer"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "total_findings",
+        "normalized_finding_count",
+        "severity_counts",
+        "source_summary"
+      ],
+      "properties": {
+        "total_findings": {
+          "type": "integer"
+        },
+        "normalized_finding_count": {
+          "type": "integer"
+        },
+        "severity_counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "Critical",
+            "High",
+            "Medium",
+            "Low",
+            "Info",
+            "Hold"
+          ],
+          "properties": {
+            "Critical": {
+              "type": "integer"
+            },
+            "High": {
+              "type": "integer"
+            },
+            "Medium": {
+              "type": "integer"
+            },
+            "Low": {
+              "type": "integer"
+            },
+            "Info": {
+              "type": "integer"
+            },
+            "Hold": {
+              "type": "integer"
+            }
+          }
+        },
+        "source_summary": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "report_type_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "report_type",
+        "scope",
+        "source_file",
+        "source_script",
+        "source_report_type",
+        "source_summary",
+        "normalizer_status"
+      ],
+      "properties": {
+        "report_type": {
+          "type": "string",
+          "enum": [
+            "windows-network-exposure"
+          ]
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "Network"
+          ]
+        },
+        "source_file": {
+          "type": "string"
+        },
+        "source_script": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_report_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_summary": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "normalizer_status": {
+          "type": "string",
+          "enum": [
+            "beta"
+          ]
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "finding.schema.json"
+      }
+    },
+    "correlations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "history_comparison": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "normalizer",
+        "normalizer_version",
+        "risk_engine",
+        "ai_required",
+        "scope",
+        "source_report_type",
+        "schema"
+      ],
+      "properties": {
+        "normalizer": {
+          "type": "string",
+          "enum": [
+            "windows_network_exposure"
+          ]
+        },
+        "normalizer_version": {
+          "type": "string"
+        },
+        "risk_engine": {
+          "type": "string"
+        },
+        "ai_required": {
+          "type": "boolean"
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "Network"
+          ]
+        },
+        "source_report_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schema": {
+          "type": "string",
+          "enum": [
+            "windows-network-exposure-normalized-report.schema.json"
+          ]
+        }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
