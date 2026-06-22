@@ -22,6 +22,19 @@ The analyzer discovers:
   `collection-summary.json`
 - collection folders that contain `ad-shared/`
 
+Zip archives are treated as untrusted input. Before extraction, SecureInfra AI
+validates every entry and rejects:
+
+- parent-directory traversal paths such as `../evil.json`
+- absolute paths, including Windows drive paths such as `C:\Temp\evil.json`
+- backslash traversal variants
+- unexpected extensions such as `.html`, `.exe`, `.ps1`, and `.bat`
+- archives with more than 512 entries
+- files with an uncompressed size above 25 MiB
+
+Allowed file extensions are limited to current collector/report outputs:
+`.json`, `.csv`, `.md`, `.txt`, and `.log`. Bundle content is never executed.
+
 ## Command
 
 ```bash

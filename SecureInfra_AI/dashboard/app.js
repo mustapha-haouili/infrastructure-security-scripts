@@ -353,7 +353,13 @@
       const item = document.createElement("div");
       item.className = "source-item";
       const machine = file.machineName ? ` - ${file.machineName}` : "";
-      item.innerHTML = `<strong>${escapeHtml(file.name)}</strong><span>${escapeHtml(file.scope || "Unknown")} - ${escapeHtml(file.reportType)}${escapeHtml(machine)} - ${file.findingCount} finding${file.findingCount === 1 ? "" : "s"}</span>`;
+      item.append(
+        textElement("strong", file.name),
+        textElement(
+          "span",
+          `${file.scope || "Unknown"} - ${file.reportType}${machine} - ${file.findingCount} finding${file.findingCount === 1 ? "" : "s"}`
+        )
+      );
       if (file.error) {
         const error = document.createElement("span");
         error.textContent = file.error;
@@ -508,11 +514,11 @@
   function coverageStatusCard(coverage) {
     const card = document.createElement("article");
     card.className = `coverage-card status-${coverage.statusClass}`;
-    card.innerHTML = `
-      <span>Quality</span>
-      <strong>${escapeHtml(coverage.status)}</strong>
-      <small>${escapeHtml(coverage.collectionId || coverage.computerName || "Client bundle")}</small>
-    `;
+    card.append(
+      textElement("span", "Quality"),
+      textElement("strong", coverage.status),
+      textElement("small", coverage.collectionId || coverage.computerName || "Client bundle")
+    );
     return card;
   }
 
@@ -523,11 +529,11 @@
     const detail = row.machineCount
       ? `${row.status} - ${row.collectedCount}/${row.machineCount} collected - ${row.fileCount} files`
       : `${row.status} - ${row.fileCount} file${row.fileCount === 1 ? "" : "s"}`;
-    card.innerHTML = `
-      <span>${escapeHtml(row.scope)}</span>
-      <strong>${escapeHtml(row.findingCount)}</strong>
-      <small>${escapeHtml(detail)}</small>
-    `;
+    card.append(
+      textElement("span", row.scope),
+      textElement("strong", row.findingCount),
+      textElement("small", detail)
+    );
     card.addEventListener("click", () => {
       state.filters.scope = row.scope;
       render();
@@ -542,11 +548,11 @@
       const button = document.createElement("button");
       button.type = "button";
       button.className = `machine-card ${machine.statusClass}`;
-      button.innerHTML = `
-        <span>${escapeHtml(machine.coverageStatus)}</span>
-        <strong>${escapeHtml(machine.machineName)}</strong>
-        <small>${machine.findingCount} findings - ${machine.critical} Critical - ${machine.high} High</small>
-      `;
+      button.append(
+        textElement("span", machine.coverageStatus),
+        textElement("strong", machine.machineName),
+        textElement("small", `${machine.findingCount} findings - ${machine.critical} Critical - ${machine.high} High`)
+      );
       button.addEventListener("click", () => {
         state.filters.machine = machine.machineName;
         render();
@@ -588,7 +594,9 @@
     elements.findingsTable.replaceChildren();
     if (!visible.length) {
       const row = document.createElement("tr");
-      row.innerHTML = `<td colspan="5" class="empty-state">No findings match the current scope.</td>`;
+      const cell = textElement("td", "No findings match the current scope.", "empty-state");
+      cell.colSpan = 5;
+      row.appendChild(cell);
       elements.findingsTable.appendChild(row);
       return;
     }
@@ -596,14 +604,40 @@
       const row = document.createElement("tr");
       row.className = finding.dashboard_id === state.selectedId ? "active" : "";
       const historyStatus = historyStatusForFinding(finding);
-      const historyBadge = historyStatus ? `<span class="history-badge ${historyStatus.toLowerCase()}">${historyStatus}</span>` : "";
-      row.innerHTML = `
-        <td><span class="severity-pill severity-${finding.severity}">${finding.severity}</span></td>
-        <td><span class="finding-title">${escapeHtml(finding.title)}</span><span class="finding-id">${escapeHtml(finding.finding_id)}</span>${historyBadge}</td>
-        <td>${escapeHtml(finding.affected_object)}<span class="cell-muted">${escapeHtml(finding.object_type)}</span></td>
-        <td><span class="scope-tag">${escapeHtml(finding.scope || "Unknown")}</span>${escapeHtml(finding.source_script)}<span class="cell-muted">${escapeHtml(finding.machine_name || fileName(finding.source_file))}</span><span class="cell-muted">${escapeHtml(fileName(finding.source_file))}</span></td>
-        <td>${escapeHtml(finding.status)}</td>
-      `;
+      const severityCell = document.createElement("td");
+      const severity = SEVERITIES.includes(finding.severity) ? finding.severity : "Info";
+      severityCell.appendChild(textElement("span", severity, `severity-pill severity-${severity}`));
+
+      const findingCell = document.createElement("td");
+      findingCell.append(
+        textElement("span", finding.title, "finding-title"),
+        textElement("span", finding.finding_id, "finding-id")
+      );
+      if (historyStatus) {
+        findingCell.appendChild(textElement("span", historyStatus, `history-badge ${historyClass(historyStatus)}`));
+      }
+
+      const objectCell = document.createElement("td");
+      objectCell.append(
+        document.createTextNode(finding.affected_object),
+        textElement("span", finding.object_type, "cell-muted")
+      );
+
+      const sourceCell = document.createElement("td");
+      sourceCell.append(
+        textElement("span", finding.scope || "Unknown", "scope-tag"),
+        document.createTextNode(finding.source_script),
+        textElement("span", finding.machine_name || fileName(finding.source_file), "cell-muted"),
+        textElement("span", fileName(finding.source_file), "cell-muted")
+      );
+
+      row.append(
+        severityCell,
+        findingCell,
+        objectCell,
+        sourceCell,
+        textElement("td", finding.status)
+      );
       row.addEventListener("click", () => {
         state.selectedId = finding.dashboard_id;
         render();
@@ -632,8 +666,9 @@
 
     const fragment = elements.detailTemplate.content.cloneNode(true);
     const pill = fragment.querySelector(".severity-pill");
-    pill.textContent = finding.severity;
-    pill.classList.add(`severity-${finding.severity}`);
+    const severity = SEVERITIES.includes(finding.severity) ? finding.severity : "Info";
+    pill.textContent = severity;
+    pill.classList.add(`severity-${severity}`);
     fragment.querySelector(".detail-header h2").textContent = finding.title;
     fragment.querySelector(".detail-header p").textContent = finding.affected_object;
     const meta = fragment.querySelector(".detail-meta");
@@ -666,7 +701,10 @@
     entries.slice(0, 32).forEach(([key, value]) => {
       const item = document.createElement("div");
       item.className = "evidence-item";
-      item.innerHTML = `<span class="evidence-key">${escapeHtml(key)}</span><span class="evidence-value">${escapeHtml(renderValue(value))}</span>`;
+      item.append(
+        textElement("span", key, "evidence-key"),
+        textElement("span", renderValue(value), "evidence-value")
+      );
       container.appendChild(item);
     });
   }
@@ -685,7 +723,10 @@
       const button = document.createElement("button");
       button.type = "button";
       button.className = "related-link";
-      button.innerHTML = `<strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.affected_object)} - ${escapeHtml(item.source_script)}</span>`;
+      button.append(
+        textElement("strong", item.title),
+        textElement("span", `${item.affected_object} - ${item.source_script}`)
+      );
       button.addEventListener("click", () => {
         state.selectedId = item.dashboard_id;
         render();
@@ -889,7 +930,7 @@
           critical: Number(counts.Critical || 0),
           high: Number(counts.High || 0),
           coverageStatus: stringValue(item.coverage_status || "Partial"),
-          statusClass: stringValue(item.coverage_status_class || classForCoverageStatus(item.coverage_status)),
+          statusClass: classForCoverageStatus(item.coverage_status),
         };
       })
       .sort((a, b) => b.critical - a.critical || b.high - a.high || b.findingCount - a.findingCount || a.machineName.localeCompare(b.machineName));
@@ -908,7 +949,7 @@
         fileCount: Number(item.file_count || 0),
         requiredMissing: arrayValue(item.required_missing),
         status: stringValue(item.status || "Partial"),
-        statusClass: stringValue(item.status_class || classForCoverageStatus(item.status)),
+        statusClass: classForCoverageStatus(item.status),
       }))
       .filter((item) => SCOPES.includes(item.scope));
   }
@@ -1230,6 +1271,19 @@
     const dd = document.createElement("dd");
     dd.textContent = value || "Not provided";
     meta.append(dt, dd);
+  }
+
+  function textElement(tagName, value, className = "") {
+    const element = document.createElement(tagName);
+    if (className) {
+      element.className = className;
+    }
+    element.textContent = String(value ?? "");
+    return element;
+  }
+
+  function historyClass(value) {
+    return value === "New" ? "new" : value === "Persistent" ? "persistent" : "";
   }
 
   function searchableText(finding) {
