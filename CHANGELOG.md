@@ -17,6 +17,16 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 - Added direct analyzer types for `ad-password-never-expires`, `ad-service-accounts`, `ad-spn-exposure`, and `ad-stale-computers`.
 - Added SecureInfra AI normalizers for privileged group changes, privileged identity protection findings, and GPO health findings.
 - Added direct analyzer types for `ad-privileged-groups`, `ad-privileged-identity`, and `gpo-health`.
+- Added dependency-free normalized report schema validation before SecureInfra AI writes JSON and Markdown outputs.
+- Added a local static SecureInfra Dashboard for JSON report triage, severity metrics, filtering, evidence detail, and related-finding links.
+- Added dashboard scope filtering and client-bundle collection coverage status for loaded, missing, failed, and not-collected scope files.
+- Added deterministic cross-source correlation groups to normalized reports and dashboard related-finding views.
+- Added historical comparison for repeated SecureInfra AI runs, including `--previous-normalized-report`, `history_comparison`, Markdown summaries, and dashboard trend display.
+- Added `client-bundle` analyzer support for full SecureInfra client collection folders and zip archives, combining supported AD, host, server, and workstation evidence into one normalized report.
+- Added beta standalone SecureInfra AI analyzer types for `windows-host-audit`, `windows-server-audit`, `windows-workstation-audit`, and `windows-network-exposure`.
+- Added strict dependency-free normalized output schemas and fictional sample inputs for the beta standalone Windows analyzer types.
+- Added `Start-SecureInfraClientCollection.ps1` to run supported safe client-side checks, create manifest and summary files, and package a send-back zip bundle.
+- Added Windows local administrator inventory and RDP exposure audit scripts, exposed through server and workstation collection scopes.
 - Renamed the privileged identity audit threshold parameter to `-MaxCredentialAgeDays` to avoid PowerShell analyzer credential-parameter false positives.
 - Added the `SecureInfra_AI/` layer for deterministic AI-ready infrastructure security analysis and reporting.
 - Added SecureInfra AI finding, normalized report, and future AI report schemas.

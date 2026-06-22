@@ -17,7 +17,10 @@ This roadmap describes planned improvements for the AI-ready reporting layer.
 - Completed Active Directory privileged group reports.
 - Completed Active Directory privileged identity protection reports.
 - Completed Group Policy health reports.
-- Windows host audit reports.
+- Completed beta standalone Windows host audit reports with `windows-host-audit`.
+- Completed beta standalone Windows server audit reports with `windows-server-audit`.
+- Completed beta standalone Windows workstation audit reports with `windows-workstation-audit`.
+- Completed beta standalone Windows network exposure reports with `windows-network-exposure`.
 - Linux host audit reports.
 - Secret scan reports.
 - Monitoring health reports.
@@ -36,9 +39,10 @@ This roadmap describes planned improvements for the AI-ready reporting layer.
 
 ## Phase 3 - Report Standardization
 
-- Stronger schema validation.
-- Cross-source finding correlation.
-- Historical comparison.
+- Completed normalized-report schema validation before analyzer output.
+- Added first local static HTML dashboard for report triage.
+- Added first deterministic cross-source finding correlation output.
+- Added historical comparison for repeated normalized report runs.
 - Customer-ready report templates.
 - Language support for English and German.
 
@@ -53,7 +57,7 @@ This roadmap describes planned improvements for the AI-ready reporting layer.
 ## Future Ideas
 
 - Wazuh alert analysis after core normalizers are stable.
-- HTML report output.
+- Expanded HTML dashboard views and saved review sessions.
 - PDF generation in a private commercial layer.
 - Customer dashboard integration outside the public repository.
 - Signed report artifacts.
