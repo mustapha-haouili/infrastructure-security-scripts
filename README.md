@@ -1,11 +1,13 @@
 ﻿# Infrastructure Security Scripts
 
-A practical collection of enterprise infrastructure security, automation, hardening, and DevSecOps scripts focused on Windows and Linux environments.
+A practical defensive infrastructure security toolkit for enterprise Windows, Linux, Active Directory, DevSecOps, monitoring, hardening, evidence collection, and local security reporting.
 
-This repository is designed for defensive security operations, infrastructure administration, and repeatable baseline checks across enterprise environments.
+This repository is designed for defensive security operations, infrastructure administration, repeatable baseline checks, and audit-first infrastructure security assessments across enterprise environments.
 
-Current version: `1.1.0`. See [CHANGELOG.md](CHANGELOG.md) and
-[v1.1.0 release notes](docs/releases/v1.1.0.md) for the release baseline.
+It includes the SecureInfra_AI layer for deterministic, local, AI-ready analysis of infrastructure evidence. This layer can normalize security findings, generate JSON and Markdown reports, compare historical runs, analyze client bundles, review fleet evidence, and display reports in a local dashboard.
+
+Current version: `1.2.0-beta.1`. See [CHANGELOG.md](CHANGELOG.md) and
+[v1.2.0-beta.1 release notes](docs/releases/v1.2.0-beta.1.md) for the current beta release baseline.
 
 ## Focus areas
 
