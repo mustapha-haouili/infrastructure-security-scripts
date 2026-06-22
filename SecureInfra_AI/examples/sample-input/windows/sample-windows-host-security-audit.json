@@ -1,0 +1,207 @@
+{
+  "ReportMetadata": {
+    "ComputerName": "LAB-DC01",
+    "GeneratedAtUtc": "2026-06-15T09:00:00Z",
+    "User": "LAB\\audit.operator",
+    "IsAdministrator": true,
+    "ScriptName": "Invoke-WindowsSecurityAudit.ps1"
+  },
+  "Summary": {
+    "Posture": "Review Required",
+    "FindingCount": 2,
+    "SeverityCounts": {
+      "Critical": 0,
+      "High": 1,
+      "Medium": 1,
+      "Low": 0,
+      "Info": 0
+    },
+    "RecommendedReviewOrder": [
+      {
+        "Id": "WIN-DEF-003",
+        "Severity": "High",
+        "Area": "Endpoint protection",
+        "Title": "Microsoft Defender Antivirus is disabled by policy",
+        "Recommendation": "Confirm approved endpoint protection and remove the disabling policy if Defender owns this control.",
+        "SuggestedFix": "Remove the Defender-disable policy unless a centrally managed EDR owns endpoint protection.",
+        "AutoFixEligible": false,
+        "RequiresAdmin": true,
+        "RiskLevel": "High",
+        "ExceptionGuidance": "Record the endpoint security product, management policy, owner, and current healthy status."
+      }
+    ],
+    "Notes": [
+      "Severity is a practical triage score for this script, not a formal compliance result.",
+      "SuggestedFix describes the next remediation action; no changes were made by this audit."
+    ]
+  },
+  "Findings": [
+    {
+      "Id": "WIN-DEF-003",
+      "Severity": "High",
+      "Area": "Endpoint protection",
+      "Title": "Microsoft Defender Antivirus is disabled by policy",
+      "WhyItMatters": "A policy that turns off antivirus can remove a core prevention and detection layer.",
+      "Recommendation": "Confirm approved endpoint protection and remove the disabling policy if Defender owns this control.",
+      "SuggestedFix": "Remove the Defender-disable policy unless a centrally managed EDR owns endpoint protection.",
+      "AutoFixEligible": false,
+      "RequiresAdmin": true,
+      "RiskLevel": "High",
+      "ExceptionGuidance": "Record the endpoint security product, management policy, owner, and current healthy status.",
+      "Evidence": "DisableAntiSpyware=1",
+      "OperationalNote": "",
+      "Standards": [
+        {
+          "Standard": "CIS",
+          "Recommendation": "18.10.43.17",
+          "Level": "L1",
+          "Source": "Wazuh SCA",
+          "WazuhWin2019CheckId": "16799",
+          "WazuhWin11EnterpriseCheckId": "26403"
+        }
+      ]
+    },
+    {
+      "Id": "WIN-PS-001",
+      "Severity": "Medium",
+      "Area": "PowerShell logging",
+      "Title": "PowerShell script block logging is not enabled by policy",
+      "WhyItMatters": "Script block logging improves visibility into suspicious PowerShell execution during investigations.",
+      "Recommendation": "Enable PowerShell script block logging and send logs to a protected central collection path.",
+      "SuggestedFix": "Enable PowerShell script block logging through approved policy.",
+      "AutoFixEligible": true,
+      "RequiresAdmin": true,
+      "RiskLevel": "Low",
+      "ExceptionGuidance": "Document the alternate PowerShell monitoring control if script block logging is intentionally disabled.",
+      "Evidence": "EnableScriptBlockLogging=0; expected 1",
+      "OperationalNote": "Review log retention and sensitive-data handling before broad rollout.",
+      "Standards": [
+        {
+          "Standard": "CIS",
+          "Recommendation": "18.10.87.1",
+          "Level": "L1",
+          "Source": "Wazuh SCA",
+          "WazuhWin2019CheckId": "16829",
+          "WazuhWin11EnterpriseCheckId": "26460"
+        }
+      ]
+    }
+  ],
+  "OperatingSystem": {
+    "Caption": "Microsoft Windows Server 2022 Datacenter",
+    "Version": "20348.1",
+    "BuildNumber": "20348",
+    "InstallDate": "20250101090000.000000+000",
+    "LastBootUpTime": "20260601080000.000000+000",
+    "Domain": "corp.example.test",
+    "Manufacturer": "Fictional Lab Systems",
+    "Model": "Virtual Machine"
+  },
+  "FirewallProfiles": [
+    {
+      "Name": "Domain",
+      "Enabled": true,
+      "DefaultInboundAction": "Block",
+      "DefaultOutboundAction": "Allow",
+      "AllowInboundRules": true,
+      "NotifyOnListen": false,
+      "LogFileName": "%systemroot%\\system32\\LogFiles\\Firewall\\pfirewall.log",
+      "LogMaxSizeKilobytes": 16384,
+      "LogAllowed": false,
+      "LogBlocked": true
+    }
+  ],
+  "Defender": {
+    "AMServiceEnabled": true,
+    "AntispywareEnabled": false,
+    "AntivirusEnabled": false,
+    "RealTimeProtectionEnabled": false,
+    "BehaviorMonitorEnabled": true,
+    "IoavProtectionEnabled": true,
+    "NISEnabled": true,
+    "AntivirusSignatureLastUpdated": "2026-06-14T18:00:00Z"
+  },
+  "LocalAdministrators": [
+    {
+      "Name": "LAB\\Server Admins",
+      "ObjectClass": "Group",
+      "PrincipalSource": "ActiveDirectory"
+    }
+  ],
+  "LocalAccounts": {
+    "Guest": {
+      "Name": "Guest",
+      "Disabled": true,
+      "SID": "S-1-5-21-1111111111-2222222222-3333333333-501",
+      "LocalAccount": true
+    }
+  },
+  "PasswordPolicy": {
+    "Minimum password length": "14",
+    "Maximum password age": "90",
+    "Lockout threshold": "5"
+  },
+  "AuditPolicy": [
+    {
+      "Subcategory": "Logon",
+      "Subcategory GUID": "{0CCE9215-69AE-11D9-BED3-505054503030}",
+      "Inclusion Setting": "Success and Failure"
+    }
+  ],
+  "SecurityServices": [
+    {
+      "Name": "WinDefend",
+      "DisplayName": "Microsoft Defender Antivirus Service",
+      "Status": "Running",
+      "StartType": "Automatic"
+    }
+  ],
+  "ListeningTcpPorts": [
+    {
+      "LocalAddress": "10.10.10.10",
+      "LocalPort": 5986,
+      "ProcessId": 4,
+      "ProcessName": "System"
+    }
+  ],
+  "RemoteAccess": {
+    "RdpDenyConnections": 1,
+    "RdpNlaRequired": 1,
+    "WinRmService": "Running"
+  },
+  "CoreSettings": {
+    "Smb1ServerEnabled": false,
+    "Smb1ServerRegistry": 0,
+    "Smb1ClientDriverStart": 4,
+    "UacEnabled": 1,
+    "UacConsentPromptBehaviorAdmin": 2,
+    "UacPromptOnSecureDesktop": 1,
+    "LlmnrEnabledPolicy": 0,
+    "InsecureGuestAuthPolicy": 0,
+    "DefenderDisableAntiSpywarePolicy": 1,
+    "PowerShellVersion": "5.1.20348.1"
+  },
+  "PowerShellLogging": {
+    "ScriptBlockLoggingEnabled": 0,
+    "TranscriptionEnabled": 1
+  },
+  "WinRmPolicy": {
+    "ClientAllowBasic": 0,
+    "ClientAllowUnencryptedTraffic": 0,
+    "ClientAllowDigest": 0,
+    "ServiceAllowBasic": 0,
+    "ServiceAllowAutoConfig": 1,
+    "ServiceAllowUnencryptedTraffic": 0,
+    "ServiceDisableRunAs": 1,
+    "AllowRemoteShellAccess": 0
+  },
+  "BitLocker": [
+    {
+      "MountPoint": "C:",
+      "VolumeStatus": "FullyEncrypted",
+      "ProtectionStatus": "On",
+      "EncryptionPercentage": 100,
+      "EncryptionMethod": "XtsAes256"
+    }
+  ]
+}
