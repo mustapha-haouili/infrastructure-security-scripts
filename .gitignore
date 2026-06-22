@@ -34,3 +34,8 @@ Thumbs.db
 # internal Rule
 scripts/ruleset
 *.yml
+
+#docs
+docs/review-artifacts/
+secureinfra_review_outputs/
+*.csv
