@@ -1,5 +1,11 @@
 ﻿# Infrastructure Security Scripts
 
+![CI](https://github.com/mustapha-haouili/infrastructure-security-scripts/actions/workflows/static-checks.yml/badge.svg)
+![Release](https://img.shields.io/github/v/release/mustapha-haouili/infrastructure-security-scripts?include_prereleases)
+![License](https://img.shields.io/github/license/mustapha-haouili/infrastructure-security-scripts)
+![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue)
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
+
 A practical defensive infrastructure security toolkit for enterprise Windows, Linux, Active Directory, DevSecOps, monitoring, hardening, evidence collection, and local security reporting.
 
 This repository is designed for defensive security operations, infrastructure administration, repeatable baseline checks, and audit-first infrastructure security assessments across enterprise environments.
