@@ -6,39 +6,44 @@ from pathlib import Path
 from typing import Any
 
 from secureinfra.normalizers.ad_common import (
+    activity_evidence_context,
     base_normalized_report,
     build_common_finding,
     generated_at_utc,
     normalize_source_severity,
+    optional_bool,
+    optional_int,
     row_identifier,
+    service_account_classification,
     source_script,
     split_text_or_list,
 )
-from secureinfra.risk_engine.rules import as_bool, as_int
 
 
 def build_evidence(row: dict[str, Any]) -> dict[str, Any]:
+    classification = service_account_classification(row)
     return {
         "finding_type": str(row.get("FindingType") or ""),
         "action_priority": str(row.get("ActionPriority") or ""),
         "subject": str(row.get("Subject") or row.get("SamAccountName") or ""),
         "group_name": str(row.get("GroupName") or row.get("EffectivePrivilegedGroupsText") or ""),
         "identity_category": str(row.get("IdentityCategory") or ""),
-        "enabled": as_bool(row.get("Enabled")),
-        "critical_group_member": as_bool(row.get("CriticalGroupMember")),
-        "nested_privileged_access": as_bool(row.get("NestedPrivilegedAccess")),
-        "protected_users_member": as_bool(row.get("ProtectedUsersMember")),
-        "smartcard_logon_required": as_bool(row.get("SmartcardLogonRequired")),
-        "account_not_delegated": as_bool(row.get("AccountNotDelegated")),
-        "password_never_expires": as_bool(row.get("PasswordNeverExpires")),
-        "password_age_days": as_int(row.get("PasswordAgeDays"), 0),
-        "inactive_days": as_int(row.get("InactiveDays"), 0),
-        "does_not_require_pre_auth": as_bool(row.get("DoesNotRequirePreAuth")),
-        "trusted_for_delegation": as_bool(row.get("TrustedForDelegation")),
-        "trusted_to_auth_for_delegation": as_bool(row.get("TrustedToAuthForDelegation")),
-        "has_spn": as_bool(row.get("HasSPN")),
-        "spn_count": as_int(row.get("SPNCount"), 0),
-        "owner_evidence_missing": as_bool(row.get("OwnerEvidenceMissing")),
+        "enabled": optional_bool(row.get("Enabled")),
+        "critical_group_member": optional_bool(row.get("CriticalGroupMember")),
+        "nested_privileged_access": optional_bool(row.get("NestedPrivilegedAccess")),
+        "protected_users_member": optional_bool(row.get("ProtectedUsersMember")),
+        "smartcard_logon_required": optional_bool(row.get("SmartcardLogonRequired")),
+        "account_not_delegated": optional_bool(row.get("AccountNotDelegated")),
+        "password_never_expires": optional_bool(row.get("PasswordNeverExpires")),
+        "password_age_days": optional_int(row.get("PasswordAgeDays")),
+        "inactive_days": optional_int(row.get("InactiveDays")),
+        "does_not_require_pre_auth": optional_bool(row.get("DoesNotRequirePreAuth")),
+        "trusted_for_delegation": optional_bool(row.get("TrustedForDelegation")),
+        "trusted_to_auth_for_delegation": optional_bool(row.get("TrustedToAuthForDelegation")),
+        "has_spn": optional_bool(row.get("HasSPN")),
+        "spn_count": optional_int(row.get("SPNCount")),
+        "admin_count": optional_int(row.get("AdminCount")),
+        "owner_evidence_missing": optional_bool(row.get("OwnerEvidenceMissing")),
         "mfa_conditional_access_status": str(row.get("MFAConditionalAccessStatus") or ""),
         "risk_flags": split_text_or_list(row.get("RiskFlags") or row.get("RiskFlagsText")),
         "review_reasons": split_text_or_list(row.get("ReviewReasons") or row.get("ReviewReasonsText")),
@@ -46,6 +51,8 @@ def build_evidence(row: dict[str, Any]) -> dict[str, Any]:
         "admin_action": str(row.get("AdminAction") or row.get("RecommendedAction") or ""),
         "verification_step": str(row.get("VerificationStep") or row.get("NextReviewStep") or ""),
         "distinguished_name": str(row.get("DistinguishedName") or ""),
+        **activity_evidence_context(row),
+        **classification,
     }
 
 

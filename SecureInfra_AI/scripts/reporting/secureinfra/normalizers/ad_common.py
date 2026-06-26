@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from collections import Counter
 from pathlib import Path
@@ -24,6 +25,136 @@ def first_present(data: dict[str, Any], names: list[str], default: Any = None) -
         if key is not None and data.get(key) not in (None, ""):
             return data.get(key)
     return default
+
+
+def optional_bool(value: Any) -> bool | None:
+    """Return a boolean only when the source value explicitly provides one."""
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "yes", "1", "enabled"}:
+            return True
+        if lowered in {"false", "no", "0", "disabled"}:
+            return False
+    return None
+
+
+def optional_int(value: Any) -> int | None:
+    """Return an integer only when the source value explicitly provides one."""
+    if value in (None, "") or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def optional_text(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    return str(value)
+
+
+def activity_evidence_context(row: dict[str, Any]) -> dict[str, Any]:
+    inactive_days = optional_int(first_present(row, ["InactiveDays", "DaysInactive"], None))
+    never_logged_on = optional_bool(first_present(row, ["NeverLoggedOn"], None))
+    source = optional_text(
+        first_present(
+            row,
+            ["ActivityEvidenceSource", "LastLogonEvidence", "LastLogonDateUtc", "LastLogonTimestampUtc"],
+            None,
+        )
+    )
+    if source is None and (inactive_days is not None or never_logged_on is not None):
+        source = "LastLogonDate / lastLogonTimestamp"
+    if source is None:
+        return {
+            "activity_evidence_source": "Not collected",
+            "activity_evidence_confidence": "Needs Corroboration",
+            "activity_validation_required": True,
+        }
+    return {
+        "activity_evidence_source": source,
+        "activity_evidence_confidence": "Medium",
+        "activity_validation_required": True,
+    }
+
+
+def service_account_classification(row: dict[str, Any]) -> dict[str, str]:
+    """Classify account evidence without treating privilege or missing owner as service proof."""
+    account_type = str(first_present(row, ["AccountType", "AccountCategory", "classification"], "")).strip()
+    object_class = str(first_present(row, ["ObjectClass"], "")).strip()
+    reason_text = " ".join(
+        split_text_or_list(first_present(row, ["RiskFlags", "RiskFlagsText"], []))
+        + split_text_or_list(first_present(row, ["ReviewReasons", "ReviewReasonsText"], []))
+        + split_text_or_list(first_present(row, ["DependencySignals", "DependencySignalsText"], []))
+    ).lower()
+    name_text = " ".join(
+        str(first_present(row, [name], "") or "")
+        for name in ["SamAccountName", "Name", "Description", "DistinguishedName"]
+    ).lower()
+    has_spn = optional_bool(first_present(row, ["HasSPN"], None)) is True or (optional_int(first_present(row, ["SPNCount"], None)) or 0) > 0
+    admin_count = optional_int(first_present(row, ["AdminCount"], None))
+    privileged_group_count = optional_int(first_present(row, ["PrivilegedGroupCount"], None)) or 0
+    password_never_expires = optional_bool(first_present(row, ["PasswordNeverExpires"], None)) is True
+    owner_missing = optional_bool(first_present(row, ["OwnerEvidenceMissing", "MissingOwner"], None)) is True
+
+    managed_service = "managedserviceaccount" in object_class.lower() or "managedserviceaccount" in account_type.lower()
+    explicit_service = account_type in {"UserSPNServiceAccount", "SPNServiceAccount", "GroupManagedServiceAccount", "StandaloneManagedServiceAccount"}
+    service_pattern = (
+        account_type == "UserServiceAccountCandidate"
+        or "servicenamepattern" in reason_text
+        or "service account" in reason_text
+        or "ou=service accounts" in name_text
+        or bool(re.search(r"(^|[^a-z0-9])(svc|gmsa|msa)[-_]", name_text))
+    )
+
+    if managed_service or explicit_service or has_spn:
+        return {
+            "classification": "Strict Service Accounts",
+            "classification_reason": "Strong service-account evidence was present, such as SPN, managed service account class, or explicit service account type.",
+            "service_account_confidence": "High",
+            "account_review_reason": "Validate owner, dependency, credential handling, and monitoring before changes.",
+        }
+    if service_pattern:
+        return {
+            "classification": "Service Account Candidates",
+            "classification_reason": "Service naming, OU, or description pattern suggests a possible service account.",
+            "service_account_confidence": "Medium",
+            "account_review_reason": "Confirm whether this account is used by a service before changes.",
+        }
+    if admin_count == 1 or privileged_group_count > 0 or "privilegedaccess" in reason_text:
+        return {
+            "classification": "Privileged Residue Candidates",
+            "classification_reason": "Privileged indicators are present, but no strong service-account indicator was found.",
+            "service_account_confidence": "Low",
+            "account_review_reason": "Review current and former privileged access, ownership, and AdminCount/ACL residue.",
+        }
+    if password_never_expires:
+        return {
+            "classification": "Password Exception Reviews",
+            "classification_reason": "PasswordNeverExpires is present without strong service-account evidence.",
+            "service_account_confidence": "Low",
+            "account_review_reason": "Validate owner and approved password exception.",
+        }
+    if owner_missing:
+        return {
+            "classification": "Missing Owner Reviews",
+            "classification_reason": "Ownership evidence is missing without strong service-account evidence.",
+            "service_account_confidence": "Low",
+            "account_review_reason": "Assign or confirm an owner before any remediation.",
+        }
+    return {
+        "classification": "Account Review Candidates",
+        "classification_reason": "The source did not provide enough evidence for a stricter account classification.",
+        "service_account_confidence": "Low",
+        "account_review_reason": "Validate account purpose and owner.",
+    }
 
 
 def report_metadata(data: dict[str, Any]) -> dict[str, Any]:

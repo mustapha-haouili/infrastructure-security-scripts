@@ -21,6 +21,8 @@ from secureinfra.bundles.ad_shared_bundle import discover_ad_shared_bundle, norm
 from secureinfra.loaders.csv_loader import load_csv_file
 from secureinfra.loaders.json_loader import load_json_file
 from secureinfra.normalizers.ad_inactive_users import normalize_ad_inactive_users
+from secureinfra.normalizers.ad_privileged_identity import normalize_privileged_identity
+from secureinfra.normalizers.ad_service_accounts import normalize_service_accounts
 from secureinfra.report_generator.markdown_report import generate_markdown_reports
 from secureinfra.risk_engine.rules import classify_ad_inactive_user
 from secureinfra.validators.schema_validator import SchemaValidationError, validate_normalized_report
@@ -558,6 +560,88 @@ class SecureInfraAITests(unittest.TestCase):
         self.assertEqual(risk["severity"], "Hold")
         self.assertEqual(risk["remediation_priority"], "Hold")
         self.assertEqual(risk["status"], "Hold")
+
+    def test_ad_account_missing_values_remain_unknown(self):
+        data = {
+            "GeneratedAtUtc": "2026-06-08T09:00:00Z",
+            "InactiveUsers": [
+                {
+                    "SamAccountName": "review.user",
+                    "ReviewPriority": "Medium",
+                    "AccountCategory": "StandardUser",
+                    "RiskFlags": [],
+                    "ReviewReasons": [],
+                }
+            ],
+        }
+
+        report = normalize_ad_inactive_users(data, SAMPLE_INPUT)
+        evidence = report["findings"][0]["evidence"]
+
+        self.assertIsNone(evidence["enabled"])
+        self.assertIsNone(evidence["inactive_days"])
+        self.assertIsNone(evidence["admin_count"])
+        self.assertIsNone(evidence["password_never_expires"])
+        self.assertEqual(evidence["activity_evidence_source"], "Not collected")
+        self.assertEqual(evidence["activity_evidence_confidence"], "Needs Corroboration")
+        self.assertTrue(evidence["activity_validation_required"])
+
+    def test_service_account_classification_requires_strong_indicator(self):
+        data = {
+            "GeneratedAtUtc": "2026-06-08T09:00:00Z",
+            "ServiceAccounts": [
+                {
+                    "ReviewPriority": "Medium",
+                    "SamAccountName": "standard.user",
+                    "AdminCount": 1,
+                    "OwnerEvidenceMissing": True,
+                    "RiskFlags": ["PrivilegedAccess", "MissingOwner"],
+                },
+                {
+                    "ReviewPriority": "High",
+                    "SamAccountName": "svc-api",
+                    "HasSPN": True,
+                    "SPNCount": 1,
+                    "RiskFlags": ["SPN"],
+                },
+            ],
+        }
+
+        report = normalize_service_accounts(data, SAMPLE_INPUT)
+        residue = report["findings"][0]
+        service = report["findings"][1]
+
+        self.assertEqual(residue["evidence"]["classification"], "Privileged Residue Candidates")
+        self.assertEqual(residue["evidence"]["service_account_confidence"], "Low")
+        self.assertEqual(residue["object_type"], "Active Directory account review candidate")
+        self.assertNotIn("service account requires", residue["title"].lower())
+        self.assertEqual(service["evidence"]["classification"], "Strict Service Accounts")
+        self.assertEqual(service["evidence"]["service_account_confidence"], "High")
+        self.assertEqual(service["object_type"], "Active Directory service account")
+
+    def test_privileged_identity_missing_activity_is_not_zero_or_false(self):
+        data = {
+            "GeneratedAtUtc": "2026-06-08T09:00:00Z",
+            "Findings": [
+                {
+                    "FindingType": "PrivilegedIdentityProtectionGap",
+                    "Severity": "High",
+                    "Subject": "admin.user",
+                    "GroupName": "Domain Admins",
+                    "Evidence": "Protected Users membership was not observed.",
+                    "AdminAction": "Validate protection controls.",
+                }
+            ],
+        }
+
+        report = normalize_privileged_identity(data, SAMPLE_INPUT)
+        evidence = report["findings"][0]["evidence"]
+
+        self.assertIsNone(evidence["enabled"])
+        self.assertIsNone(evidence["inactive_days"])
+        self.assertIsNone(evidence["password_never_expires"])
+        self.assertEqual(evidence["activity_evidence_confidence"], "Needs Corroboration")
+        self.assertTrue(evidence["activity_validation_required"])
 
     def test_markdown_reports_are_generated(self):
         data = load_json_file(SAMPLE_INPUT)

@@ -792,6 +792,12 @@ function ConvertTo-PrivilegedIdentityRow {
         RiskFlagsText           = if ($assessment.RiskFlags.Count -gt 0) { $assessment.RiskFlags -join "; " } else { "" }
         ReviewReasons           = @($assessment.ReviewReasons)
         ReviewReasonsText       = if ($assessment.ReviewReasons.Count -gt 0) { $assessment.ReviewReasons -join " " } else { "" }
+        ActivityEvidenceSource  = if ($null -ne $lastLogonDate) { "LastLogonDate from AD user detail." } else { "No LastLogonDate provided by this source." }
+        ActivityEvidenceConfidence = if ($null -ne $lastLogonDate) { "Medium" } else { "Needs Corroboration" }
+        ActivityValidationRequired = $true
+        Classification          = $identityCategory
+        ClassificationReason    = if ($assessment.ReviewReasons.Count -gt 0) { $assessment.ReviewReasons[0] } else { "Privileged identity category assigned from group membership evidence." }
+        AccountReviewReason     = "Validate privileged purpose, owner, protection controls, and approval before account or group changes."
         RecommendedAction       = $assessment.RecommendedAction
         NextReviewStep          = $assessment.NextReviewStep
         UserQuerySucceeded      = [bool]$detail.Succeeded
@@ -1172,7 +1178,7 @@ $report = [ordered]@{
 }
 
 $report | ConvertTo-Json -Depth 10 | Out-File -FilePath $jsonPath -Encoding utf8
-Write-CsvReport -Path $identityCsvPath -Rows $identityRowsFinal -Columns @("ReviewPriority", "ActionPriority", "IdentityCategory", "SamAccountName", "Name", "UserPrincipalName", "SID", "Enabled", "DirectPrivilegedGroupsText", "EffectivePrivilegedGroupsText", "CriticalGroupMember", "NestedPrivilegedAccess", "ProtectedUsersMember", "SmartcardLogonRequired", "AccountNotDelegated", "PasswordNeverExpires", "PasswordLastSetUtc", "PasswordAgeDays", "LastLogonDateUtc", "InactiveDays", "DoesNotRequirePreAuth", "TrustedForDelegation", "TrustedToAuthForDelegation", "AllowReversiblePasswordEncryption", "HasSPN", "SPNCount", "AdminCount", "OwnerEvidenceMissing", "MFAConditionalAccessStatus", "RiskFlagsText", "ReviewReasonsText", "RecommendedAction", "NextReviewStep", "UserQuerySucceeded", "UserQueryError", "Description", "DistinguishedName")
+Write-CsvReport -Path $identityCsvPath -Rows $identityRowsFinal -Columns @("ReviewPriority", "ActionPriority", "IdentityCategory", "Classification", "ClassificationReason", "AccountReviewReason", "ActivityEvidenceSource", "ActivityEvidenceConfidence", "ActivityValidationRequired", "SamAccountName", "Name", "UserPrincipalName", "SID", "Enabled", "DirectPrivilegedGroupsText", "EffectivePrivilegedGroupsText", "CriticalGroupMember", "NestedPrivilegedAccess", "ProtectedUsersMember", "SmartcardLogonRequired", "AccountNotDelegated", "PasswordNeverExpires", "PasswordLastSetUtc", "PasswordAgeDays", "LastLogonDateUtc", "InactiveDays", "DoesNotRequirePreAuth", "TrustedForDelegation", "TrustedToAuthForDelegation", "AllowReversiblePasswordEncryption", "HasSPN", "SPNCount", "AdminCount", "OwnerEvidenceMissing", "MFAConditionalAccessStatus", "RiskFlagsText", "ReviewReasonsText", "RecommendedAction", "NextReviewStep", "UserQuerySucceeded", "UserQueryError", "Description", "DistinguishedName")
 Write-CsvReport -Path $membershipCsvPath -Rows $membershipRowsFinal -Columns @("GroupName", "GroupSID", "GroupTier", "GroupExpectedRisk", "IsProtectionGroup", "MembershipType", "MemberName", "MemberSamAccountName", "MemberObjectClass", "MemberSID", "MemberDN")
 Write-CsvReport -Path $findingCsvPath -Rows $findingRowsFinal -Columns @("FindingType", "Severity", "ActionPriority", "Subject", "GroupName", "Evidence", "AdminAction", "VerificationStep")
 Write-MarkdownReport -Path $markdownPath -Report $report

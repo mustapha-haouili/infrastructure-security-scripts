@@ -6,36 +6,43 @@ from pathlib import Path
 from typing import Any
 
 from secureinfra.normalizers.ad_common import (
+    activity_evidence_context,
     ad_safety_reason,
     base_normalized_report,
     build_common_finding,
     generated_at_utc,
     normalize_source_severity,
+    optional_bool,
+    optional_int,
     row_identifier,
+    service_account_classification,
     source_script,
     split_text_or_list,
 )
-from secureinfra.risk_engine.rules import as_bool, as_int
 
 
 def build_evidence(row: dict[str, Any]) -> dict[str, Any]:
+    classification = service_account_classification(row)
     return {
         "sam_account_name": str(row.get("SamAccountName") or ""),
-        "enabled": as_bool(row.get("Enabled")),
+        "enabled": optional_bool(row.get("Enabled")),
         "account_category": str(row.get("AccountCategory") or ""),
         "rotation_readiness": str(row.get("RotationReadiness") or ""),
-        "password_never_expires": as_bool(row.get("PasswordNeverExpires")),
-        "password_age_days": as_int(row.get("PasswordAgeDays"), 0),
-        "inactive_days": as_int(row.get("InactiveDays"), 0),
-        "has_spn": as_bool(row.get("HasSPN")),
-        "spn_count": as_int(row.get("SPNCount"), 0),
-        "privileged_group_count": as_int(row.get("PrivilegedGroupCount"), 0),
+        "password_never_expires": optional_bool(row.get("PasswordNeverExpires")),
+        "password_age_days": optional_int(row.get("PasswordAgeDays")),
+        "inactive_days": optional_int(row.get("InactiveDays")),
+        "has_spn": optional_bool(row.get("HasSPN")),
+        "spn_count": optional_int(row.get("SPNCount")),
+        "admin_count": optional_int(row.get("AdminCount")),
+        "privileged_group_count": optional_int(row.get("PrivilegedGroupCount")),
         "privileged_groups": split_text_or_list(row.get("PrivilegedGroups") or row.get("PrivilegedGroupsText")),
-        "owner_evidence_missing": as_bool(row.get("OwnerEvidenceMissing")),
-        "exception_required": as_bool(row.get("ExceptionRequired")),
+        "owner_evidence_missing": optional_bool(row.get("OwnerEvidenceMissing")),
+        "exception_required": optional_bool(row.get("ExceptionRequired")),
         "risk_flags": split_text_or_list(row.get("RiskFlags") or row.get("RiskFlagsText")),
         "review_reasons": split_text_or_list(row.get("ReviewReasons") or row.get("ReviewReasonsText")),
         "distinguished_name": str(row.get("DistinguishedName") or ""),
+        **activity_evidence_context(row),
+        **classification,
     }
 
 

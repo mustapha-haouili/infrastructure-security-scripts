@@ -6,38 +6,45 @@ from pathlib import Path
 from typing import Any
 
 from secureinfra.normalizers.ad_common import (
+    activity_evidence_context,
     ad_safety_reason,
     base_normalized_report,
     build_common_finding,
     generated_at_utc,
     normalize_source_severity,
+    optional_bool,
+    optional_int,
     row_identifier,
+    service_account_classification,
     source_script,
     split_text_or_list,
 )
-from secureinfra.risk_engine.rules import as_bool, as_int
 
 
 def build_evidence(row: dict[str, Any]) -> dict[str, Any]:
+    classification = service_account_classification(row)
     return {
         "sam_account_name": str(row.get("SamAccountName") or ""),
-        "enabled": as_bool(row.get("Enabled")),
-        "spn_count": as_int(row.get("SPNCount"), 0),
+        "enabled": optional_bool(row.get("Enabled")),
+        "spn_count": optional_int(row.get("SPNCount")),
         "service_principal_names": split_text_or_list(row.get("ServicePrincipalNames") or row.get("ServicePrincipalNamesText")),
-        "password_never_expires": as_bool(row.get("PasswordNeverExpires")),
-        "password_age_days": as_int(row.get("PasswordAgeDays"), 0),
-        "inactive_days": as_int(row.get("InactiveDays"), 0),
-        "admin_count": as_int(row.get("AdminCount"), 0),
-        "privileged_group_count": as_int(row.get("PrivilegedGroupCount"), 0),
+        "has_spn": True,
+        "password_never_expires": optional_bool(row.get("PasswordNeverExpires")),
+        "password_age_days": optional_int(row.get("PasswordAgeDays")),
+        "inactive_days": optional_int(row.get("InactiveDays")),
+        "admin_count": optional_int(row.get("AdminCount")),
+        "privileged_group_count": optional_int(row.get("PrivilegedGroupCount")),
         "privileged_groups": split_text_or_list(row.get("PrivilegedGroups") or row.get("PrivilegedGroupsText")),
-        "does_not_require_pre_auth": as_bool(row.get("DoesNotRequirePreAuth")),
-        "trusted_for_delegation": as_bool(row.get("TrustedForDelegation")),
-        "trusted_to_auth_for_delegation": as_bool(row.get("TrustedToAuthForDelegation")),
+        "does_not_require_pre_auth": optional_bool(row.get("DoesNotRequirePreAuth")),
+        "trusted_for_delegation": optional_bool(row.get("TrustedForDelegation")),
+        "trusted_to_auth_for_delegation": optional_bool(row.get("TrustedToAuthForDelegation")),
         "encryption_risk": str(row.get("EncryptionRisk") or ""),
         "encryption_evidence": str(row.get("EncryptionEvidence") or ""),
         "risk_flags": split_text_or_list(row.get("RiskFlags") or row.get("RiskFlagsText")),
         "review_reasons": split_text_or_list(row.get("ReviewReasons") or row.get("ReviewReasonsText")),
         "distinguished_name": str(row.get("DistinguishedName") or ""),
+        **activity_evidence_context(row),
+        **classification,
     }
 
 

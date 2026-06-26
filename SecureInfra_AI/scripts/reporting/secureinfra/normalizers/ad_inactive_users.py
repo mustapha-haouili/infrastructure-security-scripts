@@ -7,7 +7,13 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from secureinfra.risk_engine.rules import as_bool, as_int, as_list, classify_ad_inactive_user
+from secureinfra.normalizers.ad_common import (
+    activity_evidence_context,
+    optional_bool,
+    optional_int,
+    service_account_classification,
+)
+from secureinfra.risk_engine.rules import as_list, classify_ad_inactive_user
 
 
 def utc_now() -> str:
@@ -24,19 +30,20 @@ def first_present(data: dict[str, Any], names: list[str], default: Any = None) -
 
 
 def build_evidence(user: dict[str, Any]) -> dict[str, Any]:
-    return {
+    classification = service_account_classification(user)
+    evidence = {
         "sam_account_name": str(user.get("SamAccountName") or ""),
-        "enabled": as_bool(user.get("Enabled")),
-        "inactive_days": as_int(user.get("InactiveDays", user.get("DaysInactive", 0))),
+        "enabled": optional_bool(user.get("Enabled")),
+        "inactive_days": optional_int(user.get("InactiveDays", user.get("DaysInactive"))),
         "review_priority": str(user.get("ReviewPriority") or ""),
         "account_category": str(user.get("AccountCategory") or ""),
         "lifecycle_stage": str(user.get("LifecycleStage") or ""),
         "deletion_readiness": str(user.get("DeletionReadiness") or ""),
-        "can_delete_now": as_bool(user.get("CanDeleteNow")),
-        "potential_deletion_candidate": as_bool(user.get("PotentialDeletionCandidate")),
-        "password_never_expires": as_bool(user.get("PasswordNeverExpires")),
-        "admin_count": as_int(user.get("AdminCount", 0)),
-        "has_spn": as_bool(user.get("HasSPN")),
+        "can_delete_now": optional_bool(user.get("CanDeleteNow")),
+        "potential_deletion_candidate": optional_bool(user.get("PotentialDeletionCandidate")),
+        "password_never_expires": optional_bool(user.get("PasswordNeverExpires")),
+        "admin_count": optional_int(user.get("AdminCount")),
+        "has_spn": optional_bool(user.get("HasSPN")),
         "privileged_groups": as_list(user.get("PrivilegedGroups")),
         "dependency_signals": as_list(user.get("DependencySignals")),
         "risk_flags": as_list(user.get("RiskFlags")),
@@ -44,7 +51,10 @@ def build_evidence(user: dict[str, Any]) -> dict[str, Any]:
         "distinguished_name": str(user.get("DistinguishedName") or ""),
         "object_sid": str(user.get("ObjectSid") or ""),
         "deletion_guidance": str(user.get("DeletionGuidance") or ""),
+        **activity_evidence_context(user),
+        **classification,
     }
+    return evidence
 
 
 def normalize_user(user: dict[str, Any], index: int, source_script: str, timestamp_utc: str) -> dict[str, Any]:
