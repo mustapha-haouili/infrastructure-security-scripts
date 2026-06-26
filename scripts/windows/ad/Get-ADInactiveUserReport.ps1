@@ -177,6 +177,13 @@ function Write-CsvReport {
         "DependencySignalsText",
         "RiskFlagsText",
         "ReviewReasonsText",
+        "ActivityEvidenceSource",
+        "ActivityEvidenceConfidence",
+        "ActivityValidationRequired",
+        "Classification",
+        "ClassificationReason",
+        "ServiceAccountConfidence",
+        "AccountReviewReason",
         "RecommendedAction",
         "DeletionGuidance",
         "DistinguishedName"
@@ -955,7 +962,7 @@ foreach ($user in $users) {
             PasswordNeverExpires    = [bool]$user.PasswordNeverExpires
             PasswordExpired         = [bool]$user.PasswordExpired
             LockedOut               = [bool]$user.LockedOut
-            AdminCount              = if ($null -ne $user.AdminCount) { [int]$user.AdminCount } else { 0 }
+            AdminCount              = if ($null -ne $user.AdminCount) { [int]$user.AdminCount } else { $null }
             HasSPN                  = [bool]$hasSpn
             SPNCount                = $spns.Count
             ServicePrincipalNames   = @($spns)
@@ -981,6 +988,13 @@ foreach ($user in $users) {
             RiskFlagsText           = if ($riskFlags.Count -gt 0) { $riskFlags -join "; " } else { "" }
             ReviewReasons           = @($reviewReasons)
             ReviewReasonsText       = if ($reviewReasons.Count -gt 0) { $reviewReasons -join " " } else { "" }
+            ActivityEvidenceSource  = if ($neverLoggedOn) { "No LastLogonDate/lastLogonTimestamp present." } else { "LastLogonDate from replicated lastLogonTimestamp." }
+            ActivityEvidenceConfidence = "Medium"
+            ActivityValidationRequired = $true
+            Classification          = $accountCategory
+            ClassificationReason    = if ($reviewReasons.Count -gt 0) { $reviewReasons[0] } else { "Account category assigned by inactive-user audit evidence." }
+            ServiceAccountConfidence = if ($hasSpn) { "High" } elseif ($isServiceAccountCandidate) { "Medium" } else { "Low" }
+            AccountReviewReason     = "Validate owner, usage evidence, exception status, and change approval before lifecycle action."
             RecommendedAction       = Get-Recommendation -User $user -AccountCategory $accountCategory -ReviewPriority $reviewPriority -DeletionReadiness $deletionReadiness -NeverLoggedOn $neverLoggedOn
             DeletionGuidance        = Get-DeletionGuidance -DeletionReadiness $deletionReadiness
             DistinguishedName       = $user.DistinguishedName

@@ -313,6 +313,70 @@ function Get-AccountType {
     return "UserReviewCandidate"
 }
 
+function Get-AccountClassification {
+    param(
+        [string]$AccountType,
+        [bool]$HasSPN,
+        [bool]$NamePattern,
+        [AllowNull()][object]$AdminCountValue,
+        [int]$PrivilegedGroupCount,
+        [bool]$PasswordNeverExpires,
+        [bool]$MissingOwner
+    )
+
+    if ($AccountType -in @("GroupManagedServiceAccount", "StandaloneManagedServiceAccount", "UserSPNServiceAccount") -or $HasSPN) {
+        return [ordered]@{
+            Classification          = "Strict Service Accounts"
+            ClassificationReason    = "Strong service-account evidence was present, such as SPN, managed service account class, or explicit service account type."
+            ServiceAccountConfidence = "High"
+            AccountReviewReason     = "Validate owner, dependency, credential handling, and monitoring before changes."
+        }
+    }
+
+    if ($AccountType -eq "UserServiceAccountCandidate" -or $NamePattern) {
+        return [ordered]@{
+            Classification          = "Service Account Candidates"
+            ClassificationReason    = "Service naming, OU, or description pattern suggests a possible service account."
+            ServiceAccountConfidence = "Medium"
+            AccountReviewReason     = "Confirm whether this account is used by a service before changes."
+        }
+    }
+
+    if ($AdminCountValue -eq 1 -or $PrivilegedGroupCount -gt 0) {
+        return [ordered]@{
+            Classification          = "Privileged Residue Candidates"
+            ClassificationReason    = "Privileged indicators are present, but no strong service-account indicator was found."
+            ServiceAccountConfidence = "Low"
+            AccountReviewReason     = "Review current and former privileged access, ownership, and AdminCount/ACL residue."
+        }
+    }
+
+    if ($PasswordNeverExpires) {
+        return [ordered]@{
+            Classification          = "Password Exception Reviews"
+            ClassificationReason    = "PasswordNeverExpires is present without strong service-account evidence."
+            ServiceAccountConfidence = "Low"
+            AccountReviewReason     = "Validate owner and approved password exception."
+        }
+    }
+
+    if ($MissingOwner) {
+        return [ordered]@{
+            Classification          = "Missing Owner Reviews"
+            ClassificationReason    = "Ownership evidence is missing without strong service-account evidence."
+            ServiceAccountConfidence = "Low"
+            AccountReviewReason     = "Assign or confirm an owner before any remediation."
+        }
+    }
+
+    return [ordered]@{
+        Classification          = "Account Review Candidates"
+        ClassificationReason    = "The source did not provide enough evidence for a stricter account classification."
+        ServiceAccountConfidence = "Low"
+        AccountReviewReason     = "Validate account purpose and owner."
+    }
+}
+
 function Get-RiskAssessment {
     param(
         [string]$AccountType,
@@ -456,17 +520,23 @@ function ConvertTo-ServiceAccountRow {
     $enabledValue = Get-ObjectValue -InputObject $Account -Name "Enabled"
     $enabled = if ($accountType -in @("GroupManagedServiceAccount", "StandaloneManagedServiceAccount") -and $null -eq $enabledValue) { $true } else { [bool]$enabledValue }
     $passwordNeverExpires = [bool](Get-ObjectValue -InputObject $Account -Name "PasswordNeverExpires")
-    $adminCount = [bool]((Get-ObjectValue -InputObject $Account -Name "AdminCount") -eq 1)
+    $adminCountValue = Get-ObjectValue -InputObject $Account -Name "AdminCount"
+    $adminCount = [bool]($adminCountValue -eq 1)
     $doesNotRequirePreAuth = [bool](Get-ObjectValue -InputObject $Account -Name "DoesNotRequirePreAuth")
     $trustedForDelegation = [bool](Get-ObjectValue -InputObject $Account -Name "TrustedForDelegation")
     $trustedToAuthForDelegation = [bool](Get-ObjectValue -InputObject $Account -Name "TrustedToAuthForDelegation")
     $missingOwner = -not ($managedBy -or $description -or $info)
+    $classification = Get-AccountClassification -AccountType $accountType -HasSPN $hasSpn -NamePattern $namePattern -AdminCountValue $adminCountValue -PrivilegedGroupCount $privilegedGroupNames.Count -PasswordNeverExpires $passwordNeverExpires -MissingOwner $missingOwner
     $assessment = Get-RiskAssessment -AccountType $accountType -Enabled $enabled -HasSPN $hasSpn -PasswordNeverExpires $passwordNeverExpires -PasswordAgeDays $passwordAgeDays -AdminCount $adminCount -PrivilegedGroupCount $privilegedGroupNames.Count -DoesNotRequirePreAuth $doesNotRequirePreAuth -TrustedForDelegation $trustedForDelegation -TrustedToAuthForDelegation $trustedToAuthForDelegation -MissingOwner $missingOwner -InactiveDays $inactiveDays -IsSystemManaged $isSystemManaged
 
     [pscustomobject][ordered]@{
         ReviewPriority          = $assessment.ReviewPriority
         ActionPriority          = Get-ActionPriority -ReviewPriority $assessment.ReviewPriority
         AccountType             = $accountType
+        Classification          = $classification.Classification
+        ClassificationReason    = $classification.ClassificationReason
+        ServiceAccountConfidence = $classification.ServiceAccountConfidence
+        AccountReviewReason     = $classification.AccountReviewReason
         SamAccountName          = $sam
         Name                    = $name
         UserPrincipalName       = Get-ObjectValue -InputObject $Account -Name "UserPrincipalName"
@@ -486,7 +556,7 @@ function ConvertTo-ServiceAccountRow {
         NeverLoggedOn           = [bool]($null -eq $lastLogonDate)
         WhenCreatedUtc          = Format-DateTimeUtc -Value (Get-ObjectValue -InputObject $Account -Name "WhenCreated")
         WhenChangedUtc          = Format-DateTimeUtc -Value (Get-ObjectValue -InputObject $Account -Name "whenChanged")
-        AdminCount              = if ($adminCount) { 1 } else { Get-ObjectValue -InputObject $Account -Name "AdminCount" }
+        AdminCount              = $adminCountValue
         PrivilegedGroupCount    = $privilegedGroupNames.Count
         PrivilegedGroups        = @($privilegedGroupNames)
         PrivilegedGroupsText    = if ($privilegedGroupNames.Count -gt 0) { $privilegedGroupNames -join "; " } else { "" }
@@ -551,6 +621,10 @@ function Write-CsvReport {
         "ReviewPriority",
         "ActionPriority",
         "AccountType",
+        "Classification",
+        "ClassificationReason",
+        "ServiceAccountConfidence",
+        "AccountReviewReason",
         "SamAccountName",
         "Name",
         "UserPrincipalName",
@@ -635,13 +709,14 @@ function Add-MarkdownServiceAccountTable {
         return
     }
 
-    Add-MarkdownLine -Lines $Lines -Text "| Priority | Account | Type | Enabled | SPNs | Password age | Risk flags | Next step |"
-    Add-MarkdownLine -Lines $Lines -Text "|---|---|---|---:|---:|---:|---|---|"
+    Add-MarkdownLine -Lines $Lines -Text "| Priority | Account | Classification | Confidence | Enabled | SPNs | Password age | Risk flags | Next step |"
+    Add-MarkdownLine -Lines $Lines -Text "|---|---|---|---|---:|---:|---:|---|---|"
     foreach ($row in @($Rows | Select-Object -First $Limit)) {
-        Add-MarkdownLine -Lines $Lines -Text ("| {0} | {1} | {2} | {3} | {4} | {5} | {6} | {7} |" -f `
+        Add-MarkdownLine -Lines $Lines -Text ("| {0} | {1} | {2} | {3} | {4} | {5} | {6} | {7} | {8} |" -f `
                 (ConvertTo-MarkdownSafeText $row.ActionPriority),
             (ConvertTo-MarkdownSafeText $row.SamAccountName),
-            (ConvertTo-MarkdownSafeText $row.AccountType),
+            (ConvertTo-MarkdownSafeText $row.Classification),
+            (ConvertTo-MarkdownSafeText $row.ServiceAccountConfidence),
             (ConvertTo-MarkdownSafeText $row.Enabled),
             (ConvertTo-MarkdownSafeText $row.SPNCount),
             (ConvertTo-MarkdownSafeText $row.PasswordAgeDays),
@@ -678,7 +753,7 @@ function Write-MarkdownReport {
     Add-MarkdownLine -Lines $lines
     Add-MarkdownLine -Lines $lines -Text "| Metric | Count |"
     Add-MarkdownLine -Lines $lines -Text "|---|---:|"
-    foreach ($metric in @("TotalServiceAccounts", "CriticalAccounts", "HighAccounts", "ManagedServiceAccounts", "UserServiceAccounts", "SPNAccounts", "PasswordNeverExpiresAccounts", "PrivilegedAccounts", "MissingOwnerAccounts", "StaleEnabledAccounts")) {
+    foreach ($metric in @("TotalServiceAccounts", "StrictServiceAccounts", "ServiceAccountCandidates", "AccountReviewCandidates", "PrivilegedResidueCandidates", "PasswordExceptionReviews", "MissingOwnerReviews", "CriticalAccounts", "HighAccounts", "ManagedServiceAccounts", "UserServiceAccounts", "SPNAccounts", "PasswordNeverExpiresAccounts", "PrivilegedAccounts", "MissingOwnerAccounts", "StaleEnabledAccounts")) {
         Add-MarkdownLine -Lines $lines -Text ("| {0} | {1} |" -f $metric, $summary.$metric)
     }
     Add-MarkdownLine -Lines $lines
@@ -832,6 +907,12 @@ $serviceAccounts = @($rowsByKey.Values | Sort-Object @{ Expression = { Get-Prior
 
 $summary = [ordered]@{
     TotalServiceAccounts          = $serviceAccounts.Count
+    StrictServiceAccounts         = @($serviceAccounts | Where-Object { $_.Classification -eq "Strict Service Accounts" }).Count
+    ServiceAccountCandidates      = @($serviceAccounts | Where-Object { $_.Classification -eq "Service Account Candidates" }).Count
+    AccountReviewCandidates       = @($serviceAccounts | Where-Object { $_.Classification -eq "Account Review Candidates" }).Count
+    PrivilegedResidueCandidates   = @($serviceAccounts | Where-Object { $_.Classification -eq "Privileged Residue Candidates" }).Count
+    PasswordExceptionReviews      = @($serviceAccounts | Where-Object { $_.Classification -eq "Password Exception Reviews" }).Count
+    MissingOwnerReviews           = @($serviceAccounts | Where-Object { $_.Classification -eq "Missing Owner Reviews" }).Count
     CriticalAccounts              = @($serviceAccounts | Where-Object { $_.ReviewPriority -eq "Critical" }).Count
     HighAccounts                  = @($serviceAccounts | Where-Object { $_.ReviewPriority -eq "High" }).Count
     MediumAccounts                = @($serviceAccounts | Where-Object { $_.ReviewPriority -eq "Medium" }).Count

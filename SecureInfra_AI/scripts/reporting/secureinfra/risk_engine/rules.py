@@ -30,6 +30,31 @@ def as_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def as_optional_bool(value: Any) -> bool | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "yes", "1", "enabled"}:
+            return True
+        if lowered in {"false", "no", "0", "disabled"}:
+            return False
+    return None
+
+
+def as_optional_int(value: Any) -> int | None:
+    if value in (None, "") or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def as_list(value: Any) -> list[str]:
     if value is None:
         return []
@@ -130,8 +155,10 @@ def safety_reason(user: dict[str, Any], severity: str) -> str:
 
 def classify_ad_inactive_user(user: dict[str, Any]) -> dict[str, Any]:
     """Classify one inactive AD user record with deterministic rules."""
-    enabled = as_bool(user.get("Enabled"))
-    inactive_days = as_int(user.get("InactiveDays", user.get("DaysInactive", 0)))
+    enabled_value = as_optional_bool(user.get("Enabled"))
+    enabled = enabled_value is True
+    inactive_days = as_optional_int(user.get("InactiveDays", user.get("DaysInactive")))
+    high_inactivity = inactive_days is not None and inactive_days > 90
     privileged_groups = as_list(user.get("PrivilegedGroups"))
     has_spn = as_bool(user.get("HasSPN"))
     password_never_expires = as_bool(user.get("PasswordNeverExpires"))
@@ -150,43 +177,43 @@ def classify_ad_inactive_user(user: dict[str, Any]) -> dict[str, Any]:
         business_impact = "System-managed accounts can be required for platform health and should not be handled as normal cleanup."
         technical_impact = "The account has system-managed or Exchange HealthMailbox indicators."
         recommendation = "Keep on hold unless the product owner approves a specific action."
-    elif built_in_admin and enabled and inactive_days > 90:
+    elif built_in_admin and enabled and high_inactivity:
         title = "Built-in Administrator enabled and inactive"
         severity = "Critical"
         business_impact = "Break-glass access requires strict governance, monitoring, and documented ownership."
         technical_impact = "The built-in Administrator account is enabled and inactive in the audit evidence."
         recommendation = "Review break-glass policy, monitoring, and access controls. Do not delete the account."
-    elif enabled and inactive_days > 90 and privileged_groups and has_spn:
+    elif enabled and high_inactivity and privileged_groups and has_spn:
         title = "Enabled inactive privileged account with SPN detected"
         severity = "Critical"
         business_impact = "Privileged inactive accounts with service indicators can create elevated identity exposure and operational dependency risk."
         technical_impact = "The enabled inactive account has privileged group membership and SPN evidence."
         recommendation = "Validate owner, privileged access need, and service dependency before any change."
-    elif enabled and inactive_days > 90 and privileged_groups:
+    elif enabled and high_inactivity and privileged_groups:
         title = "Enabled inactive privileged account detected"
         severity = "Critical"
         business_impact = "Inactive privileged accounts can retain administrative capability after role or ownership changes."
         technical_impact = "The enabled inactive account has privileged group membership."
         recommendation = "Validate owner, approval record, and need for privileged access."
-    elif enabled and inactive_days > 90 and is_service_account_candidate(user):
+    elif enabled and high_inactivity and is_service_account_candidate(user):
         title = "Enabled stale service account candidate detected"
         severity = "High"
         business_impact = "Changing service accounts without dependency review can disrupt applications, but stale service accounts also increase exposure."
         technical_impact = "The enabled inactive account has service account indicators."
         recommendation = "Confirm service owner and dependency before any change."
-    elif enabled and inactive_days > 90 and password_never_expires:
+    elif enabled and high_inactivity and password_never_expires:
         title = "Enabled inactive account with PasswordNeverExpires detected"
         severity = "High"
         business_impact = "Long-lived credentials on inactive accounts increase identity exposure."
         technical_impact = "The enabled inactive account has PasswordNeverExpires set."
         recommendation = "Validate owner and exception status before changing password policy or disabling the account."
-    elif enabled and inactive_days > 90 and has_spn:
+    elif enabled and high_inactivity and has_spn:
         title = "Inactive account with SPN requires owner review"
         severity = "High"
         business_impact = "SPN-bearing accounts may represent application dependencies and require careful owner validation."
         technical_impact = "The inactive account has SPN evidence. This is a service dependency risk indicator, not exploitation guidance."
         recommendation = "Review application owner and SPN requirement before any change."
-    elif not enabled and (inactive_days > 90 or as_bool(user.get("PotentialDeletionCandidate"))):
+    elif enabled_value is False and (high_inactivity or as_bool(user.get("PotentialDeletionCandidate"))):
         title = "Disabled inactive account requires owner review"
         severity = "Medium"
         business_impact = "Disabled inactive accounts may still have mailbox, retention, or dependency requirements."
@@ -198,7 +225,7 @@ def classify_ad_inactive_user(user: dict[str, Any]) -> dict[str, Any]:
         business_impact = "Mailbox or data retention requirements can affect account cleanup timing."
         technical_impact = "The inactive account has mail-related review indicators."
         recommendation = "Confirm mailbox ownership and retention requirements."
-    elif enabled and inactive_days > 90:
+    elif enabled and high_inactivity:
         title = "Enabled inactive account requires lifecycle review"
         severity = "Medium"
         business_impact = "Enabled inactive accounts can retain access after role or employment changes."
