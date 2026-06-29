@@ -256,6 +256,11 @@
         }
       }
     },
+    "monthly_kpi_summary": {
+      "type": "object",
+      "description": "Deterministic monthly KPI and trend summary. Informational only; does not assert compliance, certification, audit attestation, or official audit status.",
+      "additionalProperties": true
+    },
     "metadata": {
       "type": "object",
       "additionalProperties": true,

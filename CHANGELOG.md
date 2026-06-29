@@ -14,6 +14,8 @@ Future changes after v1.2.0-beta.1 will be documented here.
 - Added a public-safe static control mapping catalog and tests without changing
   normalized finding objects or claiming compliance, certification, or audit
   attestation.
+- Added deterministic monthly KPI summaries with baseline and month-over-month
+  trend output from existing normalized reports.
 
 ### Release Integrity
 - Added public release bundle scripts for PowerShell and shell environments.

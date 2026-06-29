@@ -21,6 +21,8 @@ not require an AI model.
   `metadata.control_mapping_summary`.
 - Compare current normalized reports with a previous `normalized-report.json`
   to identify new, persistent, and resolved findings.
+- Generate deterministic monthly KPI summaries with `--monthly-summary`,
+  including baseline or month-over-month trend output from normalized reports.
 - Generate executive summary, technical findings, and remediation plan
   Markdown reports.
 - Review JSON outputs in a local static dashboard with severity metrics,
@@ -132,6 +134,27 @@ python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py \
   --type ad-shared \
   --output reports/output \
   --previous-normalized-report reports/previous/normalized-report.json
+```
+
+Generate a baseline monthly KPI summary:
+
+```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py \
+  --input reports/ad-shared \
+  --type ad-shared \
+  --output reports/monthly-current \
+  --monthly-summary
+```
+
+Generate a month-over-month KPI summary:
+
+```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py \
+  --input reports/ad-shared \
+  --type ad-shared \
+  --output reports/monthly-current \
+  --previous-normalized-report reports/monthly-previous/normalized-report.json \
+  --monthly-summary
 ```
 
 Run one supported AD/GPO report directly:

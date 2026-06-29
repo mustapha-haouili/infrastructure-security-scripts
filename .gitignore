@@ -1,5 +1,7 @@
 # Runtime output
 reports/
+!examples/sample-output/reports/
+!examples/sample-output/reports/*.md
 !SecureInfra_AI/examples/sample-output/reports/
 !SecureInfra_AI/examples/sample-output/reports/*.md
 backups/

@@ -262,6 +262,11 @@ metadata under `metadata.control_references_by_finding_id` and
 informational only and do not claim compliance, certification, audit
 attestation, or official control coverage.
 
+Use `--monthly-summary` with the SecureInfra AI analyzer to generate a
+deterministic monthly KPI summary from normalized reports. See
+[docs/service-model/monthly-security-review.md](docs/service-model/monthly-security-review.md)
+for baseline and month-over-month examples.
+
 ### SecureInfra Dashboard
 
 Open `SecureInfra_AI/dashboard/index.html` in a browser to review JSON reports
