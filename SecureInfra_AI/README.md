@@ -16,6 +16,9 @@ not require an AI model.
 - Validate normalized reports against the local SecureInfra AI JSON schemas
   before writing output.
 - Add deterministic cross-source correlation groups to normalized reports.
+- Add deterministic broad control-reference metadata to normalized reports under
+  `metadata.control_references_by_finding_id` and
+  `metadata.control_mapping_summary`.
 - Compare current normalized reports with a previous `normalized-report.json`
   to identify new, persistent, and resolved findings.
 - Generate executive summary, technical findings, and remediation plan
@@ -50,6 +53,38 @@ not require an AI model.
   limits archives to 512 entries, limits each uncompressed file to 25 MiB, and
   allows only `.json`, `.csv`, `.md`, `.txt`, and `.log` report artifacts.
 - Bundle content is never executed; it is loaded only as report evidence.
+- Control references are broad informational mappings only. They do not claim
+  compliance, certification, audit attestation, or official control coverage.
+
+## Control Mapping
+
+SecureInfra AI adds deterministic control-reference metadata after findings and
+correlations are produced and before schema validation. Findings are not
+modified; the output stays under report metadata:
+
+```json
+{
+  "metadata": {
+    "control_references_by_finding_id": {
+      "AD-INACTIVE-0001": [
+        {
+          "framework": "CIS Controls IG1",
+          "control_id": "CIS-IG1-05",
+          "label": "Account Management",
+          "mapping_confidence": "medium"
+        }
+      ]
+    },
+    "control_mapping_summary": {
+      "CIS Controls IG1:CIS-IG1-05": 1
+    }
+  }
+}
+```
+
+The catalog uses public-safe, broad references such as `CIS Controls IG1`,
+`NIST CSF 2.0`, and `BSI SMB Security Guidance`. These mappings help readers
+understand defensive themes; they are not evidence of compliance status.
 
 ## Example
 

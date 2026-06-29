@@ -258,7 +258,52 @@
     },
     "metadata": {
       "type": "object",
-      "additionalProperties": true
+      "additionalProperties": true,
+      "properties": {
+        "control_references_by_finding_id": {
+          "type": "object",
+          "description": "Broad, deterministic control references keyed by normalized finding_id. These references are informational only and do not assert compliance, certification, or audit attestation.",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "framework",
+                "control_id",
+                "label",
+                "mapping_confidence"
+              ],
+              "properties": {
+                "framework": {
+                  "type": "string"
+                },
+                "control_id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "mapping_confidence": {
+                  "type": "string",
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "control_mapping_summary": {
+          "type": "object",
+          "description": "Counts of broad control references by framework and control identifier.",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        }
+      }
     },
     "report_type_metadata": {
       "type": "object",

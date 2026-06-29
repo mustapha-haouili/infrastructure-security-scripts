@@ -256,6 +256,12 @@ python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports
 These analyzer types are report-only and normalize existing JSON evidence from
 the corresponding Windows audit scripts.
 
+Normalized SecureInfra AI reports can also include broad control-reference
+metadata under `metadata.control_references_by_finding_id` and
+`metadata.control_mapping_summary`. These deterministic mappings are
+informational only and do not claim compliance, certification, audit
+attestation, or official control coverage.
+
 ### SecureInfra Dashboard
 
 Open `SecureInfra_AI/dashboard/index.html` in a browser to review JSON reports

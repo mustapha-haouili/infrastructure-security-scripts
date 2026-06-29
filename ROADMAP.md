@@ -25,6 +25,8 @@ scripts toolkit. Versions are targets, not contractual commitments.
   checks for reviewer-side analysis.
 - Add beta standalone SecureInfra AI analyzer types for Windows host, server,
   workstation, and network exposure JSON reports.
+- Add broad deterministic control-reference metadata to normalized reports
+  without claiming compliance, certification, or audit attestation.
 
 ## v1.3.0 - Windows Security Health Check Enhancements
 
@@ -54,7 +56,8 @@ scripts toolkit. Versions are targets, not contractual commitments.
 ## Future Ideas
 
 - Entra ID and Microsoft Graph read-only privileged identity checks.
-- CIS benchmark mapping where controls can be validated safely.
+- Evidence-based benchmark checks where controls can be validated safely without
+  claiming certification or audit attestation.
 - Wazuh/SIEM evidence mapping.
 - Backup readiness checks.
 - Dashboard-ready JSON exports.
