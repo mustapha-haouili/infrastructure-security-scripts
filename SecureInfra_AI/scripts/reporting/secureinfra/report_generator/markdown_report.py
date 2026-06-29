@@ -60,6 +60,172 @@ def render_file_list(file_map: dict[str, Any]) -> list[str]:
     return [f"- {md(key)}: `{md(value)}`" for key, value in sorted(file_map.items())]
 
 
+def render_monthly_improvement_summary(report: dict[str, Any], language: str = "en", heading_level: int = 1) -> str:
+    summary = report.get("monthly_kpi_summary")
+    if not isinstance(summary, dict):
+        return ""
+
+    heading = "#" * heading_level
+    new_findings = list_items(summary.get("new_findings"))
+    persistent_findings = list_items(summary.get("persistent_findings"))
+    resolved_findings = list_items(summary.get("resolved_findings"))
+    top_risks = list_items(summary.get("top_5_current_risks"))
+    top_actions = list_items(summary.get("top_5_recommended_actions"))
+    evidence_gaps = [md(item) for item in list_strings(summary.get("evidence_gaps"))]
+    limitations = [md(item) for item in list_strings(summary.get("limitations"))]
+    matching = summary.get("matching_summary") if isinstance(summary.get("matching_summary"), dict) else {}
+
+    lines = [
+        f"{heading} Monthly Improvement Summary",
+        "",
+        "This summary is deterministic and based only on the supplied normalized report evidence. It does not claim compliance, certification, audit attestation, or official audit status.",
+        "",
+        f"{heading}# Executive KPI Snapshot",
+        "",
+        "| KPI | Value |",
+        "|---|---:|",
+        f"| Total findings | {md(summary.get('total_findings', 0))} |",
+        f"| Critical | {md(summary.get('critical_count', 0))} |",
+        f"| High | {md(summary.get('high_count', 0))} |",
+        f"| Medium | {md(summary.get('medium_count', 0))} |",
+        f"| Low | {md(summary.get('low_count', 0))} |",
+        f"| Info | {md(summary.get('info_count', 0))} |",
+        f"| New findings | {len(new_findings)} |",
+        f"| Persistent findings | {len(persistent_findings)} |",
+        f"| Resolved findings | {len(resolved_findings)} |",
+        f"| Risk reduction score | {md(summary.get('risk_reduction_score', 0))} |",
+        "",
+        md(summary.get("risk_reduction_explanation")) or "Risk reduction score is a deterministic trend indicator, not a formal risk score.",
+        "",
+        f"{heading}# What Improved",
+        "",
+    ]
+    if summary.get("comparison_mode") == "baseline":
+        lines.append("- Baseline summary only. Provide `--previous-normalized-report` in a future run to calculate month-over-month improvement.")
+    else:
+        lines.extend(monthly_finding_lines(resolved_findings, "resolved"))
+
+    new_critical_high = [item for item in new_findings if item.get("severity") in {"Critical", "High"}]
+    lines.extend(["", f"{heading}# What Got Worse", ""])
+    if new_critical_high:
+        lines.extend(monthly_finding_lines(new_critical_high, "new"))
+    elif summary.get("comparison_mode") == "baseline":
+        lines.append("- Baseline summary only. No prior month was supplied for trend comparison.")
+    else:
+        lines.append("- No new Critical or High findings were identified.")
+
+    persistent_critical_high = [item for item in persistent_findings if item.get("severity") in {"Critical", "High"}]
+    lines.extend(["", f"{heading}# Persistent Risks", ""])
+    lines.extend(monthly_finding_lines(persistent_critical_high, "persistent"))
+
+    lines.extend(["", f"{heading}# New Findings", ""])
+    lines.extend(monthly_finding_lines(new_findings, "new"))
+
+    lines.extend(["", f"{heading}# Resolved Findings", ""])
+    lines.extend(monthly_finding_lines(resolved_findings, "resolved"))
+
+    lines.extend(["", f"{heading}# Owner Decisions Needed", ""])
+    if top_actions:
+        for item in top_actions:
+            lines.append(
+                f"- `{md(item.get('finding_id'))}` ({md(item.get('severity'))}, `{md(item.get('affected_object'))}`): {md(item.get('action'))}"
+            )
+    else:
+        lines.append("- None identified.")
+
+    lines.extend(["", f"{heading}# Evidence Gaps / Coverage Limitations", ""])
+    lines.extend(bullet_list(evidence_gaps))
+    lines.extend(["", "Limitations:"])
+    lines.extend(bullet_list(limitations))
+
+    coverage = summary.get("coverage_summary") if isinstance(summary.get("coverage_summary"), dict) else {}
+    lines.extend(["", f"{heading}# Coverage Summary", ""])
+    lines.extend(render_monthly_coverage_rows("Source script", "source_script", list_items(coverage.get("by_source_script"))))
+    lines.extend(["", *render_monthly_coverage_rows("Report type", "report_type", list_items(coverage.get("by_report_type")))])
+    lines.extend(["", *render_monthly_coverage_rows("Analyzer type", "analyzer_type", list_items(coverage.get("by_analyzer_type")))])
+    lines.extend(["", *render_monthly_coverage_rows("Source host", "source_host", list_items(coverage.get("by_source_host")))])
+
+    lines.extend(["", f"{heading}# Recommended Focus For Next Month", ""])
+    lines.extend(bullet_list(next_month_focus(new_critical_high, persistent_critical_high, evidence_gaps, top_risks)))
+
+    lines.extend(["", f"{heading}# Matching Notes", ""])
+    lines.extend(
+        [
+            f"- Matched by finding ID: {md(matching.get('matched_by_finding_id', 0))}",
+            f"- Matched by fallback fingerprint: {md(matching.get('matched_by_fallback_fingerprint', 0))}",
+            f"- Ambiguous fallback fingerprints skipped: {md(matching.get('ambiguous_fallback_fingerprint_count', 0))}",
+        ]
+    )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def monthly_finding_lines(items: list[dict[str, Any]], trend_label: str) -> list[str]:
+    if not items:
+        return ["- None identified."]
+    lines = []
+    for item in items[:10]:
+        match_text = ""
+        if item.get("matched_on"):
+            match_text = f"; matched by {md(item.get('matched_on'))}"
+            if item.get("match_confidence"):
+                match_text += f" ({md(item.get('match_confidence'))})"
+        lines.append(
+            f"- `{md(item.get('finding_id'))}` ({md(item.get('severity'))}, `{md(item.get('affected_object'))}`): "
+            f"{md(item.get('title'))}{match_text}."
+        )
+    if len(items) > 10:
+        lines.append(f"- {len(items) - 10} additional {md(trend_label)} finding(s) not shown.")
+    return lines
+
+
+def render_monthly_coverage_rows(title: str, key_name: str, rows: list[dict[str, Any]]) -> list[str]:
+    lines = [
+        f"{title}:",
+        "",
+        f"| {title} | Findings |",
+        "|---|---:|",
+    ]
+    if not rows:
+        lines.append("| Not provided | 0 |")
+        return lines
+    for row in rows:
+        lines.append(f"| {md(row.get(key_name)) or 'Not provided'} | {md(row.get('finding_count', 0))} |")
+    return lines
+
+
+def next_month_focus(
+    new_critical_high: list[dict[str, Any]],
+    persistent_critical_high: list[dict[str, Any]],
+    evidence_gaps: list[str],
+    top_risks: list[dict[str, Any]],
+) -> list[str]:
+    focus = []
+    if new_critical_high:
+        focus.append("Triage new Critical and High findings and confirm owner decisions.")
+    if persistent_critical_high:
+        focus.append("Review persistent Critical and High findings for blockers, ownership, and approved next steps.")
+    if evidence_gaps and not all(item.startswith("No evidence gaps") for item in evidence_gaps):
+        focus.append("Close evidence gaps so next month has comparable coverage.")
+    if top_risks:
+        focus.append("Use the top current risks to prioritize a small set of owner-approved remediation actions.")
+    if not focus:
+        focus.append("Keep monthly collection consistent and review any new evidence before remediation.")
+    return focus
+
+
+def list_items(value: Any) -> list[dict[str, Any]]:
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def list_strings(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item).strip()]
+    if value in (None, ""):
+        return []
+    return [str(value)]
+
+
 def render_executive_summary(report: dict[str, Any], language: str = "en") -> str:
     findings = sorted_findings(report.get("findings", []))
     top_risks = [item for item in findings if item.get("severity") != "Hold"][:5]
@@ -340,6 +506,10 @@ def render_executive_summary(report: dict[str, Any], language: str = "en") -> st
                         f"- `{md(item.get('finding_id'))}` ({md(item.get('severity'))}): {md(item.get('title'))}"
                     )
 
+    monthly_summary = render_monthly_improvement_summary(report, language=language, heading_level=2)
+    if monthly_summary:
+        lines.extend(["", monthly_summary])
+
     business_impacts = []
     for item in top_risks:
         impact = md(item.get("business_impact"))
@@ -542,6 +712,8 @@ def generate_markdown_reports(normalized_report: dict[str, Any], output_dir: str
         "technical-findings.md": render_technical_findings(normalized_report, language),
         "remediation-plan.md": render_remediation_plan(normalized_report, language),
     }
+    if isinstance(normalized_report.get("monthly_kpi_summary"), dict):
+        reports["monthly-kpi-summary.md"] = render_monthly_improvement_summary(normalized_report, language)
     written: list[Path] = []
     for file_name, content in reports.items():
         path = output_path / file_name

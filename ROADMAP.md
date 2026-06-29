@@ -27,6 +27,8 @@ scripts toolkit. Versions are targets, not contractual commitments.
   workstation, and network exposure JSON reports.
 - Add broad deterministic control-reference metadata to normalized reports
   without claiming compliance, certification, or audit attestation.
+- Add deterministic monthly KPI summaries from normalized reports for baseline
+  and month-over-month improvement review.
 
 ## v1.3.0 - Windows Security Health Check Enhancements
 
@@ -60,7 +62,7 @@ scripts toolkit. Versions are targets, not contractual commitments.
   claiming certification or audit attestation.
 - Wazuh/SIEM evidence mapping.
 - Backup readiness checks.
-- Dashboard-ready JSON exports.
+- Dashboard-ready JSON exports and monthly trend visualizations.
 - Signed release artifacts.
 - Documentation examples for lab environments.
 - Private customer portal and branded report templates outside the public repo.

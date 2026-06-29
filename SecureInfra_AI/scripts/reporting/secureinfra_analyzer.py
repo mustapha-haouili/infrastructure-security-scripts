@@ -19,6 +19,7 @@ from secureinfra.bundles.multi_bundle import normalize_multi_bundle
 from secureinfra.control_mapping import add_control_mappings
 from secureinfra.correlation.correlator import add_correlations
 from secureinfra.history.comparison import add_history_comparison
+from secureinfra.history.monthly_kpi import add_monthly_kpi_summary
 from secureinfra.loaders.json_loader import load_json_file
 from secureinfra.normalizers.ad_inactive_users import normalize_ad_inactive_users
 from secureinfra.normalizers.ad_password_never_expires import normalize_password_never_expires
@@ -73,6 +74,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
   %(prog)s --input reports/secureinfra-client-collection-CLIENT-20260619-120000.zip --type client-bundle --output reports/client-output
   %(prog)s --input reports/client-bundles --type multi-bundle --output reports/fleet-output
   %(prog)s --input reports/ad-shared --type ad-shared --output reports/output --previous-normalized-report reports/previous/normalized-report.json
+  %(prog)s --input reports/ad-shared --type ad-shared --output reports/monthly --monthly-summary
+  %(prog)s --input reports/ad-shared --type ad-shared --output reports/monthly --previous-normalized-report reports/previous/normalized-report.json --monthly-summary
   %(prog)s --input reports/ad-shared/service-accounts.json --type ad-service-accounts --output reports/output
   %(prog)s --input reports/ad-shared/gpo-health.json --type gpo-health --output reports/output
   %(prog)s --input reports/windows-security-audit.json --type windows-host-audit --output reports/output
@@ -90,6 +93,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--previous-normalized-report",
         help="Optional previous normalized-report.json to compare against the current run.",
+    )
+    parser.add_argument(
+        "--monthly-summary",
+        action="store_true",
+        help="Generate deterministic monthly KPI and trend summary output from normalized findings.",
     )
     return parser.parse_args(argv)
 
@@ -154,9 +162,11 @@ def analyze(args: argparse.Namespace) -> tuple[dict, list[Path]]:
     input_path = Path(args.input)
     output_dir = Path(args.output)
     previous_report_path = Path(args.previous_normalized_report) if args.previous_normalized_report else None
+    previous_report = None
     validate_input_path(input_path, args.type)
     if previous_report_path:
         validate_previous_report_path(previous_report_path)
+        previous_report = load_json_file(previous_report_path)
 
     if args.type in NORMALIZER_BY_TYPE:
         data = load_json_file(input_path)
@@ -171,9 +181,10 @@ def analyze(args: argparse.Namespace) -> tuple[dict, list[Path]]:
         raise ValueError(f"Unsupported report type: {args.type}")
 
     normalized_report = add_correlations(normalized_report)
-    if previous_report_path:
-        previous_report = load_json_file(previous_report_path)
+    if previous_report_path and previous_report is not None:
         normalized_report = add_history_comparison(normalized_report, previous_report, previous_report_path)
+    if args.monthly_summary:
+        normalized_report = add_monthly_kpi_summary(normalized_report, previous_report, previous_report_path)
     normalized_report = add_control_mappings(normalized_report)
     validate_normalized_report(normalized_report)
     output_dir.mkdir(parents=True, exist_ok=True)
