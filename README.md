@@ -15,6 +15,17 @@ It includes the SecureInfra_AI layer for deterministic, local, AI-ready analysis
 Current version: `1.2.0-beta.1`. See [CHANGELOG.md](CHANGELOG.md) and
 [v1.2.0-beta.1 release notes](docs/releases/v1.2.0-beta.1.md) for the current beta release baseline.
 
+## Public/private boundary
+
+This repository is the public defensive infrastructure security engine. It is
+intended for audit-first checks, deterministic local reporting, safe evidence
+normalization, and defensive remediation workflows.
+
+Private commercial reporting, customer-specific workflows, pricing, branding,
+private prompts, and customer data belong outside this repository. Keep public
+examples fictional and follow the repository guardrails in
+[AGENTS.md](AGENTS.md).
+
 ## Focus areas
 
 - Infrastructure hardening
@@ -49,7 +60,8 @@ infrastructure-security-scripts/
 |   |-- linux/                  # Linux audit, hardening, and inventory scripts
 |   |-- devsecops/              # Docker, Kubernetes, and secret scanning scripts
 |   |-- monitoring/             # Service and disk monitoring scripts
-|   `-- reporting/              # Markdown report generation helpers
+|   |-- reporting/              # Markdown report generation helpers
+|   `-- release/                # Public release bundle and integrity helpers
 `-- tests/                      # Lightweight static checks and unit tests
 ```
 
@@ -171,6 +183,24 @@ window.
 ```bash
 python3 scripts/devsecops/secret-scan.py . --format text
 ```
+
+### Release integrity bundle
+
+Create a public release bundle with `SHA256SUMS.txt` and
+`RELEASE-MANIFEST.json`:
+
+```bash
+bash scripts/release/create_release_bundle.sh --output-dir dist
+```
+
+PowerShell users can run:
+
+```powershell
+.\scripts\release\New-SecureInfraReleaseBundle.ps1 -OutputDirectory .\dist
+```
+
+See [docs/release-integrity.md](docs/release-integrity.md) for included files,
+exclusions, verification commands, and optional signing guidance.
 
 ### Docker image audit
 

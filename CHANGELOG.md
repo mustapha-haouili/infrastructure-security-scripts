@@ -8,6 +8,13 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 
 Future changes after v1.2.0-beta.1 will be documented here.
 
+### Release Integrity
+- Added public release bundle scripts for PowerShell and shell environments.
+- Added release manifest and SHA256 checksum documentation for local artifact
+  verification.
+- Documented optional operator-controlled signing outside the repository,
+  without adding signing keys or paid-service requirements.
+
 ## [1.2.0-beta.1] - 2026-06-20
 
 ### SecureInfra AI
