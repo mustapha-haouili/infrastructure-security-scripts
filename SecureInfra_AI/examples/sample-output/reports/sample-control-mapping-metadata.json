@@ -1,0 +1,45 @@
+{
+  "metadata": {
+    "control_references_by_finding_id": {
+      "AD-INACTIVE-0001": [
+        {
+          "framework": "CIS Controls IG1",
+          "control_id": "CIS-IG1-05",
+          "label": "Account Management",
+          "mapping_confidence": "medium"
+        },
+        {
+          "framework": "NIST CSF 2.0",
+          "control_id": "PR.AA",
+          "label": "Identity Management, Authentication, and Access Control",
+          "mapping_confidence": "medium"
+        }
+      ],
+      "HOST-WIN-WIN-FW-001": [
+        {
+          "framework": "CIS Controls IG1",
+          "control_id": "CIS-IG1-04",
+          "label": "Secure Configuration of Enterprise Assets and Software",
+          "mapping_confidence": "medium"
+        },
+        {
+          "framework": "CIS Controls IG1",
+          "control_id": "CIS-IG1-12",
+          "label": "Network Infrastructure Management",
+          "mapping_confidence": "medium"
+        }
+      ]
+    },
+    "control_mapping_summary": {
+      "CIS Controls IG1:CIS-IG1-04": 1,
+      "CIS Controls IG1:CIS-IG1-05": 1,
+      "CIS Controls IG1:CIS-IG1-12": 1,
+      "NIST CSF 2.0:PR.AA": 1
+    }
+  },
+  "notes": [
+    "This fictional example shows broad control-reference metadata only.",
+    "It does not claim compliance, certification, audit attestation, or official control coverage."
+  ],
+  "fictional_environment": "example.local"
+}

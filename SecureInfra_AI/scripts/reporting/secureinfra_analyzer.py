@@ -16,6 +16,7 @@ from pathlib import Path
 from secureinfra.bundles.ad_shared_bundle import KNOWN_AD_SHARED_FILES, normalize_ad_shared_bundle
 from secureinfra.bundles.client_bundle import normalize_client_bundle
 from secureinfra.bundles.multi_bundle import normalize_multi_bundle
+from secureinfra.control_mapping import add_control_mappings
 from secureinfra.correlation.correlator import add_correlations
 from secureinfra.history.comparison import add_history_comparison
 from secureinfra.loaders.json_loader import load_json_file
@@ -173,6 +174,7 @@ def analyze(args: argparse.Namespace) -> tuple[dict, list[Path]]:
     if previous_report_path:
         previous_report = load_json_file(previous_report_path)
         normalized_report = add_history_comparison(normalized_report, previous_report, previous_report_path)
+    normalized_report = add_control_mappings(normalized_report)
     validate_normalized_report(normalized_report)
     output_dir.mkdir(parents=True, exist_ok=True)
     normalized_path = output_dir / "normalized-report.json"

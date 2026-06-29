@@ -8,6 +8,13 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 
 Future changes after v1.2.0-beta.1 will be documented here.
 
+### SecureInfra AI
+- Added deterministic broad control-reference metadata for normalized reports,
+  including per-finding references and summary counts under `metadata`.
+- Added a public-safe static control mapping catalog and tests without changing
+  normalized finding objects or claiming compliance, certification, or audit
+  attestation.
+
 ### Release Integrity
 - Added public release bundle scripts for PowerShell and shell environments.
 - Added release manifest and SHA256 checksum documentation for local artifact
