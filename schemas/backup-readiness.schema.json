@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/backup-readiness.schema.json",
+  "title": "Backup Readiness Audit Report",
+  "description": "Audit-only backup readiness metadata. The report must not contain backup contents, credentials, secrets, or restore output.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "ToolName",
+    "ReportType",
+    "Platform",
+    "GeneratedAtUtc",
+    "Summary",
+    "BackupEvidence",
+    "Findings"
+  ],
+  "properties": {
+    "ToolName": {
+      "type": "string"
+    },
+    "ReportType": {
+      "type": "string",
+      "const": "backup-readiness"
+    },
+    "Platform": {
+      "type": "string",
+      "enum": [
+        "windows",
+        "linux"
+      ]
+    },
+    "GeneratedAtUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ComputerName": {
+      "type": "string"
+    },
+    "HostName": {
+      "type": "string"
+    },
+    "WarningAgeDays": {
+      "type": "integer"
+    },
+    "CriticalAgeDays": {
+      "type": "integer"
+    },
+    "Summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "BackupHealthStatus": {
+          "type": "string"
+        },
+        "FindingCount": {
+          "type": "integer"
+        },
+        "SeverityCounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "LastBackupEvidenceTimestamp": {
+          "type": "string"
+        },
+        "RestoreTestEvidenceStatus": {
+          "type": "string"
+        },
+        "MonitoringEvidenceStatus": {
+          "type": "string"
+        }
+      }
+    },
+    "BackupEvidence": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Metadata-only backup evidence. Expected path checks must use path metadata only and must not include backup contents."
+    },
+    "Findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "FindingType",
+          "Severity",
+          "Title",
+          "Evidence",
+          "Recommendation"
+        ],
+        "properties": {
+          "FindingType": {
+            "type": "string"
+          },
+          "Severity": {
+            "type": "string",
+            "enum": [
+              "Critical",
+              "High",
+              "Medium",
+              "Low",
+              "Info",
+              "Hold",
+              "critical",
+              "high",
+              "medium",
+              "low",
+              "info"
+            ]
+          },
+          "Title": {
+            "type": "string"
+          },
+          "AffectedObject": {
+            "type": "string"
+          },
+          "Evidence": {
+            "type": "string"
+          },
+          "Recommendation": {
+            "type": "string"
+          },
+          "BackupEvidenceSource": {
+            "type": "string"
+          },
+          "BackupEvidenceConfidence": {
+            "type": "string"
+          },
+          "LastBackupEvidenceTimestamp": {
+            "type": "string"
+          },
+          "RestoreTestEvidenceStatus": {
+            "type": "string"
+          },
+          "MonitoringEvidenceStatus": {
+            "type": "string"
+          },
+          "Limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "Limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "Notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

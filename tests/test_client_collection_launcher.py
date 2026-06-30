@@ -23,6 +23,7 @@ class ClientCollectionLauncherTests(unittest.TestCase):
         self.assertIn('New-ToolDefinition -Id "WORKSTATION-SECURITY-INVENTORY"', launcher)
         self.assertIn('New-ToolDefinition -Id "WORKSTATION-RDP-EXPOSURE"', launcher)
         self.assertIn('New-ToolDefinition -Id "NETWORK-EXPOSURE"', launcher)
+        self.assertIn('New-ToolDefinition -Id "BACKUP-READINESS"', launcher)
 
     def test_client_collection_launcher_has_safe_default_contract(self):
         collector = self.read_text("scripts/windows/Start-SecureInfraClientCollection.ps1")
@@ -40,12 +41,14 @@ class ClientCollectionLauncherTests(unittest.TestCase):
         self.assertIn("Get-WindowsServerSecurityInventory.ps1", collector)
         self.assertIn("Get-WindowsWorkstationSecurityInventory.ps1", collector)
         self.assertIn("Get-WindowsNetworkExposureAudit.ps1", collector)
+        self.assertIn("Get-WindowsBackupReadinessAudit.ps1", collector)
+        self.assertIn("Backup is explicit and is not included in All", collector)
 
     def test_client_collection_scope_values_document_current_coverage(self):
         collector = self.read_text("scripts/windows/Start-SecureInfraClientCollection.ps1")
 
-        self.assertIn('@("AD", "Host", "Server", "Workstation", "Network")', collector)
-        self.assertIn('SupportedToday     = @("AD", "Host", "Server", "Workstation", "Network")', collector)
+        self.assertIn('@("AD", "Host", "Server", "Workstation", "Network", "Backup")', collector)
+        self.assertIn('SupportedToday     = @("AD", "Host", "Server", "Workstation", "Network", "Backup")', collector)
         self.assertIn('NotYetImplemented  = @()', collector)
 
     def test_new_windows_collection_scripts_are_audit_only(self):
@@ -53,6 +56,7 @@ class ClientCollectionLauncherTests(unittest.TestCase):
             "scripts/windows/host/Get-WindowsLocalAdminInventory.ps1",
             "scripts/windows/host/Get-WindowsRDPExposureAudit.ps1",
             "scripts/windows/network/Get-WindowsNetworkExposureAudit.ps1",
+            "scripts/windows/backup/Get-WindowsBackupReadinessAudit.ps1",
             "scripts/windows/server/Get-WindowsServerSecurityInventory.ps1",
             "scripts/windows/workstation/Get-WindowsWorkstationSecurityInventory.ps1",
         ]:

@@ -105,6 +105,19 @@ def matched_themes(finding: dict[str, Any]) -> set[str]:
     if contains_any(text, ["backup", "recovery", "restore", "resilience"]):
         themes.add("resilience_recovery_readiness")
 
+    if "backup-readiness" in source_id_text or contains_any(
+        text,
+        [
+            "backup readiness",
+            "expected backup path",
+            "restore test evidence",
+            "backup monitoring",
+            "backup evidence",
+            "operational continuity",
+        ],
+    ):
+        themes.add("backup_readiness_operational_continuity")
+
     if contains_any(text, ["patch", "updates", "update management", "vulnerability", "cve", "outdated package"]):
         themes.add("vulnerability_update_management")
 

@@ -12,8 +12,9 @@ The output bundle is designed for a client to send back for SecureInfra AI
 normalization, dashboard review, and final report generation.
 
 .PARAMETER Scope
-Collection scopes to run. Use All for every supported scope. Current
-implemented scopes are AD, Host, Server, Workstation, and Network.
+Collection scopes to run. Use All for the default supported local scopes.
+Current implemented scopes are AD, Host, Server, Workstation, Network, and
+Backup. Backup is explicit and is not included in All.
 
 .PARAMETER OutputDirectory
 Directory for the collection folder. A zip archive is created next to this
@@ -57,6 +58,10 @@ param(
     [int]$GpoStaleDays = 365,
     [int]$EventDays = 7,
     [int]$RdpCacheMinimumAgeDays = 14,
+    [string[]]$ExpectedBackupPaths = @(),
+    [string[]]$ExpectedBackupSoftware = @(),
+    [int]$BackupWarningAgeDays = 14,
+    [int]$BackupCriticalAgeDays = 30,
     [switch]$IncludeDisabled,
     [switch]$IncludeHotfixes,
     [switch]$SkipArchive,
@@ -134,7 +139,8 @@ function Add-SwitchArgument {
 }
 
 function Resolve-CollectionScopes {
-    $orderedScopes = @("AD", "Host", "Server", "Workstation", "Network")
+    $defaultAllScopes = @("AD", "Host", "Server", "Workstation", "Network")
+    $orderedScopes = @("AD", "Host", "Server", "Workstation", "Network", "Backup")
     $requestedScopes = @(
         foreach ($item in @($Scope)) {
             foreach ($part in ("$item" -split ",")) {
@@ -154,7 +160,7 @@ function Resolve-CollectionScopes {
         throw "Unsupported scope value(s): $($invalidScopes -join ', '). Supported values: $($validScopes -join ', ')"
     }
     if ($requestedScopes -contains "All") {
-        return $orderedScopes
+        return $defaultAllScopes
     }
     return @($orderedScopes | Where-Object { $requestedScopes -contains $_ })
 }
@@ -544,6 +550,24 @@ function Invoke-NetworkCollection {
     )
 }
 
+function Invoke-BackupCollection {
+    $backupDirectory = Join-Path -Path $script:OutputDirectory -ChildPath "backup"
+    New-Directory -Path $backupDirectory
+
+    Invoke-CollectionTask -ScopeName "Backup" -Name "Backup readiness audit" -ScriptPath (Join-Path $script:ScriptRoot "backup\Get-WindowsBackupReadinessAudit.ps1") -Arguments @{
+        OutputDirectory        = $backupDirectory
+        ExpectedBackupPaths    = @($ExpectedBackupPaths)
+        ExpectedBackupSoftware = @($ExpectedBackupSoftware)
+        WarningAgeDays         = $BackupWarningAgeDays
+        CriticalAgeDays        = $BackupCriticalAgeDays
+        Quiet                  = $true
+    } -ExpectedOutputs @(
+        (Join-Path -Path $backupDirectory -ChildPath "backup-readiness.json"),
+        (Join-Path -Path $backupDirectory -ChildPath "backup-readiness-findings.csv"),
+        (Join-Path -Path $backupDirectory -ChildPath "backup-readiness-review.md")
+    )
+}
+
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $collectionId = "secureinfra-client-$env:COMPUTERNAME-$timestamp"
 $script:OutputDirectory = Resolve-FullPath -Path $OutputDirectory
@@ -566,6 +590,7 @@ foreach ($scopeName in $resolvedScopes) {
         "Server" { Invoke-ServerCollection }
         "Workstation" { Invoke-WorkstationCollection }
         "Network" { Invoke-NetworkCollection }
+        "Backup" { Invoke-BackupCollection }
     }
 }
 
@@ -582,7 +607,7 @@ $summary = [pscustomobject][ordered]@{
     ScopeResolved      = @($resolvedScopes)
     TaskCount          = $taskResults.Count
     StatusCounts       = $statusCounts
-    SupportedToday     = @("AD", "Host", "Server", "Workstation", "Network")
+    SupportedToday     = @("AD", "Host", "Server", "Workstation", "Network", "Backup")
     NotYetImplemented  = @()
     AnalyzerNextStep   = "Run SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input <collection-or-zip> --type client-bundle --output <analysis-output> for full bundle normalization."
     SendBackToReviewer = if ($archivePath) { $archivePath } else { $script:OutputDirectory }

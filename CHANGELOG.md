@@ -16,6 +16,16 @@ Future changes after v1.2.0-beta.1 will be documented here.
   attestation.
 - Added deterministic monthly KPI summaries with baseline and month-over-month
   trend output from existing normalized reports.
+- Added beta backup readiness normalization for metadata-only Windows and Linux
+  backup evidence, including conservative findings for stale evidence, missing
+  expected backup paths, restore-test gaps, monitoring gaps, and unverified
+  backup service presence.
+
+### Backup Readiness
+- Added audit-only Windows and Linux backup readiness collectors.
+- Added backup readiness schema, fictional sample output, docs, and unit tests.
+- Added explicit client collection `Backup` scope; it is not included in broad
+  `All` collection and does not read backup contents or run restores.
 
 ### Release Integrity
 - Added public release bundle scripts for PowerShell and shell environments.

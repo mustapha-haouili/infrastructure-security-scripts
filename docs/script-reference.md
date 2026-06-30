@@ -102,13 +102,14 @@ Outputs:
 - `ad-shared/` for AD/GPO evidence compatible with SecureInfra AI
 - `host/`, `server/`, `workstation/`, and `network/` folders for supported
   local Windows evidence
+- `backup/` folder when the explicit `Backup` scope is requested
 - Zip archive next to the collection folder unless `-SkipArchive` is used
 
 Parameters:
 
 | Parameter | Type | Default | Description |
 |---|---:|---|---|
-| `-Scope` | string array | `All` | Scopes to collect. Supported values: `All`, `AD`, `Host`, `Server`, `Workstation`, `Network`. Current implemented scopes are `AD`, `Host`, `Server`, `Workstation`, and `Network`. |
+| `-Scope` | string array | `All` | Scopes to collect. Supported values: `All`, `AD`, `Host`, `Server`, `Workstation`, `Network`, `Backup`. `Backup` is explicit and is not included in `All`. |
 | `-OutputDirectory` | string | `.\reports\secureinfra-client-collection-COMPUTER-TIMESTAMP` | Collection output directory. |
 | `-BaselineDirectory` | string | `.\reports\secureinfra-client-baselines` | Persistent local baseline directory used by the privileged group audit. |
 | `-PrivilegedGroupBaselinePath` | string | empty | Optional explicit privileged group baseline path. |
@@ -122,6 +123,10 @@ Parameters:
 | `-GpoStaleDays` | int | `365` | GPO stale threshold. |
 | `-EventDays` | int | `7` | Windows event history window. |
 | `-RdpCacheMinimumAgeDays` | int | `14` | Minimum age threshold for RDP cache dry-run reporting. |
+| `-ExpectedBackupPaths` | string array | empty | Optional expected backup paths to check by metadata only when `Backup` scope is requested. |
+| `-ExpectedBackupSoftware` | string array | empty | Optional expected backup software names to match against visible service names when `Backup` scope is requested. |
+| `-BackupWarningAgeDays` | int | `14` | Stale backup evidence warning threshold for `Backup` scope. |
+| `-BackupCriticalAgeDays` | int | `30` | Critical stale backup evidence context threshold for `Backup` scope. |
 | `-IncludeDisabled` | switch | off | Include disabled AD users/computers/accounts where supported. |
 | `-IncludeHotfixes` | switch | off | Include installed hotfix evidence in the host audit. |
 | `-SkipArchive` | switch | off | Do not create the zip archive. |
@@ -143,6 +148,10 @@ Examples:
 ```
 
 ```powershell
+.\scripts\windows\Start-SecureInfraClientCollection.ps1 -Scope Backup -ExpectedBackupPaths "E:\ExampleBackups" -ExpectedBackupSoftware "Windows Server Backup"
+```
+
+```powershell
 .\scripts\windows\Start-SecureInfraClientCollection.ps1 -Scope AD -SearchBase "OU=Users,DC=example,DC=local" -Server "dc01.example.local"
 ```
 
@@ -150,6 +159,8 @@ Safety notes:
 
 - The collector does not pass `-Apply` to child scripts.
 - The collector does not pass `-UpdateBaseline` to the privileged group audit.
+- The `Backup` scope is explicit and is not run as part of `All`; it checks
+  metadata only and does not read backup contents or run restores.
 - If an AD module, GPO module, or permission is missing, that task is recorded
   as failed and the collector continues unless `-StopOnError` is used.
 
@@ -306,6 +317,55 @@ Example:
 ```powershell
 .\scripts\windows\network\Get-WindowsNetworkExposureAudit.ps1
 ```
+
+### `scripts/windows/backup/Get-WindowsBackupReadinessAudit.ps1`
+
+Collects metadata-only backup readiness evidence. It checks Windows Server
+Backup feature visibility where available, backup-related service names, recent
+backup-related event metadata, Volume Shadow Copy / restore point metadata, and
+optional expected backup path timestamps. It does not delete, modify, restore,
+enumerate, or read backup contents.
+
+Default mode: audit only.
+
+Outputs:
+
+- `backup-readiness.json` under `-OutputDirectory`
+- `backup-readiness-findings.csv` under `-OutputDirectory`
+- `backup-readiness-review.md` under `-OutputDirectory`
+
+Parameters:
+
+| Parameter | Type | Default | Description |
+|---|---:|---|---|
+| `-ExpectedBackupPaths` | string array | empty | Optional backup target paths to check with `Test-Path` and `Get-Item` only. |
+| `-ExpectedBackupSoftware` | string array | empty | Optional expected backup software names to match against visible service names. |
+| `-WarningAgeDays` | int | `14` | Age threshold for stale backup evidence. |
+| `-CriticalAgeDays` | int | `30` | Age threshold for critical stale backup evidence context. |
+| `-OutputDirectory` | string | `.\reports\backup-readiness-COMPUTER-TIMESTAMP` | Directory for JSON, CSV, and Markdown reports. |
+| `-Quiet` | switch | off | Suppress console summary. |
+
+Examples:
+
+```powershell
+.\scripts\windows\backup\Get-WindowsBackupReadinessAudit.ps1
+```
+
+```powershell
+.\scripts\windows\backup\Get-WindowsBackupReadinessAudit.ps1 -ExpectedBackupPaths "E:\ExampleBackups" -ExpectedBackupSoftware "Windows Server Backup" -OutputDirectory .\reports\backup -Quiet
+```
+
+Start reading the report at:
+
+- `Summary.BackupHealthStatus`
+- `Summary.LastBackupEvidenceTimestamp`
+- `BackupEvidence.ExpectedBackupPaths`
+- `Findings`
+- `Limitations`
+
+Service presence is not treated as proof of healthy backups. Restore testing,
+monitoring, and authoritative backup job history should be validated with the
+system owner.
 
 ### `scripts/windows/server/Get-WindowsServerSecurityInventory.ps1`
 
@@ -1029,6 +1089,53 @@ bash scripts/linux/linux-security-audit.sh --summary-json reports/linux-summary.
 ```bash
 bash scripts/linux/linux-security-audit.sh --quick --output-dir reports --summary-json reports/linux-summary.json
 ```
+
+### `scripts/linux/backup-readiness-audit.sh`
+
+Collects Linux backup readiness metadata and evidence-gap findings. It detects
+visible backup tools, service or timer names, backup-related cron file names,
+and optional expected backup path timestamps. It does not delete, modify,
+restore, enumerate, or read backup contents.
+
+Default mode: audit only.
+
+Outputs:
+
+- `backup-readiness.json` under `--output-dir`
+- `backup-readiness-findings.csv` under `--output-dir`
+
+Options:
+
+| Option | Default | Description |
+|---|---|---|
+| `-o DIR`, `--output-dir DIR` | `reports/backup-readiness` | Directory for JSON and CSV output. |
+| `--expected-backup-path PATH` | empty | Optional expected backup path to check with `stat` only. May be supplied more than once. |
+| `--warning-age-days DAYS` | `14` | Stale backup evidence warning threshold. |
+| `--critical-age-days DAYS` | `30` | Critical stale backup evidence context threshold. |
+| `-q`, `--quiet` | off | Suppress console summary. |
+| `-h`, `--help` | n/a | Show built-in help. |
+
+Examples:
+
+```bash
+bash scripts/linux/backup-readiness-audit.sh --output-dir reports/backup
+```
+
+```bash
+bash scripts/linux/backup-readiness-audit.sh --expected-backup-path /mnt/example-backups --warning-age-days 14
+```
+
+Start reading the report at:
+
+- `Summary.BackupHealthStatus`
+- `Summary.LastBackupEvidenceTimestamp`
+- `BackupEvidence.ExpectedBackupPaths`
+- `Findings`
+- `Limitations`
+
+Tool, service, timer, cron, or path presence is not treated as proof of healthy
+or recoverable backups. Restore testing and backup monitoring evidence should
+be validated with owners.
 
 ### `scripts/linux/linux-hardening-baseline.sh`
 

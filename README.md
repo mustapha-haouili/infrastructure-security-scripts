@@ -91,6 +91,12 @@ bash tests/run_static_checks.sh
 sudo bash scripts/linux/linux-security-audit.sh -o reports
 ```
 
+### Linux backup readiness audit
+
+```bash
+bash scripts/linux/backup-readiness-audit.sh --output-dir reports/backup --expected-backup-path /mnt/example-backups
+```
+
 ### Linux hardening dry run
 
 ```bash
@@ -114,6 +120,12 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 Choose `Windows Host` from the menu, then select `Windows security audit`.
 
+### Windows backup readiness audit
+
+```powershell
+.\scripts\windows\backup\Get-WindowsBackupReadinessAudit.ps1 -ExpectedBackupPaths "E:\ExampleBackups" -OutputDirectory .\reports\backup
+```
+
 ### Client evidence collection
 
 For client-side collection, run the safe bundle launcher. It runs supported
@@ -131,8 +143,16 @@ Run selected scopes only:
 .\scripts\windows\Start-SecureInfraClientCollection.ps1 -Scope AD,Host,Server
 ```
 
-The current collector supports AD/GPO, Windows host, server, workstation, and
-local network exposure evidence.
+Collect backup readiness explicitly:
+
+```powershell
+.\scripts\windows\Start-SecureInfraClientCollection.ps1 -Scope Backup -ExpectedBackupPaths "E:\ExampleBackups" -ExpectedBackupSoftware "Windows Server Backup"
+```
+
+The current collector supports AD/GPO, Windows host, server, workstation, local
+network exposure, and explicit backup readiness evidence. `Backup` is not
+included in the broad `All` scope; request it directly when backup evidence is
+in scope.
 
 Analyze the full client collection folder or zip:
 
@@ -255,6 +275,12 @@ python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports
 
 These analyzer types are report-only and normalize existing JSON evidence from
 the corresponding Windows audit scripts.
+
+Backup readiness analyzer:
+
+```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports/backup/backup-readiness.json --type backup-readiness --output reports/secureinfra-ai-backup
+```
 
 Normalized SecureInfra AI reports can also include broad control-reference
 metadata under `metadata.control_references_by_finding_id` and
