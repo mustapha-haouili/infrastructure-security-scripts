@@ -1,14 +1,3 @@
-<#
-.SYNOPSIS
-Creates a public SecureInfra release bundle with local integrity metadata.
-
-.DESCRIPTION
-Packages selected public repository files into a release directory and zip
-archive. The bundle includes SHA256SUMS.txt and RELEASE-MANIFEST.json for local
-integrity checks. Signing is intentionally not implemented here; see
-docs/release-integrity.md for optional operator-controlled signing guidance.
-#>
-
 [CmdletBinding()]
 param(
     [string]$OutputDirectory = "dist",
@@ -293,3 +282,52 @@ Write-Host "Release bundle directory: $stagingPath"
 Write-Host "Release archive: $archivePath"
 Write-Host "Manifest: $manifestPath"
 Write-Host "Checksums: $checksumsPath"
+
+<#
+.SYNOPSIS
+Creates a public SecureInfra release bundle with local integrity metadata.
+
+.DESCRIPTION
+Packages selected public repository files into a release directory and a zip
+archive. The bundle includes SHA256SUMS.txt and RELEASE-MANIFEST.json so release
+operators can verify file integrity with local SHA256 checks.
+
+The script selects public documentation, scripts, schemas, examples, and
+SecureInfra_AI files while excluding repository internals, runtime reports,
+local configuration, private key formats, archives, generated evidence, and
+common secret or credential file patterns.
+
+Signing is intentionally not implemented by this script. See
+docs/release-integrity.md for optional operator-controlled signing guidance.
+
+.PARAMETER OutputDirectory
+Directory where the release staging folder and zip archive are created. Relative
+paths are resolved from the repository root. The default is "dist".
+
+.PARAMETER Version
+Release version to include in the bundle name and RELEASE-MANIFEST.json. When
+omitted, the script reads the repository VERSION file. If VERSION is not
+available, it uses "0.0.0-dev".
+
+.PARAMETER Force
+Replaces an existing release staging folder or zip archive for the selected
+version. Without this switch, the script stops when matching output already
+exists.
+
+.EXAMPLE
+.\scripts\release\New-SecureInfraReleaseBundle.ps1
+
+Creates a public release bundle under .\dist using the version from the VERSION
+file.
+
+.EXAMPLE
+.\scripts\release\New-SecureInfraReleaseBundle.ps1 -Version 1.2.0-beta.1 -OutputDirectory .\dist -Force
+
+Creates or replaces the 1.2.0-beta.1 public release bundle under .\dist.
+
+.NOTES
+This script creates public release bundles only. Bundles must not include
+customer data, secrets, credentials, tokens, private keys, certificates, raw
+evidence, generated customer reports, private commercial deliverables, local
+configuration, or private files.
+#>
