@@ -43,6 +43,15 @@ executive summaries, and remediation plans. The public toolkit focuses on the
 technical evidence layer. Customer-specific branding, pricing, contracts, and
 portal workflows should stay private.
 
+## Backup Readiness Boundary
+
+Backup readiness checks are audit-only. They can collect metadata such as
+visible backup tools, service names, event or timer signals, and expected backup
+path timestamps. They do not read backup contents, modify backups, or run
+restore operations. If backup job history, restore tests, or monitoring
+evidence is unavailable, reports should treat that as an evidence gap rather
+than proof that backups are healthy or unhealthy.
+
 ## Responsible Use
 
 The toolkit should be used only on systems the operator owns or is authorized to

@@ -12,12 +12,13 @@ in organized category folders for advanced or direct use.
 
 | Script | Purpose | Default mode |
 |---|---|---|
-| `Start-WindowsSecurity.ps1` | Interactive menu for AD/GPO, host, server, workstation, and network scripts | Menu |
+| `Start-WindowsSecurity.ps1` | Interactive menu for AD/GPO, host, server, workstation, network, and backup scripts | Menu |
 | `Start-SecureInfraClientCollection.ps1` | Run supported safe checks and package one client evidence bundle | Audit and dry run |
 | `host/Invoke-WindowsSecurityAudit.ps1` | Collect Windows baseline security information and export JSON | Audit |
 | `host/Get-WindowsLocalAdminInventory.ps1` | Inventory local Administrators group membership and review risky entries | Audit |
 | `host/Get-WindowsRDPExposureAudit.ps1` | Audit local RDP exposure, NLA, allowed users, firewall rules, and listeners | Audit |
 | `network/Get-WindowsNetworkExposureAudit.ps1` | Audit local network adapters, IP/DNS/routes, firewall profiles, network profiles, and listeners | Audit |
+| `backup/Get-WindowsBackupReadinessAudit.ps1` | Audit backup readiness metadata, expected backup path freshness, and evidence gaps without reading backup contents | Audit |
 | `server/Get-WindowsServerSecurityInventory.ps1` | Audit server roles/features, services, scheduled tasks, SMB shares, and broad share access | Audit |
 | `host/Set-WindowsBaselineHardening.ps1` | Apply selected Windows baseline hardening controls | Dry run |
 | `host/New-WindowsRemediationPlan.ps1` | Create remediation plans from Windows audit reports | Audit |
@@ -49,6 +50,7 @@ in organized category folders for advanced or direct use.
 | Script | Purpose | Default mode |
 |---|---|---|
 | `linux-security-audit.sh` | Collect Linux security baseline information | Audit |
+| `backup-readiness-audit.sh` | Collect Linux backup readiness metadata and evidence-gap findings without reading backup contents | Audit |
 | `linux-hardening-baseline.sh` | Apply selected Linux baseline hardening controls | Dry run |
 | `collect-linux-inventory.sh` | Export host inventory in JSON format | Audit |
 

@@ -28,6 +28,7 @@ from secureinfra.normalizers.ad_privileged_identity import normalize_privileged_
 from secureinfra.normalizers.ad_service_accounts import normalize_service_accounts
 from secureinfra.normalizers.ad_spn_exposure import normalize_spn_exposure
 from secureinfra.normalizers.ad_stale_computers import normalize_stale_computers
+from secureinfra.normalizers.backup_readiness import normalize_backup_readiness
 from secureinfra.normalizers.gpo_health import normalize_gpo_health
 from secureinfra.normalizers.windows_host import normalize_windows_host_audit
 from secureinfra.normalizers.windows_network import normalize_windows_network_exposure
@@ -45,6 +46,7 @@ NORMALIZER_BY_TYPE = {
     "ad-service-accounts": normalize_service_accounts,
     "ad-spn-exposure": normalize_spn_exposure,
     "ad-stale-computers": normalize_stale_computers,
+    "backup-readiness": normalize_backup_readiness,
     "gpo-health": normalize_gpo_health,
     "windows-host-audit": normalize_windows_host_audit,
     "windows-server-audit": normalize_windows_server_audit,
@@ -82,6 +84,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
   %(prog)s --input reports/windows-server-security.json --type windows-server-audit --output reports/output
   %(prog)s --input reports/windows-workstation-security.json --type windows-workstation-audit --output reports/output
   %(prog)s --input reports/windows-network-exposure.json --type windows-network-exposure --output reports/output
+  %(prog)s --input reports/backup-readiness.json --type backup-readiness --output reports/output
   %(prog)s --input report.json --type ad-inactive-users --language en --format markdown
 """,
     )

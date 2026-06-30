@@ -30,6 +30,7 @@ CLIENT_FILE_DEFINITIONS: dict[str, dict[str, str]] = {
     "workstation_windows_workstation_security": {"scope": "Workstation", "path": "workstation/windows-workstation-security.json"},
     "workstation_windows_local_admins": {"scope": "Workstation", "path": "workstation/windows-local-admins.json"},
     "workstation_windows_rdp_exposure": {"scope": "Workstation", "path": "workstation/windows-rdp-exposure.json"},
+    "backup_backup_readiness": {"scope": "Backup", "path": "backup/backup-readiness.json"},
 }
 FINDING_SOURCE_KEYS = {
     "host_windows_security_audit",
@@ -42,8 +43,9 @@ FINDING_SOURCE_KEYS = {
     "workstation_windows_workstation_security",
     "workstation_windows_local_admins",
     "workstation_windows_rdp_exposure",
+    "backup_backup_readiness",
 }
-SUPPORTED_SCOPES = ["AD", "Host", "Server", "Workstation", "Network"]
+SUPPORTED_SCOPES = ["AD", "Host", "Server", "Workstation", "Network", "Backup"]
 DISPLAY_NAME_BY_KEY = {
     "host_windows_security_audit": "Windows security audit",
     "host_windows_events_summary": "Windows event security summary",
@@ -57,6 +59,7 @@ DISPLAY_NAME_BY_KEY = {
     "workstation_windows_workstation_security": "Workstation security inventory",
     "workstation_windows_local_admins": "Workstation local administrators",
     "workstation_windows_rdp_exposure": "Workstation RDP exposure",
+    "backup_backup_readiness": "Backup readiness audit",
 }
 PREFIX_BY_KEY = {
     "host_windows_security_audit": "HOST-WIN",
@@ -69,6 +72,7 @@ PREFIX_BY_KEY = {
     "workstation_windows_workstation_security": "WORKSTATION-SECURITY",
     "workstation_windows_local_admins": "WORKSTATION-LADMIN",
     "workstation_windows_rdp_exposure": "WORKSTATION-RDP",
+    "backup_backup_readiness": "BACKUP-READINESS",
 }
 OBJECT_TYPE_BY_KEY = {
     "host_windows_security_audit": "Windows host security control",
@@ -81,6 +85,7 @@ OBJECT_TYPE_BY_KEY = {
     "workstation_windows_workstation_security": "Windows workstation security control",
     "workstation_windows_local_admins": "Windows local administrator principal",
     "workstation_windows_rdp_exposure": "Windows RDP exposure",
+    "backup_backup_readiness": "Backup readiness evidence",
 }
 CATEGORY_BY_KEY = {
     "host_windows_security_audit": "Host Security Baseline",
@@ -93,6 +98,7 @@ CATEGORY_BY_KEY = {
     "workstation_windows_workstation_security": "Workstation Security Inventory",
     "workstation_windows_local_admins": "Workstation Local Administration",
     "workstation_windows_rdp_exposure": "Workstation Remote Access",
+    "backup_backup_readiness": "Backup Readiness",
 }
 
 # Client bundles are report-only evidence packages. Keep limits conservative
@@ -102,7 +108,7 @@ MAX_ZIP_ENTRIES = 512
 MAX_ZIP_MEMBER_SIZE_BYTES = 25 * 1024 * 1024
 ALLOWED_ZIP_EXTENSIONS = {".json", ".csv", ".md", ".txt", ".log"}
 ALLOWED_ZIP_ROOT_FILES = {"client-info.json", "collection-summary.json", "manifest.json"}
-ALLOWED_ZIP_TOP_LEVEL_DIRS = {"ad-shared", "host", "server", "workstation", "network", "logs"}
+ALLOWED_ZIP_TOP_LEVEL_DIRS = {"ad-shared", "host", "server", "workstation", "network", "backup", "logs"}
 
 
 @contextmanager
@@ -228,7 +234,7 @@ def missing_client_files(detected_files: dict[str, Path]) -> list[str]:
     missing = [
         definition["path"]
         for key, definition in CLIENT_FILE_DEFINITIONS.items()
-        if key not in detected_files and definition["scope"] in SUPPORTED_SCOPES + ["Client"]
+        if key not in detected_files and definition["scope"] in SUPPORTED_SCOPES + ["Client"] and definition["scope"] != "Backup"
     ]
     if "ad_shared" not in detected_files:
         missing.append("ad-shared/")
@@ -251,7 +257,7 @@ def normalize_prepared_client_bundle(bundle_dir: Path, source_label: str) -> dic
     normalized_source_counts: dict[str, int] = {}
     findings: list[dict[str, Any]] = []
     notes = [
-        "Client bundle analysis combines supported AD, host, server, and workstation evidence into one normalized report.",
+        "Client bundle analysis combines supported AD, host, server, workstation, network, and optional backup evidence into one normalized report.",
         "Remediation plans and hardening previews are loaded as coverage metadata; they are not counted as separate findings.",
         "Human owner review and approved change control are required before remediation.",
     ]
@@ -643,7 +649,19 @@ def compact_evidence(row: dict[str, Any]) -> dict[str, Any]:
 
 def risk_factors(row: dict[str, Any]) -> list[str]:
     factors = []
-    for key in ["FindingType", "Area", "RiskLevel", "Control", "EventLabel", "OperationalImpact", "Severity"]:
+    for key in [
+        "FindingType",
+        "Area",
+        "RiskLevel",
+        "Control",
+        "EventLabel",
+        "OperationalImpact",
+        "Severity",
+        "BackupEvidenceSource",
+        "BackupEvidenceConfidence",
+        "RestoreTestEvidenceStatus",
+        "MonitoringEvidenceStatus",
+    ]:
         value = first_value(row, [key], "")
         if value:
             factors.append(str(value))
@@ -654,6 +672,8 @@ def affected_object_for(row: dict[str, Any], data: dict[str, Any], key: str, ind
     value = first_value(
         row,
         [
+            "AffectedObject",
+            "Path",
             "Principal",
             "TargetUserName",
             "SubjectUserName",
@@ -721,6 +741,8 @@ def safety_reason_for(key: str) -> str:
         return "Local administrator membership changes require host owner approval and controlled access validation."
     if "events" in key:
         return "Security event findings are indicators for investigation and are not remediation instructions."
+    if "backup" in key:
+        return "Backup remediation, restore operations, and backup configuration changes require owner review and approved change control."
     return f"{scope} configuration changes require owner review and approved change control."
 
 

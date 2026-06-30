@@ -417,6 +417,8 @@ def normalize_scopes(value: Any) -> list[str]:
             normalized.append("Workstation")
         elif text == "network" or "network exposure" in text:
             normalized.append("Network")
+        elif text == "backup" or "backup readiness" in text:
+            normalized.append("Backup")
     return list(dict.fromkeys(scope for scope in normalized if scope in SUPPORTED_SCOPES))
 
 
@@ -431,6 +433,7 @@ def required_files_for_scope(scope: str) -> list[str]:
             "workstation/windows-rdp-exposure.json",
         ],
         "Network": ["network/windows-network-exposure.json"],
+        "Backup": ["backup/backup-readiness.json"],
     }.get(scope, [])
 
 
@@ -455,6 +458,8 @@ def scope_for_client_file_key(key: str) -> str:
         return "Server"
     if key.startswith("host_"):
         return "Host"
+    if key.startswith("backup_"):
+        return "Backup"
     definition = CLIENT_FILE_DEFINITIONS.get(key)
     return str(definition.get("scope") or "") if definition else ""
 

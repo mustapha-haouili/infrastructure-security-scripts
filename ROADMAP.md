@@ -29,6 +29,8 @@ scripts toolkit. Versions are targets, not contractual commitments.
   without claiming compliance, certification, or audit attestation.
 - Add deterministic monthly KPI summaries from normalized reports for baseline
   and month-over-month improvement review.
+- Add audit-only backup readiness collection and normalization for metadata-only
+  Windows and Linux backup evidence.
 
 ## v1.3.0 - Windows Security Health Check Enhancements
 
@@ -61,7 +63,8 @@ scripts toolkit. Versions are targets, not contractual commitments.
 - Evidence-based benchmark checks where controls can be validated safely without
   claiming certification or audit attestation.
 - Wazuh/SIEM evidence mapping.
-- Backup readiness checks.
+- Expanded backup readiness checks for additional platforms and centralized
+  backup job-history evidence.
 - Dashboard-ready JSON exports and monthly trend visualizations.
 - Signed release artifacts.
 - Documentation examples for lab environments.

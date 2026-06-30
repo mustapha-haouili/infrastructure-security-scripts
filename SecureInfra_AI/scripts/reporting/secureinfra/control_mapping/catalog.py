@@ -167,6 +167,32 @@ CONTROL_CATALOG: dict[str, list[ControlReference]] = {
             "mapping_confidence": "medium",
         },
     ],
+    "backup_readiness_operational_continuity": [
+        {
+            "framework": "CIS Controls IG1",
+            "control_id": "CIS-IG1-11",
+            "label": "Data Recovery",
+            "mapping_confidence": "medium",
+        },
+        {
+            "framework": "NIST CSF 2.0",
+            "control_id": "RC.RP",
+            "label": "Recovery Readiness",
+            "mapping_confidence": "medium",
+        },
+        {
+            "framework": "NIST CSF 2.0",
+            "control_id": "PR.DS",
+            "label": "Data Protection",
+            "mapping_confidence": "medium",
+        },
+        {
+            "framework": "BSI SMB Security Guidance",
+            "control_id": "BSI-SMB-RESILIENCE",
+            "label": "Operational Continuity",
+            "mapping_confidence": "medium",
+        },
+    ],
     "vulnerability_update_management": [
         {
             "framework": "CIS Controls IG1",
@@ -195,6 +221,7 @@ THEME_ORDER = [
     "linux_account_secure_configuration",
     "workload_hardening",
     "secret_management",
+    "backup_readiness_operational_continuity",
     "resilience_recovery_readiness",
     "vulnerability_update_management",
 ]

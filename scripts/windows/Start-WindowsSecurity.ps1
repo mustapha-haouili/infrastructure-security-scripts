@@ -18,7 +18,7 @@ Print all scripts known to the menu and exit.
 
 .PARAMETER Group
 Open a specific group menu by group ID, such as AD, Host, Server, Workstation,
-or Network.
+Network, or Backup.
 
 .PARAMETER ToolId
 Run a specific menu tool by ID, such as AD-INACTIVE-USERS or HOST-AUDIT.
@@ -148,6 +148,11 @@ function Get-GroupCatalog {
             Label       = "Network"
             Description = "Local network exposure and listener checks"
         }
+        [pscustomobject][ordered]@{
+            Id          = "Backup"
+            Label       = "Backup"
+            Description = "Audit-only backup readiness evidence checks"
+        }
     )
 }
 
@@ -239,17 +244,28 @@ function Get-ToolCatalog {
         )
 
         New-ToolDefinition -Id "CLIENT-COLLECTION" -GroupId "Host" -Name "SecureInfra client collection bundle" -RelativePath "Start-SecureInfraClientCollection.ps1" -DefaultMode "Audit and dry run" -Description "Run supported safe checks and package one client evidence bundle for analysis." -IncludeInRunAll $false -Parameters @(
-            New-ParameterDefinition -Name "Scope" -Type "StringArray" -Default "All" -Description "Comma-separated scopes: All, AD, Host, Server, Workstation, Network."
+            New-ParameterDefinition -Name "Scope" -Type "StringArray" -Default "All" -Description "Comma-separated scopes: All, AD, Host, Server, Workstation, Network, Backup. Backup is explicit and not included in All."
             New-ParameterDefinition -Name "OutputDirectory" -Description "Collection output directory. Blank uses the script default."
             New-ParameterDefinition -Name "BaselineDirectory" -Description "Persistent baseline directory for repeated client runs."
             New-ParameterDefinition -Name "SearchBase" -Description "Optional AD OU or domain distinguished name to search."
             New-ParameterDefinition -Name "Server" -Description "Optional domain controller to query."
             New-ParameterDefinition -Name "Domain" -Description "Optional DNS domain name for GPO queries."
+            New-ParameterDefinition -Name "ExpectedBackupPaths" -Type "StringArray" -Description "Optional expected backup paths to check by metadata only."
+            New-ParameterDefinition -Name "ExpectedBackupSoftware" -Type "StringArray" -Description "Optional expected backup software names to match against visible services."
             New-ParameterDefinition -Name "IncludeDisabled" -Type "Switch" -Description "Include disabled AD users/computers/accounts where supported."
             New-ParameterDefinition -Name "IncludeHotfixes" -Type "Switch" -Description "Include installed hotfix evidence in host audit."
             New-ParameterDefinition -Name "SkipArchive" -Type "Switch" -Description "Do not create the zip archive."
             New-ParameterDefinition -Name "StopOnError" -Type "Switch" -Description "Stop collection after the first failed task."
             New-ParameterDefinition -Name "Quiet" -Type "Switch" -Description "Reduce collector output."
+        )
+
+        New-ToolDefinition -Id "BACKUP-READINESS" -GroupId "Backup" -Name "Backup readiness audit" -RelativePath "backup\Get-WindowsBackupReadinessAudit.ps1" -DefaultMode "Audit" -Description "Collect metadata-only backup readiness evidence without reading backup contents or running restores." -IncludeInRunAll $false -Parameters @(
+            New-ParameterDefinition -Name "ExpectedBackupPaths" -Type "StringArray" -Description "Optional expected backup paths to check by Test-Path/Get-Item only."
+            New-ParameterDefinition -Name "ExpectedBackupSoftware" -Type "StringArray" -Description "Optional expected backup software names to look for in visible service names."
+            New-ParameterDefinition -Name "WarningAgeDays" -Type "Int" -Default 14 -Description "Backup evidence age threshold for stale findings."
+            New-ParameterDefinition -Name "CriticalAgeDays" -Type "Int" -Default 30 -Description "Backup evidence age threshold for critical stale context."
+            New-ParameterDefinition -Name "OutputDirectory" -Description "Optional output directory. Blank uses the script default."
+            New-ParameterDefinition -Name "Quiet" -Type "Switch" -Description "Suppress console summary."
         )
 
         New-ToolDefinition -Id "HOST-AUDIT" -GroupId "Host" -Name "Windows security audit" -RelativePath "host\Invoke-WindowsSecurityAudit.ps1" -DefaultMode "Audit" -Description "Collect local Windows security posture evidence and write JSON." -Parameters @(

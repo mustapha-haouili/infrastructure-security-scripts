@@ -14,6 +14,7 @@ WINDOWS_STANDALONE_REPORT_TYPES = {
     "windows-workstation-audit",
     "windows-network-exposure",
 }
+BACKUP_REPORT_TYPES = {"backup-readiness"}
 
 
 def md(value: Any) -> str:
@@ -452,6 +453,30 @@ def render_executive_summary(report: dict[str, Any], language: str = "en") -> st
             lines.extend(render_file_list(source_summary))
         else:
             lines.append("- None identified.")
+    elif report_type in BACKUP_REPORT_TYPES:
+        source_summary = shared_metadata.get("source_summary", {})
+        evidence_summary = shared_metadata.get("backup_evidence_summary", {})
+        lines.extend(
+            [
+                "",
+                "## Backup Readiness Coverage",
+                "",
+                f"Analyzer type: `{md(report_type)}`",
+                f"Beta status: `{md(shared_metadata.get('normalizer_status')) or 'beta'}`",
+                f"Source host: `{md(env.get('source_host')) or md(env.get('computer_name')) or 'Not provided'}`",
+                f"Platform: `{md(env.get('platform')) or 'Not provided'}`",
+                f"Source script: `{md(env.get('source_script')) or 'Not provided'}`",
+                "",
+                "## Backup Evidence Summary",
+                "",
+            ]
+        )
+        if isinstance(evidence_summary, dict) and evidence_summary:
+            lines.extend(render_file_list(evidence_summary))
+        elif isinstance(source_summary, dict) and source_summary:
+            lines.extend(render_file_list(source_summary))
+        else:
+            lines.append("- None identified.")
 
     lines.extend(
         [
@@ -519,7 +544,14 @@ def render_executive_summary(report: dict[str, Any], language: str = "en") -> st
     lines.extend(["", "## Business Impact", ""])
     lines.extend(bullet_list(business_impacts[:5]))
 
-    if report_type in WINDOWS_STANDALONE_REPORT_TYPES:
+    if report_type in BACKUP_REPORT_TYPES:
+        first_actions = [
+            "Review missing or stale backup evidence with the system owner.",
+            "Confirm authoritative backup job history in the backup platform.",
+            "Validate restore test evidence before relying on recovery readiness.",
+            "Confirm backup monitoring ownership, alert routing, and failure escalation.",
+        ]
+    elif report_type in WINDOWS_STANDALONE_REPORT_TYPES:
         first_actions = [
             "Review Critical and High Windows findings with the host or service owner.",
             "Confirm business need and access paths before changing firewall, remote access, service, or endpoint settings.",
@@ -554,7 +586,7 @@ def render_executive_summary(report: dict[str, Any], language: str = "en") -> st
                 "",
                 "## Limitations",
                 "",
-                "- Current detailed client-bundle normalization covers AD/GPO, Windows host audit findings, event summary findings, local administrator findings, RDP exposure findings, RDP cache cleanup review items, server security inventory, workstation security inventory, and network exposure findings.",
+                "- Current detailed client-bundle normalization covers AD/GPO, Windows host audit findings, event summary findings, local administrator findings, RDP exposure findings, RDP cache cleanup review items, server security inventory, workstation security inventory, network exposure findings, and optional backup readiness findings.",
                 "- Remediation plans and hardening previews are loaded for coverage visibility and are not counted again as findings.",
                 "- Missing optional scope files are reported for visibility and do not stop analysis.",
             ]
@@ -579,6 +611,17 @@ def render_executive_summary(report: dict[str, Any], language: str = "en") -> st
                 "- This beta standalone analyzer normalizes one supported Windows JSON report at a time.",
                 "- It is report-only and does not change Windows configuration.",
                 "- Findings are derived from the source report's existing Findings array and require human review before remediation.",
+            ]
+        )
+    elif report_type in BACKUP_REPORT_TYPES:
+        lines.extend(
+            [
+                "",
+                "## Limitations",
+                "",
+                "- This beta analyzer normalizes backup readiness metadata only.",
+                "- It does not read backup contents, run restore operations, or prove that backups are recoverable.",
+                "- Service, tool, schedule, or path evidence must be validated against authoritative backup job history and restore-test records.",
             ]
         )
     lines.append("")

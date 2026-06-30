@@ -31,7 +31,8 @@ not require an AI model.
 - Provide AI provider interfaces and deterministic local stubs for future use.
 - Analyze a full SecureInfra client collection folder or zip with
   `--type client-bundle`, combining supported AD, host, server, workstation,
-  and network evidence into one normalized dashboard report.
+  network, and optional backup readiness evidence into one normalized
+  dashboard report.
 - Analyze many SecureInfra client collection folders or zips with
   `--type multi-bundle`, producing one fleet report with machine inventory,
   per-host coverage, scope totals, and top risky machines.
@@ -42,12 +43,15 @@ not require an AI model.
 - Analyze individual Windows JSON reports with beta standalone analyzer types:
   `windows-host-audit`, `windows-server-audit`,
   `windows-workstation-audit`, and `windows-network-exposure`.
+- Analyze backup readiness JSON reports with beta standalone analyzer type
+  `backup-readiness` for metadata-only Windows or Linux backup evidence.
 
 ## Safety Boundary
 
 - No offensive automation.
 - No autonomous remediation.
 - No password, secret, token, private key, or customer data collection.
+- No backup content collection or restore execution.
 - No destructive decision-making by AI.
 - Human review and approved change control are required before remediation.
 - Client collection zip files are treated as untrusted input. The analyzer
@@ -189,6 +193,15 @@ python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py \
   --input reports/windows-network-exposure.json \
   --type windows-network-exposure \
   --output reports/windows-network-output
+```
+
+Analyze a backup readiness report:
+
+```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py \
+  --input reports/backup/backup-readiness.json \
+  --type backup-readiness \
+  --output reports/backup-output
 ```
 
 Generated runtime reports are written to `SecureInfra_AI/reports/`, which is
