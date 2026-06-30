@@ -21,6 +21,44 @@ output_dir="$repo_root/dist"
 version=""
 force=0
 
+is_windows_absolute_path() {
+    local raw="$1"
+    [[ "$raw" =~ ^[A-Za-z]:[\\/] || "$raw" =~ ^\\\\ ]]
+}
+
+normalize_output_dir() {
+    local raw="$1"
+    local path_for_conversion="$raw"
+
+    if [[ "$raw" != /* ]] && ! is_windows_absolute_path "$raw"; then
+        path_for_conversion="$repo_root/$raw"
+    fi
+
+    if command -v cygpath >/dev/null 2>&1; then
+        cygpath -u -a "$path_for_conversion"
+        return
+    fi
+
+    if is_windows_absolute_path "$raw"; then
+        if command -v wslpath >/dev/null 2>&1; then
+            wslpath -u "$raw"
+            return
+        fi
+        echo "Windows absolute output paths require cygpath or wslpath: $raw" >&2
+        exit 2
+    fi
+
+    printf '%s\n' "$path_for_conversion"
+}
+
+to_lower() {
+    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
+        printf '%s\n' "${1,,}"
+    else
+        printf '%s\n' "$1" | tr '[:upper:]' '[:lower:]'
+    fi
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --output-dir)
@@ -28,11 +66,7 @@ while [[ $# -gt 0 ]]; do
                 echo "Missing value for --output-dir" >&2
                 exit 2
             fi
-            if [[ "$2" = /* ]]; then
-                output_dir="$2"
-            else
-                output_dir="$repo_root/$2"
-            fi
+            output_dir="$(normalize_output_dir "$2")"
             shift 2
             ;;
         --version)
@@ -75,7 +109,7 @@ archive_path="$output_dir/$release_name.zip"
 is_excluded_path() {
     local path="${1//\\//}"
     local lower
-    lower="$(printf '%s' "$path" | tr '[:upper:]' '[:lower:]')"
+    lower="$(to_lower "$path")"
     local wrapped="/$lower/"
 
     case "$lower" in
@@ -100,11 +134,34 @@ is_excluded_path() {
     return 1
 }
 
-python_bin="${PYTHON_BIN:-python3}"
-if ! command -v "$python_bin" >/dev/null 2>&1; then
-    echo "python3 is required to write deterministic release metadata." >&2
+python_runs() {
+    "$1" -c 'import sys; sys.exit(0)' >/dev/null 2>&1
+}
+
+resolve_python_bin() {
+    local candidate
+
+    if [[ -n "${PYTHON_BIN:-}" ]]; then
+        if python_runs "$PYTHON_BIN"; then
+            printf '%s\n' "$PYTHON_BIN"
+            return
+        fi
+        echo "PYTHON_BIN does not point to a runnable Python interpreter: $PYTHON_BIN" >&2
+        exit 1
+    fi
+
+    for candidate in python3 python; do
+        if command -v "$candidate" >/dev/null 2>&1 && python_runs "$candidate"; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+
+    echo "python3 or python is required to write deterministic release metadata." >&2
     exit 1
-fi
+}
+
+python_bin="$(resolve_python_bin)"
 
 mkdir -p "$output_dir"
 
@@ -158,11 +215,23 @@ done
 
 sort -u "$file_list" > "$sorted_list"
 
-while IFS= read -r rel_path; do
-    [[ -z "$rel_path" ]] && continue
-    mkdir -p "$staging_dir/$(dirname "$rel_path")"
-    cp -p "$repo_root/$rel_path" "$staging_dir/$rel_path"
-done < "$sorted_list"
+"$python_bin" - "$repo_root" "$staging_dir" "$sorted_list" <<'PY'
+import shutil
+import sys
+from pathlib import Path
+
+repo_root = Path(sys.argv[1])
+staging_dir = Path(sys.argv[2])
+sorted_list = Path(sys.argv[3])
+
+for rel_path in sorted_list.read_text(encoding="utf-8").splitlines():
+    if not rel_path:
+        continue
+    source = repo_root / rel_path
+    destination = staging_dir / rel_path
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+PY
 
 generated_at_utc="$("$python_bin" - <<'PY'
 from datetime import datetime, timezone
@@ -206,14 +275,10 @@ manifest = {
     "files": files,
 }
 
-(staging_dir / "RELEASE-MANIFEST.json").write_text(
-    json.dumps(manifest, indent=2, sort_keys=False) + "\n",
-    encoding="utf-8",
-)
-(staging_dir / "SHA256SUMS.txt").write_text(
-    "".join(f"{item['sha256']}  {item['path']}\n" for item in files),
-    encoding="ascii",
-)
+with (staging_dir / "RELEASE-MANIFEST.json").open("w", encoding="utf-8", newline="\n") as handle:
+    handle.write(json.dumps(manifest, indent=2, sort_keys=False) + "\n")
+with (staging_dir / "SHA256SUMS.txt").open("w", encoding="ascii", newline="\n") as handle:
+    handle.write("".join(f"{item['sha256']}  {item['path']}\n" for item in files))
 PY
 
 if command -v zip >/dev/null 2>&1; then
