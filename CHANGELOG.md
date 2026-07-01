@@ -6,9 +6,15 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 
 ## [Unreleased]
 
-Future changes after v1.2.0-beta.1 will be documented here.
+Future changes after v1.3.0-beta.1 will be documented here.
+
+## [1.3.0-beta.1] - 2026-07-01
 
 ### SecureInfra AI
+- Improved AD/account evidence classification so account-oriented findings are
+  easier to review without adding customer-specific assumptions.
+- Improved missing-value handling in defensive reporting paths so absent,
+  unknown, and unavailable evidence can be represented more consistently.
 - Added deterministic broad control-reference metadata for normalized reports,
   including per-finding references and summary counts under `metadata`.
 - Added a public-safe static control mapping catalog and tests without changing
@@ -33,6 +39,11 @@ Future changes after v1.2.0-beta.1 will be documented here.
   verification.
 - Documented optional operator-controlled signing outside the repository,
   without adding signing keys or paid-service requirements.
+
+### Safety
+- Reaffirmed the public/private boundary for the public defensive engine:
+  defensive and audit-only, no customer data, and no private commercial
+  workflows.
 
 ## [1.2.0-beta.1] - 2026-06-20
 
