@@ -12,8 +12,8 @@ This repository is designed for defensive security operations, infrastructure ad
 
 It includes the SecureInfra_AI layer for deterministic, local, AI-ready analysis of infrastructure evidence. This layer can normalize security findings, generate JSON and Markdown reports, compare historical runs, analyze client bundles, review fleet evidence, and display reports in a local dashboard.
 
-Current version: `1.2.0-beta.1`. See [CHANGELOG.md](CHANGELOG.md) and
-[v1.2.0-beta.1 release notes](docs/releases/v1.2.0-beta.1.md) for the current beta release baseline.
+Current version: `v1.3.0-beta.1`. See [CHANGELOG.md](CHANGELOG.md) and
+[v1.3.0-beta.1 release notes](docs/releases/v1.3.0-beta.1.md) for the current beta release baseline.
 
 ## Public/private boundary
 
