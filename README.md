@@ -8,12 +8,119 @@
 
 A practical defensive infrastructure security toolkit for enterprise Windows, Linux, Active Directory, DevSecOps, monitoring, hardening, evidence collection, and local security reporting.
 
+SecureInfra helps reviewers turn raw infrastructure evidence into normalized findings, local reports, control context, and monthly improvement summaries without sending data to external services.
+
 This repository is designed for defensive security operations, infrastructure administration, repeatable baseline checks, and audit-first infrastructure security assessments across enterprise environments.
 
-It includes the SecureInfra_AI layer for deterministic, local, AI-ready analysis of infrastructure evidence. This layer can normalize security findings, generate JSON and Markdown reports, compare historical runs, analyze client bundles, review fleet evidence, and display reports in a local dashboard.
+It includes the SecureInfra_AI layer for deterministic, local, AI-ready analysis of infrastructure evidence. This layer can normalize security findings, generate JSON and Markdown reports, compare historical runs, analyze client bundles, review fleet evidence, and display reports in a local dashboard. The default reporting workflow is deterministic and local: it does not require an AI provider and does not upload evidence to a cloud service.
 
 Current version: `v1.3.0-beta.1`. See [CHANGELOG.md](CHANGELOG.md) and
 [v1.3.0-beta.1 release notes](docs/releases/v1.3.0-beta.1.md) for the current beta release baseline.
+
+## Try it in 2 minutes
+
+Run the local SecureInfra_AI analyzer against fictional sample evidence already
+included in this repository. The demo does not contact Active Directory, require
+admin rights, collect live customer data, use external services, or require
+credentials. After the repository is present on your machine, the analyzer demo
+runs offline.
+
+Prerequisites:
+
+- Python 3.10+
+- PowerShell on Windows, or a shell with Python on Linux/macOS
+- No administrator rights required for the sample demo
+
+PowerShell:
+
+```powershell
+# Optional: clone once if you do not already have the repository locally.
+git clone https://github.com/mustapha-haouili/infrastructure-security-scripts.git
+cd .\infrastructure-security-scripts
+
+# Analyze fictional backup readiness sample output and write local demo reports.
+python .\SecureInfra_AI\scripts\reporting\secureinfra_analyzer.py `
+  --input .\examples\sample-output\backup\backup-readiness.example.json `
+  --type backup-readiness `
+  --output .\demo-output
+
+# Show generated files and preview the executive summary.
+Get-ChildItem .\demo-output
+Get-Content .\demo-output\executive-summary.md -TotalCount 40
+```
+
+If your Windows Python launcher is `py`, replace `python` with `py -3`.
+
+Expected generated files in the current beta demo:
+
+```text
+demo-output/
+|-- normalized-report.json
+|-- executive-summary.md
+|-- technical-findings.md
+`-- remediation-plan.md
+```
+
+If your local branch differs, use `Get-ChildItem .\demo-output` to inspect the exact generated files.
+
+Sample output preview from the fictional demo report:
+
+```markdown
+## Number Of Findings
+
+| Severity | Count |
+|---|---:|
+| Critical | 0 |
+| High | 1 |
+| Medium | 2 |
+| Low | 0 |
+| Info | 1 |
+```
+
+## Who is this for?
+
+- Infrastructure admins
+- Windows / Active Directory admins
+- Linux admins
+- Blue team / defensive security teams
+- IT consultants
+- SMB infrastructure support teams
+
+## What this project does
+
+- Defensive evidence collection for Windows, Active Directory, Linux, backup,
+  monitoring, and DevSecOps review workflows
+- Normalized reporting from collected or imported evidence
+- Account and privilege review, including AD account classification signals
+- Backup readiness evidence review
+- Control mapping metadata for reviewer context
+- Monthly KPI trend summaries for recurring review conversations
+
+## What this project does not do
+
+- No offensive exploitation
+- No credential theft
+- No password spraying
+- No destructive automation
+- No customer data in the public repo
+- No compliance certification claim
+- No cloud upload or AI provider requirement in the default local reporting workflow
+
+## Release and integrity links
+
+- [CHANGELOG.md](CHANGELOG.md)
+- [v1.3.0-beta.1 release notes](docs/releases/v1.3.0-beta.1.md)
+- [Release integrity documentation](docs/release-integrity.md)
+- [Repository guardrails](AGENTS.md)
+- [Repository publishing notes](docs/repository-publishing.md)
+
+## Feedback wanted
+
+- Are the AD account classifications useful?
+- Is the backup readiness audit practical?
+- Are the monthly KPI summaries useful for recurring reviews?
+- Are findings too noisy or too conservative?
+- What would make this more useful in a real infrastructure assessment?
 
 ## Public/private boundary
 
@@ -83,6 +190,12 @@ Review each script before running it in production. Test changes in a lab or sta
 git clone https://github.com/mustapha-haouili/infrastructure-security-scripts.git
 cd infrastructure-security-scripts
 bash tests/run_static_checks.sh
+```
+
+Windows / PowerShell test check when Bash is not available:
+
+```powershell
+python -m unittest discover -s tests -p "test_*.py"
 ```
 
 ### Linux audit
@@ -332,15 +445,6 @@ directly:
 Get-Content .\scripts\windows\Start-WindowsSecurity.ps1 -First 120
 ```
 
-## Recommended GitHub description
-
-Enterprise infrastructure security scripts for Windows, Linux, DevSecOps, hardening, audit, monitoring, and automation.
-
-## Suggested repository topics
-
-```text
-infrastructure-security windows-server linux powershell bash python devsecops hardening security-audit docker kubernetes automation cybersecurity
-```
 
 ## Author
 
