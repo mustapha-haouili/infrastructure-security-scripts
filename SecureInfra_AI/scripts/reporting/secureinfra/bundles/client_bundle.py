@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import tempfile
 import zipfile
 import shutil
@@ -11,6 +12,7 @@ from typing import Any, Iterator
 
 from secureinfra.bundles.ad_shared_bundle import normalize_ad_shared_bundle
 from secureinfra.loaders.json_loader import load_json_file
+from secureinfra.network_context.port_catalog import lookup_port_context
 from secureinfra.normalizers.ad_common import build_common_finding, normalize_source_severity, severity_counts, utc_now
 from secureinfra.normalizers.evidence_contract import normalize_report_evidence_contract
 
@@ -406,6 +408,8 @@ def normalize_source_rows(key: str, data: dict[str, Any], rows: list[dict[str, A
         source_id = first_value(row, ["Id", "FindingId", "FindingType", "ControlId"], "")
         affected_object = affected_object_for(row, data, key, index)
         evidence = compact_evidence(row)
+        if key == "network_windows_network_exposure":
+            evidence.update(network_port_context_evidence(row, data, evidence))
         evidence.update(
             {
                 "scope": scope,
@@ -450,6 +454,148 @@ def normalize_source_rows(key: str, data: dict[str, Any], rows: list[dict[str, A
             )
         )
     return findings
+
+
+def network_port_context_evidence(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+    finding_type = str(first_value(row, ["FindingType"], "") or evidence.get("finding_type") or "")
+    if finding_type.lower() != "riskylisteningport":
+        return {}
+
+    protocol = listener_protocol(row)
+    port = listener_port(row)
+    if port is None:
+        return {}
+
+    listener = matching_listener(data, port, protocol, process_name(row))
+    process = process_name(row) or str(listener.get("ProcessName") or listener.get("process_name") or "")
+    bind_address = str(
+        first_value(row, ["LocalAddress", "BindAddress", "ListeningAddress"], "")
+        or listener.get("LocalAddress")
+        or listener.get("local_address")
+        or ""
+    ).strip()
+    scope = bind_scope(bind_address, combined_row_text(row))
+    if not bind_address and scope == "All interfaces":
+        bind_address = "0.0.0.0"
+
+    context = lookup_port_context(protocol, port)
+    risk_explanation = context["risk_explanation"]
+    if scope == "All interfaces":
+        risk_explanation = (
+            risk_explanation
+            + " Listening on all interfaces means the service binds to all local interfaces; actual reachability depends on firewall, routing, and network segmentation."
+        )
+
+    summary = listening_port_summary(protocol, port, process, scope, bind_address, context)
+    return {
+        "protocol": protocol.upper(),
+        "port": port,
+        "process_name": process,
+        "bind_address": bind_address,
+        "bind_scope": scope,
+        "common_service": context["common_service"],
+        "common_name": context["common_name"],
+        "exposure_type": context["exposure_type"],
+        "risk_explanation": risk_explanation,
+        "acceptable_when": context["acceptable_when"],
+        "customer_question": context["customer_question"],
+        "safe_next_step": context["safe_next_step"],
+        "port_context_confidence": context["mapping_confidence"],
+        "summary": summary,
+    }
+
+
+def listener_protocol(row: dict[str, Any]) -> str:
+    value = first_value(row, ["Protocol", "TransportProtocol"], "")
+    if value:
+        text = str(value).upper()
+        return "UDP" if "UDP" in text else "TCP"
+    match = re.search(r"\b(TCP|UDP)\b", combined_row_text(row), flags=re.IGNORECASE)
+    return match.group(1).upper() if match else "TCP"
+
+
+def listener_port(row: dict[str, Any]) -> int | None:
+    value = first_value(row, ["LocalPort", "Port", "ListeningPort"], None)
+    if value not in (None, ""):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            pass
+    text = combined_row_text(row)
+    match = re.search(r"\b(?:TCP|UDP)\s+(\d{1,5})\b", text, flags=re.IGNORECASE)
+    if not match:
+        match = re.search(r"\bport\s+(\d{1,5})\b", text, flags=re.IGNORECASE)
+    if match:
+        port = int(match.group(1))
+        if 0 <= port <= 65535:
+            return port
+    return None
+
+
+def matching_listener(data: dict[str, Any], port: int, protocol: str, process: str = "") -> dict[str, Any]:
+    listener_key = "ListeningUdpPorts" if protocol.upper() == "UDP" else "ListeningTcpPorts"
+    candidates = []
+    for listener in as_records(data.get(listener_key)):
+        if as_int(listener.get("LocalPort"), -1) == port:
+            candidates.append(listener)
+    if process:
+        for listener in candidates:
+            if str(listener.get("ProcessName") or "").lower() == process.lower():
+                return listener
+    return candidates[0] if candidates else {}
+
+
+def process_name(row: dict[str, Any]) -> str:
+    value = first_value(row, ["ProcessName", "OwningProcessName"], "")
+    if value:
+        return str(value)
+    match = re.search(r"\bby process\s+([^.]+)", combined_row_text(row), flags=re.IGNORECASE)
+    return match.group(1).strip() if match else ""
+
+
+def bind_scope(address: str, row_text: str = "") -> str:
+    text = str(address or "").strip().lower()
+    if text in {"0.0.0.0", "::", "[::]", "*", "any"} or "all interfaces" in row_text.lower():
+        return "All interfaces"
+    if text.startswith("127.") or text == "::1" or text == "localhost":
+        return "Loopback only"
+    if text:
+        return "Specific interface"
+    return "Not collected"
+
+
+def combined_row_text(row: dict[str, Any]) -> str:
+    return " ".join(
+        str(first_value(row, [key], "") or "")
+        for key in ["Evidence", "Name", "Title", "Details", "Recommendation"]
+    )
+
+
+def listening_port_summary(
+    protocol: str,
+    port: int,
+    process: str,
+    scope: str,
+    bind_address: str,
+    context: dict[str, str],
+) -> str:
+    service_label = context["common_service"]
+    if context["common_name"] and context["common_name"] != context["common_service"]:
+        service_label = f"{context['common_service']} ({context['common_name']})"
+    if scope == "All interfaces":
+        listener_text = "listening on all interfaces"
+    elif scope == "Loopback only":
+        listener_text = "listening on loopback only"
+    elif bind_address:
+        listener_text = f"listening on {bind_address}"
+    else:
+        listener_text = "listening"
+    process_text = f" by process {process}" if process else ""
+    exposure_label = "remote administration exposure" if context["exposure_type"] == "Remote administration service" else context["exposure_type"].lower()
+    return (
+        f"{protocol.upper()} {port} is commonly used by {service_label}. "
+        f"It is {listener_text}{process_text} and should be validated as an approved {exposure_label}."
+    )
 
 
 def normalize_rdp_cache_cleanup(data: dict[str, Any], source_file: Path, key: str) -> list[dict[str, Any]]:

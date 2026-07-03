@@ -395,7 +395,12 @@ python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports
 ```
 
 These analyzer types are report-only and normalize existing JSON evidence from
-the corresponding Windows audit scripts.
+the corresponding Windows audit scripts. The `windows-network-exposure`
+normalizer adds deterministic port context for common listeners such as RDP,
+SMB, HTTP, and WinRM. This context explains common service use, why the
+listener may matter, what the customer should validate, and safe next steps
+without claiming a port is exploitable or recommending automatic service
+disablement.
 
 Backup readiness analyzer:
 

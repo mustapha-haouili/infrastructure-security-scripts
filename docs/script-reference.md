@@ -305,6 +305,20 @@ profiles, and listening TCP ports.
 
 Default mode: audit only.
 
+When the SecureInfra AI analyzer normalizes `windows-network-exposure` output,
+listening-port findings are enriched with deterministic public-safe port
+context. For known ports such as TCP 3389, TCP 445, TCP 5985, and TCP 5986,
+normalized evidence includes common service names, exposure type, risk
+explanation, acceptable-use context, customer validation questions, and safe
+next steps. Unknown ports receive a fallback that asks reviewers to identify
+the owning application and validate firewall or routing exposure. Open/listening
+ports are not treated as automatically exploitable, and the analyzer does not
+recommend disabling services automatically.
+
+`Listening on all interfaces` means the service is bound to all local
+interfaces. Actual reachability still depends on host firewall rules, upstream
+firewalls, routing, and network segmentation.
+
 Outputs:
 
 - `windows-network-exposure.json` under `-OutputDirectory`
@@ -1560,7 +1574,7 @@ Arguments:
 | Argument | Default | Description |
 |---|---|---|
 | `--input FILE` | required | JSON audit result file, AD shared directory, client collection directory, client collection zip, or fleet directory containing many client bundles to analyze. |
-| `--type TYPE` | required | Input report type. Supports `ad-inactive-users`, `ad-password-never-expires`, `ad-privileged-groups`, `ad-privileged-identity`, `ad-service-accounts`, `ad-spn-exposure`, `ad-stale-computers`, `gpo-health`, `ad-shared`, `client-bundle`, and `multi-bundle`. |
+| `--type TYPE` | required | Input report type. Supports `ad-inactive-users`, `ad-password-never-expires`, `ad-privileged-groups`, `ad-privileged-identity`, `ad-service-accounts`, `ad-spn-exposure`, `ad-stale-computers`, `gpo-health`, `ad-shared`, `windows-host-audit`, `windows-server-audit`, `windows-workstation-audit`, `windows-network-exposure`, `backup-readiness`, `client-bundle`, and `multi-bundle`. |
 | `--output DIR` | `SecureInfra_AI/reports` | Output directory for normalized JSON and Markdown reports. |
 | `--language LANG` | `en` | Report language. Phase 1 supports `en`; `de` is reserved for future support. |
 | `--format FORMAT` | `markdown` | Report format. Phase 1 supports `markdown`. |
@@ -1595,6 +1609,16 @@ python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports
 ```bash
 python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports/ad-shared/gpo-health.json --type gpo-health --output reports/output
 ```
+
+```bash
+python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports/windows-network-exposure.json --type windows-network-exposure --output reports/secureinfra-ai-network
+```
+
+For `windows-network-exposure`, normalized listener evidence includes fields
+such as `evidence.common_service`, `evidence.common_name`,
+`evidence.exposure_type`, `evidence.risk_explanation`,
+`evidence.customer_question`, `evidence.safe_next_step`, and
+`evidence.port_context_confidence`.
 
 Safety notes:
 

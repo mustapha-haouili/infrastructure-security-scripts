@@ -6,6 +6,13 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 
 ## [Unreleased]
 
+### SecureInfra AI
+- Added deterministic public-safe network port context mapping for normalized
+  Windows network exposure findings, including common service names, exposure
+  type, risk explanation, acceptable-use context, customer validation questions,
+  and safe next steps for common listener ports such as RDP, SMB, HTTP, WinRM,
+  database, directory, cache, and search services.
+
 ### Fixed
 - Fixed AD account classification precedence so built-in Administrator and
   privileged administrator accounts are treated as governance reviews instead
