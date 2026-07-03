@@ -256,14 +256,22 @@ Run selected scopes only:
 .\scripts\windows\Start-SecureInfraClientCollection.ps1 -Scope AD,Host,Server
 ```
 
+Collect only Group Policy evidence:
+
+```powershell
+.\scripts\windows\Start-SecureInfraClientCollection.ps1 -Scope GPO
+```
+
 Collect backup readiness explicitly:
 
 ```powershell
 .\scripts\windows\Start-SecureInfraClientCollection.ps1 -Scope Backup -ExpectedBackupPaths "E:\ExampleBackups" -ExpectedBackupSoftware "Windows Server Backup"
 ```
 
-The current collector supports AD/GPO, Windows host, server, workstation, local
-network exposure, and explicit backup readiness evidence. `Backup` is not
+The current collector supports AD, GPO, Windows host, server, workstation,
+local network exposure, and explicit backup readiness evidence. The broad `AD`
+scope still includes GPO health evidence for compatibility, while `GPO` can be
+requested alone when only Group Policy evidence is needed. `Backup` is not
 included in the broad `All` scope; request it directly when backup evidence is
 in scope.
 

@@ -13,6 +13,7 @@ from secureinfra.normalizers.ad_common import (
     optional_int,
     service_account_classification,
 )
+from secureinfra.normalizers.evidence_contract import normalize_report_evidence_contract
 from secureinfra.risk_engine.rules import as_list, classify_ad_inactive_user
 
 
@@ -103,34 +104,36 @@ def normalize_ad_inactive_users(data: dict[str, Any], source_file: str | Path) -
     counts = severity_counts(findings)
     summary = data.get("Summary") if isinstance(data.get("Summary"), dict) else {}
 
-    return {
-        "report_id": f"secureinfra-ai-ad-inactive-users-{timestamp_utc.replace(':', '').replace('-', '')}",
-        "report_type": "ad-inactive-users",
-        "tool_name": "SecureInfra AI AD Inactive Users Analyzer",
-        "source_files": [source_path],
-        "generated_at_utc": timestamp_utc,
-        "environment_summary": {
-            "company": str(data.get("Company") or ""),
-            "domain": str(data.get("Domain") or ""),
-            "source_script": source_script,
-            "input_user_count": len(users),
-        },
-        "summary": {
-            "total_findings": len(findings),
-            "normalized_finding_count": len(findings),
-            "severity_counts": counts,
-            "source_summary": summary,
-        },
-        "findings": findings,
-        "metadata": {
-            "normalizer": "ad_inactive_users",
-            "normalizer_version": "0.1.0",
-            "risk_engine": "deterministic-rules",
-            "ai_required": False,
-        },
-        "notes": [
-            "AI is not required for Phase 1 analysis.",
-            "Findings are based only on supplied JSON evidence.",
-            "Human owner review and approved change control are required before remediation.",
-        ],
-    }
+    return normalize_report_evidence_contract(
+        {
+            "report_id": f"secureinfra-ai-ad-inactive-users-{timestamp_utc.replace(':', '').replace('-', '')}",
+            "report_type": "ad-inactive-users",
+            "tool_name": "SecureInfra AI AD Inactive Users Analyzer",
+            "source_files": [source_path],
+            "generated_at_utc": timestamp_utc,
+            "environment_summary": {
+                "company": str(data.get("Company") or ""),
+                "domain": str(data.get("Domain") or ""),
+                "source_script": source_script,
+                "input_user_count": len(users),
+            },
+            "summary": {
+                "total_findings": len(findings),
+                "normalized_finding_count": len(findings),
+                "severity_counts": counts,
+                "source_summary": summary,
+            },
+            "findings": findings,
+            "metadata": {
+                "normalizer": "ad_inactive_users",
+                "normalizer_version": "0.1.0",
+                "risk_engine": "deterministic-rules",
+                "ai_required": False,
+            },
+            "notes": [
+                "AI is not required for Phase 1 analysis.",
+                "Findings are based only on supplied JSON evidence.",
+                "Human owner review and approved change control are required before remediation.",
+            ],
+        }
+    )

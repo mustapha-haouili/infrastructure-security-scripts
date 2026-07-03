@@ -37,6 +37,21 @@ spec.loader.exec_module(secureinfra_analyzer)
 
 
 class SecureInfraAITests(unittest.TestCase):
+    def assert_evidence_contract(self, normalized: dict) -> None:
+        for finding in normalized["findings"]:
+            evidence = finding.get("evidence")
+            self.assertIsInstance(evidence, dict, finding.get("finding_id"))
+            self.assertTrue(evidence.get("summary"), finding.get("finding_id"))
+            self.assertTrue(evidence.get("details"), finding.get("finding_id"))
+            self.assertTrue(evidence.get("confidence"), finding.get("finding_id"))
+
+    def assert_no_internal_paths(self, normalized: dict, *blocked_paths: Path) -> None:
+        serialized = json.dumps(normalized, sort_keys=True).lower()
+        for blocked in ["bundle_input", "downstream-reporting-workspace", "customer-projects", "c:\\", "d:\\"]:
+            self.assertNotIn(blocked, serialized)
+        for blocked_path in blocked_paths:
+            self.assertNotIn(str(blocked_path).lower(), serialized)
+
     def create_ad_shared_bundle(self, root: Path, include_inactive_users: bool = True) -> Path:
         bundle_dir = root / "ad-shared"
         bundle_dir.mkdir()
@@ -745,6 +760,7 @@ class SecureInfraAITests(unittest.TestCase):
             self.assertEqual(normalized["summary"]["normalized_finding_count"], 13)
             self.assertEqual(normalized["summary"]["severity_counts"]["Critical"], 3)
             self.assertGreaterEqual(normalized["summary"]["correlation_count"], 2)
+            self.assert_evidence_contract(normalized)
             self.assertIn("inactive_users", normalized["metadata"]["detected_files"])
             self.assertEqual(normalized["metadata"]["missing_files"], [])
             self.assertIn("gpo-health.json was normalized into detailed findings", " ".join(normalized["notes"]))
@@ -792,7 +808,8 @@ class SecureInfraAITests(unittest.TestCase):
             normalized = json.loads((output_dir / "normalized-report.json").read_text(encoding="utf-8"))
             self.assertEqual(normalized["summary"]["detected_file_count"], 8)
             self.assertEqual(normalized["summary"]["missing_optional_file_count"], 0)
-            self.assertEqual(normalized["environment_summary"]["bundle_directory"], str(bundle_dir))
+            self.assertEqual(normalized["environment_summary"]["bundle_directory"], "ad-shared")
+            self.assert_no_internal_paths(normalized, collection_root, bundle_dir)
 
     def test_client_bundle_directory_input_combines_ad_host_and_server_findings(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -825,6 +842,8 @@ class SecureInfraAITests(unittest.TestCase):
             finding_ids = {item["finding_id"] for item in normalized["findings"]}
             self.assertIn("HOST-WIN-WIN-FW-001", finding_ids)
             self.assertIn("SERVER-RDP-CACHE-0001", finding_ids)
+            self.assert_evidence_contract(normalized)
+            self.assert_no_internal_paths(normalized, bundle_dir)
 
     def test_client_bundle_zip_input_is_supported(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -854,6 +873,7 @@ class SecureInfraAITests(unittest.TestCase):
             self.assertEqual(normalized["report_type"], "client-bundle")
             self.assertEqual(normalized["summary"]["normalized_finding_count"], 18)
             self.assertTrue(any("secureinfra-client-collection.zip!" in value for value in normalized["source_files"]))
+            self.assert_no_internal_paths(normalized, root, archive_path)
 
     def test_client_bundle_normalizes_expanded_network_server_and_workstation_files(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -934,6 +954,8 @@ class SecureInfraAITests(unittest.TestCase):
             evidence_machines = {item["evidence"]["machine_name"] for item in normalized["findings"]}
             self.assertEqual(evidence_machines, {"EXAMPLE-SRV01", "EXAMPLE-SRV02"})
             self.assertTrue(any(str(value).endswith(".zip!ad-shared") for value in normalized["source_files"]))
+            self.assert_evidence_contract(normalized)
+            self.assert_no_internal_paths(normalized, root, fleet_dir)
 
     def test_multi_bundle_skips_duplicate_collection_zip_and_folder(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1075,6 +1097,72 @@ class SecureInfraAITests(unittest.TestCase):
             self.assertEqual(normalized["summary"]["normalized_finding_count"], 1)
             self.assertEqual(normalized["findings"][0]["finding_id"], "GPO-HEALTH-0001")
             self.assertEqual(normalized["findings"][0]["safe_to_auto_remediate"], False)
+            evidence = normalized["findings"][0]["evidence"]
+            self.assertEqual(evidence["summary"], "User AD/SYSVOL=18/16; Computer AD/SYSVOL=20/20.")
+            self.assertIn("finding_type: AdSysvolVersionMismatch", evidence["details"])
+            self.assertIn("gpo_name: EX Workstation Baseline", evidence["details"])
+            self.assertIn("admin_action: Check DFSR/SYSVOL replication", evidence["details"])
+            self.assertIn("verification_step: Compare GPO status", evidence["details"])
+            self.assertIn("recommendation: Review SYSVOL replication health", evidence["details"])
+            self.assertIn("affected_object: EX Workstation Baseline", evidence["details"])
+            self.assertIn("evidence", evidence["key_fields"])
+            self.assert_no_internal_paths(normalized, bundle_dir)
+
+    def test_gpo_evidence_contract_uses_structured_fields(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            gpo_path = root / "gpo-health.json"
+            output_dir = root / "output"
+            gpo_path.write_text(
+                json.dumps(
+                    {
+                        "GeneratedAtUtc": "2026-06-08T09:00:00Z",
+                        "Domain": "example.local",
+                        "Findings": [
+                            {
+                                "Severity": "Medium",
+                                "ActionPriority": "P3 - Policy cleanup review",
+                                "FindingType": "LegacyKeywordMatch",
+                                "GpoName": "EX Legacy Baseline",
+                                "TargetPath": "OU=Servers,DC=example,DC=local",
+                                "Title": "Legacy keyword found in GPO evidence",
+                                "Evidence": "Matched legacy keyword 'Windows Server 2003'.",
+                                "AdminAction": "Review whether the setting is still required.",
+                                "ChangeRisk": "Medium",
+                                "VerificationStep": "Confirm the policy setting in GPMC before changing it.",
+                                "Recommendation": "Export the GPO and test any cleanup in a staged OU first.",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = secureinfra_analyzer.main(
+                    [
+                        "--input",
+                        str(gpo_path),
+                        "--type",
+                        "gpo-health",
+                        "--output",
+                        str(output_dir),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            normalized = json.loads((output_dir / "normalized-report.json").read_text(encoding="utf-8"))
+            evidence = normalized["findings"][0]["evidence"]
+            self.assertEqual(evidence["summary"], "Matched legacy keyword 'Windows Server 2003'.")
+            self.assertIn("finding_type: LegacyKeywordMatch", evidence["details"])
+            self.assertIn("action_priority: P3 - Policy cleanup review", evidence["details"])
+            self.assertIn("change_risk: Medium", evidence["details"])
+            self.assertIn("gpo_name: EX Legacy Baseline", evidence["details"])
+            self.assertIn("admin_action: Review whether the setting is still required.", evidence["details"])
+            self.assertIn("verification_step: Confirm the policy setting in GPMC", evidence["details"])
+            self.assertIn("recommendation: Export the GPO", evidence["details"])
+            self.assertEqual(evidence["confidence"], "Medium")
+            self.assert_no_internal_paths(normalized, root, gpo_path)
 
     def test_ad_shared_missing_optional_files_do_not_crash(self):
         with tempfile.TemporaryDirectory() as tmp:

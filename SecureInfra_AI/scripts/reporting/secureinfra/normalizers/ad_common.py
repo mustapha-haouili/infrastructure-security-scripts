@@ -8,6 +8,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from secureinfra.normalizers.evidence_contract import normalize_report_evidence_contract
 from secureinfra.risk_engine.rules import as_bool, as_int, as_list, remediation_priority_for
 
 
@@ -303,29 +304,31 @@ def base_normalized_report(
     normalizer_name: str,
 ) -> dict[str, Any]:
     timestamp_utc = generated_at_utc(data)
-    return {
-        "report_id": f"secureinfra-ai-{report_type}-{timestamp_utc.replace(':', '').replace('-', '')}",
-        "report_type": report_type,
-        "tool_name": tool_name,
-        "source_files": [str(source_file)],
-        "generated_at_utc": timestamp_utc,
-        "environment_summary": environment_summary(data, source_script_name, input_count),
-        "summary": {
-            "total_findings": len(findings),
-            "normalized_finding_count": len(findings),
-            "severity_counts": severity_counts(findings),
-            "source_summary": summary_from_report(data),
-        },
-        "findings": findings,
-        "metadata": {
-            "normalizer": normalizer_name,
-            "normalizer_version": "0.1.0",
-            "risk_engine": "source-priority-mapping",
-            "ai_required": False,
-        },
-        "notes": [
-            "AI is not required for analysis.",
-            "Findings are based only on supplied JSON evidence and source script priorities.",
-            "Human owner review and approved change control are required before remediation.",
-        ],
-    }
+    return normalize_report_evidence_contract(
+        {
+            "report_id": f"secureinfra-ai-{report_type}-{timestamp_utc.replace(':', '').replace('-', '')}",
+            "report_type": report_type,
+            "tool_name": tool_name,
+            "source_files": [str(source_file)],
+            "generated_at_utc": timestamp_utc,
+            "environment_summary": environment_summary(data, source_script_name, input_count),
+            "summary": {
+                "total_findings": len(findings),
+                "normalized_finding_count": len(findings),
+                "severity_counts": severity_counts(findings),
+                "source_summary": summary_from_report(data),
+            },
+            "findings": findings,
+            "metadata": {
+                "normalizer": normalizer_name,
+                "normalizer_version": "0.1.0",
+                "risk_engine": "source-priority-mapping",
+                "ai_required": False,
+            },
+            "notes": [
+                "AI is not required for analysis.",
+                "Findings are based only on supplied JSON evidence and source script priorities.",
+                "Human owner review and approved change control are required before remediation.",
+            ],
+        }
+    )

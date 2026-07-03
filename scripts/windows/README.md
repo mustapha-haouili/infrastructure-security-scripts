@@ -50,9 +50,10 @@ AD baselines, and does not delete files. It creates:
 - `client-info.json`
 - `collection-summary.json`
 - `manifest.json`
-- `ad-shared/` with AD/GPO JSON files compatible with SecureInfra AI
+- `ad-shared/` with AD and GPO JSON files compatible with SecureInfra AI
 - `host/`, `server/`, `workstation/`, and `network/` folders for supported
   local Windows evidence
+- `backup/` when the explicit `Backup` scope is requested
 - a `.zip` archive next to the collection folder
 
 Selected scopes can be run with:
@@ -61,8 +62,16 @@ Selected scopes can be run with:
 .\scripts\windows\Start-SecureInfraClientCollection.ps1 -Scope AD,Host,Server
 ```
 
-Current implemented scopes are `AD`, `Host`, `Server`, `Workstation`, and
-`Network`.
+Collect only Group Policy evidence with:
+
+```powershell
+.\scripts\windows\Start-SecureInfraClientCollection.ps1 -Scope GPO
+```
+
+Current implemented scopes are `AD`, `GPO`, `Host`, `Server`, `Workstation`,
+`Network`, and explicit `Backup`. The broad `AD` scope still includes GPO
+health evidence for compatibility; use `GPO` when only Group Policy evidence is
+needed.
 
 Analyze the resulting folder or zip with SecureInfra AI:
 

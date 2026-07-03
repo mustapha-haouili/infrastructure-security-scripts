@@ -68,6 +68,14 @@ WINDOWS_SAMPLE_CASES = [
 
 
 class SecureInfraWindowsNormalizerTests(unittest.TestCase):
+    def assert_evidence_contract(self, report: dict) -> None:
+        for finding in report["findings"]:
+            evidence = finding.get("evidence")
+            self.assertIsInstance(evidence, dict, finding.get("finding_id"))
+            self.assertTrue(evidence.get("summary"), finding.get("finding_id"))
+            self.assertTrue(evidence.get("details"), finding.get("finding_id"))
+            self.assertTrue(evidence.get("confidence"), finding.get("finding_id"))
+
     def test_windows_samples_load(self):
         for case in WINDOWS_SAMPLE_CASES:
             with self.subTest(report_type=case["report_type"]):
@@ -92,6 +100,7 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
                 self.assertEqual(report["summary"]["normalized_finding_count"], len(data["Findings"]))
                 self.assertTrue(all(item["safe_to_auto_remediate"] is False for item in report["findings"]))
                 self.assertTrue(any(item["finding_id"].startswith(case["finding_prefix"]) for item in report["findings"]))
+                self.assert_evidence_contract(report)
 
     def test_windows_samples_pass_schema_validation(self):
         for case in WINDOWS_SAMPLE_CASES:

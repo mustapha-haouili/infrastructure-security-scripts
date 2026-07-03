@@ -6,7 +6,14 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 
 ## [Unreleased]
 
-Future changes after v1.3.0-beta.1 will be documented here.
+### Fixed
+- Standardized normalized finding evidence across analyzer outputs by adding
+  `evidence.summary`, `evidence.details`, `evidence.confidence`, safe
+  `evidence.key_fields`, and final-report sanitization for internal bundle
+  paths before `normalized-report.json` is written.
+- Restored `GPO` as an explicit `Start-SecureInfraClientCollection.ps1`
+  scope so existing `-Scope GPO` commands remain valid. The broad `AD` scope
+  continues to collect GPO health evidence for compatibility.
 
 ## [1.3.0-beta.1] - 2026-07-01
 

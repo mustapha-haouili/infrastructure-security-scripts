@@ -12,6 +12,7 @@ from secureinfra.bundles.client_bundle import (
     source_timestamp,
 )
 from secureinfra.normalizers.ad_common import severity_counts
+from secureinfra.normalizers.evidence_contract import normalize_report_evidence_contract
 
 
 WINDOWS_SCOPE_DEFINITIONS: dict[str, dict[str, str]] = {
@@ -70,52 +71,54 @@ def normalize_windows_scope_report(data: dict[str, Any], source_file: str | Path
     source_summary = data.get("Summary") if isinstance(data.get("Summary"), dict) else {}
     source_report_type = detected_source_report_type(data, definition["source_report_type"])
 
-    return {
-        "report_id": f"secureinfra-ai-{report_type}-{timestamp_utc.replace(':', '').replace('-', '')}",
-        "report_type": report_type,
-        "tool_name": definition["tool_name"],
-        "source_files": [str(source_path)],
-        "generated_at_utc": timestamp_utc,
-        "environment_summary": {
-            "company": "",
-            "domain": detected_domain(data),
-            "computer_name": detected_computer_name(data),
-            "scope": definition["scope"],
-            "source_script": source_script_name,
-            "source_report_type": source_report_type,
-            "input_finding_count": len(rows),
-        },
-        "summary": {
-            "total_findings": len(findings),
-            "normalized_finding_count": len(findings),
-            "severity_counts": severity_counts(findings),
-            "source_summary": source_summary,
-        },
-        "report_type_metadata": {
+    return normalize_report_evidence_contract(
+        {
+            "report_id": f"secureinfra-ai-{report_type}-{timestamp_utc.replace(':', '').replace('-', '')}",
             "report_type": report_type,
-            "scope": definition["scope"],
-            "source_file": str(source_path),
-            "source_script": source_script_name,
-            "source_report_type": source_report_type,
-            "source_summary": source_summary,
-            "normalizer_status": "beta",
-        },
-        "findings": findings,
-        "metadata": {
-            "normalizer": definition["normalizer"],
-            "normalizer_version": "0.1.0",
-            "risk_engine": "source-priority-mapping",
-            "ai_required": False,
-            "scope": definition["scope"],
-            "source_report_type": source_report_type,
-            "schema": definition["schema"],
-        },
-        "notes": [
-            "This beta standalone normalizer is report-only and does not change Windows systems.",
-            "Findings are based only on supplied JSON evidence from the source audit script.",
-            "Human owner review and approved change control are required before remediation.",
-        ],
-    }
+            "tool_name": definition["tool_name"],
+            "source_files": [str(source_path)],
+            "generated_at_utc": timestamp_utc,
+            "environment_summary": {
+                "company": "",
+                "domain": detected_domain(data),
+                "computer_name": detected_computer_name(data),
+                "scope": definition["scope"],
+                "source_script": source_script_name,
+                "source_report_type": source_report_type,
+                "input_finding_count": len(rows),
+            },
+            "summary": {
+                "total_findings": len(findings),
+                "normalized_finding_count": len(findings),
+                "severity_counts": severity_counts(findings),
+                "source_summary": source_summary,
+            },
+            "report_type_metadata": {
+                "report_type": report_type,
+                "scope": definition["scope"],
+                "source_file": str(source_path),
+                "source_script": source_script_name,
+                "source_report_type": source_report_type,
+                "source_summary": source_summary,
+                "normalizer_status": "beta",
+            },
+            "findings": findings,
+            "metadata": {
+                "normalizer": definition["normalizer"],
+                "normalizer_version": "0.1.0",
+                "risk_engine": "source-priority-mapping",
+                "ai_required": False,
+                "scope": definition["scope"],
+                "source_report_type": source_report_type,
+                "schema": definition["schema"],
+            },
+            "notes": [
+                "This beta standalone normalizer is report-only and does not change Windows systems.",
+                "Findings are based only on supplied JSON evidence from the source audit script.",
+                "Human owner review and approved change control are required before remediation.",
+            ],
+        }
+    )
 
 
 def detected_source_report_type(data: dict[str, Any], default: str) -> str:

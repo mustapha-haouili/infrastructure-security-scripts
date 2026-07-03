@@ -16,6 +16,14 @@ from secureinfra.validators.schema_validator import validate_normalized_report
 
 
 class SecureInfraBackupReadinessTests(unittest.TestCase):
+    def assert_evidence_contract(self, report: dict) -> None:
+        for finding in report["findings"]:
+            evidence = finding.get("evidence")
+            self.assertIsInstance(evidence, dict, finding.get("finding_id"))
+            self.assertTrue(evidence.get("summary"), finding.get("finding_id"))
+            self.assertTrue(evidence.get("details"), finding.get("finding_id"))
+            self.assertTrue(evidence.get("confidence"), finding.get("finding_id"))
+
     def load_windows_sample(self) -> dict:
         return json.loads(SAMPLE_OUTPUT.read_text(encoding="utf-8"))
 
@@ -122,6 +130,7 @@ class SecureInfraBackupReadinessTests(unittest.TestCase):
         self.assertEqual(normalized["environment_summary"]["scope"], "Backup")
         self.assertEqual(normalized["summary"]["normalized_finding_count"], 4)
         self.assertTrue(any(item["finding_id"].startswith("BACKUP-READINESS-") for item in normalized["findings"]))
+        self.assert_evidence_contract(normalized)
         validate_normalized_report(normalized)
 
     def test_linux_sample_output_normalizes_correctly(self):
@@ -130,6 +139,7 @@ class SecureInfraBackupReadinessTests(unittest.TestCase):
         self.assertEqual(normalized["environment_summary"]["platform"], "linux")
         self.assertEqual(normalized["environment_summary"]["source_host"], "EXAMPLE-LINUX01")
         self.assertEqual(normalized["summary"]["severity_counts"]["High"], 1)
+        self.assert_evidence_contract(normalized)
         validate_normalized_report(normalized)
 
     def test_stale_backup_evidence_creates_high_finding(self):

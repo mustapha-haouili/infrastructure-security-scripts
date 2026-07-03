@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from secureinfra.normalizers.ad_common import build_common_finding, normalize_source_severity, severity_counts, utc_now
+from secureinfra.normalizers.evidence_contract import normalize_report_evidence_contract
 
 
 def normalize_backup_readiness(data: dict[str, Any], source_file: str | Path) -> dict[str, Any]:
@@ -30,58 +31,60 @@ def normalize_backup_readiness(data: dict[str, Any], source_file: str | Path) ->
     source_summary = as_dict(data.get("Summary") or data.get("summary"))
     evidence_summary = summarize_backup_evidence(data)
 
-    return {
-        "report_id": f"secureinfra-ai-backup-readiness-{timestamp_utc.replace(':', '').replace('-', '')}",
-        "report_type": "backup-readiness",
-        "tool_name": "SecureInfra AI Backup Readiness Analyzer",
-        "source_files": [str(source_path)],
-        "generated_at_utc": timestamp_utc,
-        "environment_summary": {
-            "company": "",
-            "domain": str(first_value(data, ["Domain", "DomainName"], "")),
-            "computer_name": host_name,
-            "source_host": host_name,
-            "platform": platform,
-            "scope": "Backup",
-            "source_script": source_script_name,
-            "source_report_type": str(first_value(data, ["ReportType", "report_type"], "backup-readiness")),
-            "input_finding_count": len(rows),
-        },
-        "summary": {
-            "total_findings": len(findings),
-            "normalized_finding_count": len(findings),
-            "severity_counts": severity_counts(findings),
-            "source_summary": source_summary,
-            "backup_evidence_summary": evidence_summary,
-        },
-        "report_type_metadata": {
+    return normalize_report_evidence_contract(
+        {
+            "report_id": f"secureinfra-ai-backup-readiness-{timestamp_utc.replace(':', '').replace('-', '')}",
             "report_type": "backup-readiness",
-            "scope": "Backup",
-            "platform": platform,
-            "source_file": str(source_path),
-            "source_script": source_script_name,
-            "source_report_type": str(first_value(data, ["ReportType", "report_type"], "backup-readiness")),
-            "source_summary": source_summary,
-            "backup_evidence_summary": evidence_summary,
-            "normalizer_status": "beta",
-        },
-        "findings": findings,
-        "metadata": {
-            "normalizer": "backup_readiness",
-            "normalizer_version": "0.1.0",
-            "risk_engine": "source-priority-mapping",
-            "ai_required": False,
-            "scope": "Backup",
-            "source_report_type": "backup-readiness",
-            "schema": "backup-readiness.schema.json",
-        },
-        "notes": [
-            "This beta backup readiness normalizer is report-only and does not change backup systems.",
-            "Backup readiness evidence is metadata-only and does not include backup contents.",
-            "Service, tool, timer, or path presence is not proof of successful or recoverable backups.",
-            "Restore testing and backup monitoring require owner-provided evidence.",
-        ],
-    }
+            "tool_name": "SecureInfra AI Backup Readiness Analyzer",
+            "source_files": [str(source_path)],
+            "generated_at_utc": timestamp_utc,
+            "environment_summary": {
+                "company": "",
+                "domain": str(first_value(data, ["Domain", "DomainName"], "")),
+                "computer_name": host_name,
+                "source_host": host_name,
+                "platform": platform,
+                "scope": "Backup",
+                "source_script": source_script_name,
+                "source_report_type": str(first_value(data, ["ReportType", "report_type"], "backup-readiness")),
+                "input_finding_count": len(rows),
+            },
+            "summary": {
+                "total_findings": len(findings),
+                "normalized_finding_count": len(findings),
+                "severity_counts": severity_counts(findings),
+                "source_summary": source_summary,
+                "backup_evidence_summary": evidence_summary,
+            },
+            "report_type_metadata": {
+                "report_type": "backup-readiness",
+                "scope": "Backup",
+                "platform": platform,
+                "source_file": str(source_path),
+                "source_script": source_script_name,
+                "source_report_type": str(first_value(data, ["ReportType", "report_type"], "backup-readiness")),
+                "source_summary": source_summary,
+                "backup_evidence_summary": evidence_summary,
+                "normalizer_status": "beta",
+            },
+            "findings": findings,
+            "metadata": {
+                "normalizer": "backup_readiness",
+                "normalizer_version": "0.1.0",
+                "risk_engine": "source-priority-mapping",
+                "ai_required": False,
+                "scope": "Backup",
+                "source_report_type": "backup-readiness",
+                "schema": "backup-readiness.schema.json",
+            },
+            "notes": [
+                "This beta backup readiness normalizer is report-only and does not change backup systems.",
+                "Backup readiness evidence is metadata-only and does not include backup contents.",
+                "Service, tool, timer, or path presence is not proof of successful or recoverable backups.",
+                "Restore testing and backup monitoring require owner-provided evidence.",
+            ],
+        }
+    )
 
 
 def normalize_backup_finding(

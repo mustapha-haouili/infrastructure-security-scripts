@@ -47,9 +47,33 @@ class ClientCollectionLauncherTests(unittest.TestCase):
     def test_client_collection_scope_values_document_current_coverage(self):
         collector = self.read_text("scripts/windows/Start-SecureInfraClientCollection.ps1")
 
-        self.assertIn('@("AD", "Host", "Server", "Workstation", "Network", "Backup")', collector)
-        self.assertIn('SupportedToday     = @("AD", "Host", "Server", "Workstation", "Network", "Backup")', collector)
+        self.assertIn('$defaultAllScopes = @("AD", "Host", "Server", "Workstation", "Network")', collector)
+        self.assertIn('@("AD", "GPO", "Host", "Server", "Workstation", "Network", "Backup")', collector)
+        self.assertIn('SupportedToday     = @("AD", "GPO", "Host", "Server", "Workstation", "Network", "Backup")', collector)
         self.assertIn('NotYetImplemented  = @()', collector)
+
+    def test_client_collection_restores_explicit_gpo_scope(self):
+        collector = self.read_text("scripts/windows/Start-SecureInfraClientCollection.ps1")
+
+        self.assertIn('"GPO" { Invoke-GPOCollection }', collector)
+        self.assertIn('function Invoke-GPOCollection', collector)
+        self.assertIn('Invoke-GPOHealthCollection -ScopeName "GPO"', collector)
+        self.assertIn('Invoke-GPOHealthCollection -ScopeName "AD"', collector)
+        self.assertIn('gpo\\Get-ADGPOHealthReport.ps1', collector)
+        self.assertIn('gpo-health.json', collector)
+        self.assertIn('gpo-review.md', collector)
+
+    def test_client_collection_gpo_scope_is_documented(self):
+        collector = self.read_text("scripts/windows/Start-SecureInfraClientCollection.ps1")
+        readme = self.read_text("README.md")
+        script_reference = self.read_text("docs/script-reference.md")
+        windows_readme = self.read_text("scripts/windows/README.md")
+
+        for document in [collector, readme, script_reference, windows_readme]:
+            self.assertIn("-Scope GPO", document)
+        self.assertIn("`All`, `AD`, `GPO`, `Host`, `Server`, `Workstation`, `Network`, `Backup`", script_reference)
+        self.assertIn("The broad `AD`", readme)
+        self.assertIn("scope still includes GPO health evidence", readme)
 
     def test_new_windows_collection_scripts_are_audit_only(self):
         for script in [

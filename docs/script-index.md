@@ -13,7 +13,7 @@ in organized category folders for advanced or direct use.
 | Script | Purpose | Default mode |
 |---|---|---|
 | `Start-WindowsSecurity.ps1` | Interactive menu for AD/GPO, host, server, workstation, network, and backup scripts | Menu |
-| `Start-SecureInfraClientCollection.ps1` | Run supported safe checks and package one client evidence bundle | Audit and dry run |
+| `Start-SecureInfraClientCollection.ps1` | Run supported safe AD, GPO, host, server, workstation, network, and backup checks and package one client evidence bundle | Audit and dry run |
 | `host/Invoke-WindowsSecurityAudit.ps1` | Collect Windows baseline security information and export JSON | Audit |
 | `host/Get-WindowsLocalAdminInventory.ps1` | Inventory local Administrators group membership and review risky entries | Audit |
 | `host/Get-WindowsRDPExposureAudit.ps1` | Audit local RDP exposure, NLA, allowed users, firewall rules, and listeners | Audit |

@@ -8,6 +8,7 @@ from typing import Any
 from secureinfra.loaders.json_loader import load_json_file
 from secureinfra.normalizers.ad_common import severity_counts, utc_now
 from secureinfra.normalizers.ad_inactive_users import normalize_ad_inactive_users
+from secureinfra.normalizers.evidence_contract import normalize_report_evidence_contract
 from secureinfra.normalizers.ad_password_never_expires import normalize_password_never_expires
 from secureinfra.normalizers.ad_privileged_groups import normalize_privileged_groups
 from secureinfra.normalizers.ad_privileged_identity import normalize_privileged_identity
@@ -113,41 +114,43 @@ def normalize_ad_shared_bundle(input_dir: str | Path) -> dict[str, Any]:
 
     detected_files = {key: str(path) for key, path in detected_paths.items()}
     counts = severity_counts(findings)
-    return {
-        "report_id": f"secureinfra-ai-ad-shared-{generated_at_utc.replace(':', '').replace('-', '')}",
-        "report_type": "ad-shared",
-        "tool_name": "SecureInfra AI AD Shared Bundle Analyzer",
-        "source_files": list(loaded_files.values()),
-        "generated_at_utc": generated_at_utc,
-        "environment_summary": environment_summary,
-        "summary": {
-            "total_findings": len(findings),
-            "normalized_finding_count": len(findings),
-            "severity_counts": counts,
-            "detected_file_count": len(detected_files),
-            "loaded_file_count": len(loaded_files),
-            "missing_optional_file_count": len(missing_files),
-        },
-        "report_type_metadata": {
+    return normalize_report_evidence_contract(
+        {
+            "report_id": f"secureinfra-ai-ad-shared-{generated_at_utc.replace(':', '').replace('-', '')}",
             "report_type": "ad-shared",
-            "known_files": KNOWN_AD_SHARED_FILES,
-            "implemented_normalizers": sorted(IMPLEMENTED_NORMALIZERS),
-            "detected_files": detected_files,
-            "missing_files": missing_files,
-            "loaded_files": loaded_files,
-            "loaded_summaries": loaded_summaries,
-        },
-        "findings": findings,
-        "metadata": {
-            "normalizer": "ad_shared_bundle",
-            "normalizer_version": "0.1.0",
-            "risk_engine": "deterministic-rules",
-            "ai_required": False,
-            "detected_files": detected_files,
-            "missing_files": missing_files,
-            "loaded_files": loaded_files,
-            "loaded_summaries": loaded_summaries,
-            "normalized_finding_count": len(findings),
-        },
-        "notes": notes,
-    }
+            "tool_name": "SecureInfra AI AD Shared Bundle Analyzer",
+            "source_files": list(loaded_files.values()),
+            "generated_at_utc": generated_at_utc,
+            "environment_summary": environment_summary,
+            "summary": {
+                "total_findings": len(findings),
+                "normalized_finding_count": len(findings),
+                "severity_counts": counts,
+                "detected_file_count": len(detected_files),
+                "loaded_file_count": len(loaded_files),
+                "missing_optional_file_count": len(missing_files),
+            },
+            "report_type_metadata": {
+                "report_type": "ad-shared",
+                "known_files": KNOWN_AD_SHARED_FILES,
+                "implemented_normalizers": sorted(IMPLEMENTED_NORMALIZERS),
+                "detected_files": detected_files,
+                "missing_files": missing_files,
+                "loaded_files": loaded_files,
+                "loaded_summaries": loaded_summaries,
+            },
+            "findings": findings,
+            "metadata": {
+                "normalizer": "ad_shared_bundle",
+                "normalizer_version": "0.1.0",
+                "risk_engine": "deterministic-rules",
+                "ai_required": False,
+                "detected_files": detected_files,
+                "missing_files": missing_files,
+                "loaded_files": loaded_files,
+                "loaded_summaries": loaded_summaries,
+                "normalized_finding_count": len(findings),
+            },
+            "notes": notes,
+        }
+    )

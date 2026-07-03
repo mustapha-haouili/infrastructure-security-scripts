@@ -29,6 +29,7 @@ from secureinfra.normalizers.ad_service_accounts import normalize_service_accoun
 from secureinfra.normalizers.ad_spn_exposure import normalize_spn_exposure
 from secureinfra.normalizers.ad_stale_computers import normalize_stale_computers
 from secureinfra.normalizers.backup_readiness import normalize_backup_readiness
+from secureinfra.normalizers.evidence_contract import normalize_report_evidence_contract
 from secureinfra.normalizers.gpo_health import normalize_gpo_health
 from secureinfra.normalizers.windows_host import normalize_windows_host_audit
 from secureinfra.normalizers.windows_network import normalize_windows_network_exposure
@@ -189,6 +190,7 @@ def analyze(args: argparse.Namespace) -> tuple[dict, list[Path]]:
     if args.monthly_summary:
         normalized_report = add_monthly_kpi_summary(normalized_report, previous_report, previous_report_path)
     normalized_report = add_control_mappings(normalized_report)
+    normalized_report = normalize_report_evidence_contract(normalized_report)
     validate_normalized_report(normalized_report)
     output_dir.mkdir(parents=True, exist_ok=True)
     normalized_path = output_dir / "normalized-report.json"

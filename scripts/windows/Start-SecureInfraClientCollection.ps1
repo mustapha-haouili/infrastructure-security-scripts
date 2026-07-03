@@ -13,7 +13,7 @@ normalization, dashboard review, and final report generation.
 
 .PARAMETER Scope
 Collection scopes to run. Use All for the default supported local scopes.
-Current implemented scopes are AD, Host, Server, Workstation, Network, and
+Current implemented scopes are AD, GPO, Host, Server, Workstation, Network, and
 Backup. Backup is explicit and is not included in All.
 
 .PARAMETER OutputDirectory
@@ -40,6 +40,11 @@ Run the default full collection and create a zip bundle under reports.
 .\scripts\windows\Start-SecureInfraClientCollection.ps1 -Scope AD,Host -OutputDirectory .\reports\client-collection
 
 Run only AD/GPO and local host checks.
+
+.EXAMPLE
+.\scripts\windows\Start-SecureInfraClientCollection.ps1 -Scope GPO -OutputDirectory .\reports\client-gpo-collection
+
+Run only Group Policy evidence collection.
 #>
 
 [CmdletBinding()]
@@ -140,7 +145,7 @@ function Add-SwitchArgument {
 
 function Resolve-CollectionScopes {
     $defaultAllScopes = @("AD", "Host", "Server", "Workstation", "Network")
-    $orderedScopes = @("AD", "Host", "Server", "Workstation", "Network", "Backup")
+    $orderedScopes = @("AD", "GPO", "Host", "Server", "Workstation", "Network", "Backup")
     $requestedScopes = @(
         foreach ($item in @($Scope)) {
             foreach ($part in ("$item" -split ",")) {
@@ -321,6 +326,26 @@ function Get-StatusCounts {
     return $counts
 }
 
+function Invoke-GPOHealthCollection {
+    param(
+        [Parameter(Mandatory = $true)][string]$ScopeName,
+        [Parameter(Mandatory = $true)][string]$OutputDirectory
+    )
+
+    New-Directory -Path $OutputDirectory
+
+    $gpoArgs = @{ OutputDirectory = $OutputDirectory; StaleDays = $GpoStaleDays; Quiet = $true }
+    Add-OptionalStringArgument -Arguments $gpoArgs -Name "Domain" -Value $Domain
+    Add-OptionalStringArgument -Arguments $gpoArgs -Name "Server" -Value $Server
+    Invoke-CollectionTask -ScopeName $ScopeName -Name "GPO health" -ScriptPath (Join-Path $script:ScriptRoot "gpo\Get-ADGPOHealthReport.ps1") -Arguments $gpoArgs -ExpectedOutputs @(
+        (Join-Path -Path $OutputDirectory -ChildPath "gpo-health.json"),
+        (Join-Path -Path $OutputDirectory -ChildPath "gpos.csv"),
+        (Join-Path -Path $OutputDirectory -ChildPath "gpo-links.csv"),
+        (Join-Path -Path $OutputDirectory -ChildPath "gpo-findings.csv"),
+        (Join-Path -Path $OutputDirectory -ChildPath "gpo-review.md")
+    )
+}
+
 function Invoke-ADCollection {
     $adDirectory = Join-Path -Path $script:OutputDirectory -ChildPath "ad-shared"
     New-Directory -Path $adDirectory
@@ -409,16 +434,12 @@ function Invoke-ADCollection {
         (Join-Path -Path $adDirectory -ChildPath "privileged-identity-protection-review.md")
     )
 
-    $gpoArgs = @{ OutputDirectory = $adDirectory; StaleDays = $GpoStaleDays; Quiet = $true }
-    Add-OptionalStringArgument -Arguments $gpoArgs -Name "Domain" -Value $Domain
-    Add-OptionalStringArgument -Arguments $gpoArgs -Name "Server" -Value $Server
-    Invoke-CollectionTask -ScopeName "AD" -Name "GPO health" -ScriptPath (Join-Path $script:ScriptRoot "gpo\Get-ADGPOHealthReport.ps1") -Arguments $gpoArgs -ExpectedOutputs @(
-        (Join-Path -Path $adDirectory -ChildPath "gpo-health.json"),
-        (Join-Path -Path $adDirectory -ChildPath "gpos.csv"),
-        (Join-Path -Path $adDirectory -ChildPath "gpo-links.csv"),
-        (Join-Path -Path $adDirectory -ChildPath "gpo-findings.csv"),
-        (Join-Path -Path $adDirectory -ChildPath "gpo-review.md")
-    )
+    Invoke-GPOHealthCollection -ScopeName "AD" -OutputDirectory $adDirectory
+}
+
+function Invoke-GPOCollection {
+    $adDirectory = Join-Path -Path $script:OutputDirectory -ChildPath "ad-shared"
+    Invoke-GPOHealthCollection -ScopeName "GPO" -OutputDirectory $adDirectory
 }
 
 function Invoke-HostCollection {
@@ -586,6 +607,7 @@ Write-JsonFile -Path $clientInfoPath -InputObject (Get-ClientInfo)
 foreach ($scopeName in $resolvedScopes) {
     switch ($scopeName) {
         "AD" { Invoke-ADCollection }
+        "GPO" { Invoke-GPOCollection }
         "Host" { Invoke-HostCollection }
         "Server" { Invoke-ServerCollection }
         "Workstation" { Invoke-WorkstationCollection }
@@ -607,7 +629,7 @@ $summary = [pscustomobject][ordered]@{
     ScopeResolved      = @($resolvedScopes)
     TaskCount          = $taskResults.Count
     StatusCounts       = $statusCounts
-    SupportedToday     = @("AD", "Host", "Server", "Workstation", "Network", "Backup")
+    SupportedToday     = @("AD", "GPO", "Host", "Server", "Workstation", "Network", "Backup")
     NotYetImplemented  = @()
     AnalyzerNextStep   = "Run SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input <collection-or-zip> --type client-bundle --output <analysis-output> for full bundle normalization."
     SendBackToReviewer = if ($archivePath) { $archivePath } else { $script:OutputDirectory }

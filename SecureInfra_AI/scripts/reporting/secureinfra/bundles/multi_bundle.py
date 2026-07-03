@@ -8,6 +8,7 @@ from typing import Any
 
 from secureinfra.bundles.client_bundle import CLIENT_FILE_DEFINITIONS, SUPPORTED_SCOPES, normalize_client_bundle
 from secureinfra.normalizers.ad_common import severity_counts, utc_now
+from secureinfra.normalizers.evidence_contract import normalize_report_evidence_contract
 
 
 def normalize_multi_bundle(input_dir: str | Path) -> dict[str, Any]:
@@ -70,71 +71,73 @@ def normalize_multi_bundle(input_dir: str | Path) -> dict[str, Any]:
     top_machines = top_risky_machines(machine_inventory)
     fleet_status = fleet_coverage_status(machine_inventory, failed_bundles)
 
-    return {
-        "report_id": f"secureinfra-ai-multi-bundle-{generated_at.replace(':', '').replace('-', '')}",
-        "report_type": "multi-bundle",
-        "tool_name": "SecureInfra AI Multi-Bundle Fleet Analyzer",
-        "source_files": unique_sorted(source_files),
-        "generated_at_utc": generated_at,
-        "environment_summary": {
-            "company": "",
-            "domain": common_domain(machine_inventory),
-            "input_directory": str(root),
-            "detected_bundle_count": len(bundle_inputs),
-            "loaded_bundle_count": len(machine_inventory),
-            "skipped_bundle_count": len(skipped_bundles),
-            "failed_bundle_count": len(failed_bundles),
-            "machine_count": len(machine_inventory),
-            "coverage_status": fleet_status,
-        },
-        "summary": {
-            "total_findings": len(findings),
-            "normalized_finding_count": len(findings),
-            "severity_counts": counts,
-            "detected_bundle_count": len(bundle_inputs),
-            "loaded_bundle_count": len(machine_inventory),
-            "skipped_bundle_count": len(skipped_bundles),
-            "failed_bundle_count": len(failed_bundles),
-            "machine_count": len(machine_inventory),
-            "scope_finding_counts": scope_counts,
-            "machine_finding_counts": {item["machine_id"]: item["finding_count"] for item in machine_inventory},
-            "coverage_status_counts": coverage_status_counts(machine_inventory, failed_bundles),
-            "top_risky_machines": top_machines,
-        },
-        "report_type_metadata": {
+    return normalize_report_evidence_contract(
+        {
+            "report_id": f"secureinfra-ai-multi-bundle-{generated_at.replace(':', '').replace('-', '')}",
             "report_type": "multi-bundle",
-            "input_directory": str(root),
-            "detected_bundles": [str(item) for item in bundle_inputs],
-            "loaded_bundles": {item["machine_id"]: item["input"] for item in machine_inventory},
-            "skipped_bundles": skipped_bundles,
-            "failed_bundles": failed_bundles,
-            "machine_inventory": machine_inventory,
-            "coverage_matrix": coverage_matrix,
-            "supported_scopes": SUPPORTED_SCOPES,
-        },
-        "findings": findings,
-        "metadata": {
-            "normalizer": "multi_bundle",
-            "normalizer_version": "0.1.0",
-            "risk_engine": "fleet-aggregation",
-            "ai_required": False,
-            "detected_bundles": [str(item) for item in bundle_inputs],
-            "loaded_bundles": {item["machine_id"]: item["input"] for item in machine_inventory},
-            "skipped_bundles": skipped_bundles,
-            "failed_bundles": failed_bundles,
-            "machine_inventory": machine_inventory,
-            "coverage_matrix": coverage_matrix,
-            "scope_finding_counts": scope_counts,
-            "normalized_finding_count": len(findings),
-        },
-        "notes": [
-            "Multi-bundle analysis combines many SecureInfra client collection bundles into one fleet-level normalized report.",
-            "Finding IDs are prefixed with the machine identifier to keep IDs unique across hosts.",
-            "Duplicate collection IDs are skipped so a zip and its extracted folder are not counted twice.",
-            "Machine inventory and coverage_matrix metadata show which scopes were collected, missing, or failed per host.",
-            "Human owner review and approved change control are required before remediation.",
-        ],
-    }
+            "tool_name": "SecureInfra AI Multi-Bundle Fleet Analyzer",
+            "source_files": unique_sorted(source_files),
+            "generated_at_utc": generated_at,
+            "environment_summary": {
+                "company": "",
+                "domain": common_domain(machine_inventory),
+                "input_directory": str(root),
+                "detected_bundle_count": len(bundle_inputs),
+                "loaded_bundle_count": len(machine_inventory),
+                "skipped_bundle_count": len(skipped_bundles),
+                "failed_bundle_count": len(failed_bundles),
+                "machine_count": len(machine_inventory),
+                "coverage_status": fleet_status,
+            },
+            "summary": {
+                "total_findings": len(findings),
+                "normalized_finding_count": len(findings),
+                "severity_counts": counts,
+                "detected_bundle_count": len(bundle_inputs),
+                "loaded_bundle_count": len(machine_inventory),
+                "skipped_bundle_count": len(skipped_bundles),
+                "failed_bundle_count": len(failed_bundles),
+                "machine_count": len(machine_inventory),
+                "scope_finding_counts": scope_counts,
+                "machine_finding_counts": {item["machine_id"]: item["finding_count"] for item in machine_inventory},
+                "coverage_status_counts": coverage_status_counts(machine_inventory, failed_bundles),
+                "top_risky_machines": top_machines,
+            },
+            "report_type_metadata": {
+                "report_type": "multi-bundle",
+                "input_directory": str(root),
+                "detected_bundles": [str(item) for item in bundle_inputs],
+                "loaded_bundles": {item["machine_id"]: item["input"] for item in machine_inventory},
+                "skipped_bundles": skipped_bundles,
+                "failed_bundles": failed_bundles,
+                "machine_inventory": machine_inventory,
+                "coverage_matrix": coverage_matrix,
+                "supported_scopes": SUPPORTED_SCOPES,
+            },
+            "findings": findings,
+            "metadata": {
+                "normalizer": "multi_bundle",
+                "normalizer_version": "0.1.0",
+                "risk_engine": "fleet-aggregation",
+                "ai_required": False,
+                "detected_bundles": [str(item) for item in bundle_inputs],
+                "loaded_bundles": {item["machine_id"]: item["input"] for item in machine_inventory},
+                "skipped_bundles": skipped_bundles,
+                "failed_bundles": failed_bundles,
+                "machine_inventory": machine_inventory,
+                "coverage_matrix": coverage_matrix,
+                "scope_finding_counts": scope_counts,
+                "normalized_finding_count": len(findings),
+            },
+            "notes": [
+                "Multi-bundle analysis combines many SecureInfra client collection bundles into one fleet-level normalized report.",
+                "Finding IDs are prefixed with the machine identifier to keep IDs unique across hosts.",
+                "Duplicate collection IDs are skipped so a zip and its extracted folder are not counted twice.",
+                "Machine inventory and coverage_matrix metadata show which scopes were collected, missing, or failed per host.",
+                "Human owner review and approved change control are required before remediation.",
+            ],
+        }
+    )
 
 
 def discover_bundle_inputs(root: Path) -> list[Path]:

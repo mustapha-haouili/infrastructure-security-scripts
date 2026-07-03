@@ -99,7 +99,7 @@ Outputs:
 - `client-info.json`
 - `collection-summary.json`
 - `manifest.json`
-- `ad-shared/` for AD/GPO evidence compatible with SecureInfra AI
+- `ad-shared/` for AD and GPO evidence compatible with SecureInfra AI
 - `host/`, `server/`, `workstation/`, and `network/` folders for supported
   local Windows evidence
 - `backup/` folder when the explicit `Backup` scope is requested
@@ -109,7 +109,7 @@ Parameters:
 
 | Parameter | Type | Default | Description |
 |---|---:|---|---|
-| `-Scope` | string array | `All` | Scopes to collect. Supported values: `All`, `AD`, `Host`, `Server`, `Workstation`, `Network`, `Backup`. `Backup` is explicit and is not included in `All`. |
+| `-Scope` | string array | `All` | Scopes to collect. Supported values: `All`, `AD`, `GPO`, `Host`, `Server`, `Workstation`, `Network`, `Backup`. The broad `AD` scope still includes GPO health evidence for compatibility. `GPO` can be requested alone for Group Policy evidence only. `Backup` is explicit and is not included in `All`. |
 | `-OutputDirectory` | string | `.\reports\secureinfra-client-collection-COMPUTER-TIMESTAMP` | Collection output directory. |
 | `-BaselineDirectory` | string | `.\reports\secureinfra-client-baselines` | Persistent local baseline directory used by the privileged group audit. |
 | `-PrivilegedGroupBaselinePath` | string | empty | Optional explicit privileged group baseline path. |
@@ -148,6 +148,10 @@ Examples:
 ```
 
 ```powershell
+.\scripts\windows\Start-SecureInfraClientCollection.ps1 -Scope GPO
+```
+
+```powershell
 .\scripts\windows\Start-SecureInfraClientCollection.ps1 -Scope Backup -ExpectedBackupPaths "E:\ExampleBackups" -ExpectedBackupSoftware "Windows Server Backup"
 ```
 
@@ -159,6 +163,8 @@ Safety notes:
 
 - The collector does not pass `-Apply` to child scripts.
 - The collector does not pass `-UpdateBaseline` to the privileged group audit.
+- The `AD` scope still collects GPO health evidence into `ad-shared/`; the
+  explicit `GPO` scope runs only `gpo/Get-ADGPOHealthReport.ps1`.
 - The `Backup` scope is explicit and is not run as part of `All`; it checks
   metadata only and does not read backup contents or run restores.
 - If an AD module, GPO module, or permission is missing, that task is recorded

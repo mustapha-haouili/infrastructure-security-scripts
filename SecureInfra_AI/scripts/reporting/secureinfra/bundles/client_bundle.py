@@ -12,6 +12,7 @@ from typing import Any, Iterator
 from secureinfra.bundles.ad_shared_bundle import normalize_ad_shared_bundle
 from secureinfra.loaders.json_loader import load_json_file
 from secureinfra.normalizers.ad_common import build_common_finding, normalize_source_severity, severity_counts, utc_now
+from secureinfra.normalizers.evidence_contract import normalize_report_evidence_contract
 
 
 CLIENT_FILE_DEFINITIONS: dict[str, dict[str, str]] = {
@@ -309,53 +310,55 @@ def normalize_prepared_client_bundle(bundle_dir: Path, source_label: str) -> dic
     environment_summary = build_environment_summary(client_info, collection_summary, manifest, bundle_dir, source_label)
     loaded_scope_counts = scope_file_counts(detected_paths)
 
-    return {
-        "report_id": f"secureinfra-ai-client-bundle-{generated_at.replace(':', '').replace('-', '')}",
-        "report_type": "client-bundle",
-        "tool_name": "SecureInfra AI Client Bundle Analyzer",
-        "source_files": source_files,
-        "generated_at_utc": generated_at,
-        "environment_summary": environment_summary,
-        "summary": {
-            "total_findings": len(findings),
-            "normalized_finding_count": len(findings),
-            "severity_counts": counts,
-            "detected_file_count": len(detected_paths),
-            "loaded_file_count": len(loaded_files),
-            "failed_file_count": len(failed_files),
-            "missing_optional_file_count": len(missing_files),
-            "scope_finding_counts": scope_counts,
-            "scope_file_counts": loaded_scope_counts,
-        },
-        "report_type_metadata": {
+    return normalize_report_evidence_contract(
+        {
+            "report_id": f"secureinfra-ai-client-bundle-{generated_at.replace(':', '').replace('-', '')}",
             "report_type": "client-bundle",
-            "input": source_label,
-            "bundle_directory": str(bundle_dir),
-            "known_files": {key: value["path"] for key, value in CLIENT_FILE_DEFINITIONS.items()},
-            "detected_files": {key: display_path(bundle_dir, path, source_label) for key, path in detected_paths.items()},
-            "missing_files": missing_files,
-            "loaded_files": loaded_files,
-            "failed_files": failed_files,
-            "loaded_summaries": loaded_summaries,
-            "supported_scopes": SUPPORTED_SCOPES,
-            "normalized_source_counts": normalized_source_counts,
-        },
-        "findings": findings,
-        "metadata": {
-            "normalizer": "client_bundle",
-            "normalizer_version": "0.1.0",
-            "risk_engine": "source-priority-mapping",
-            "ai_required": False,
-            "detected_files": {key: display_path(bundle_dir, path, source_label) for key, path in detected_paths.items()},
-            "missing_files": missing_files,
-            "loaded_files": loaded_files,
-            "failed_files": failed_files,
-            "loaded_summaries": loaded_summaries,
-            "normalized_finding_count": len(findings),
-            "scope_finding_counts": scope_counts,
-        },
-        "notes": notes,
-    }
+            "tool_name": "SecureInfra AI Client Bundle Analyzer",
+            "source_files": source_files,
+            "generated_at_utc": generated_at,
+            "environment_summary": environment_summary,
+            "summary": {
+                "total_findings": len(findings),
+                "normalized_finding_count": len(findings),
+                "severity_counts": counts,
+                "detected_file_count": len(detected_paths),
+                "loaded_file_count": len(loaded_files),
+                "failed_file_count": len(failed_files),
+                "missing_optional_file_count": len(missing_files),
+                "scope_finding_counts": scope_counts,
+                "scope_file_counts": loaded_scope_counts,
+            },
+            "report_type_metadata": {
+                "report_type": "client-bundle",
+                "input": source_label,
+                "bundle_directory": str(bundle_dir),
+                "known_files": {key: value["path"] for key, value in CLIENT_FILE_DEFINITIONS.items()},
+                "detected_files": {key: display_path(bundle_dir, path, source_label) for key, path in detected_paths.items()},
+                "missing_files": missing_files,
+                "loaded_files": loaded_files,
+                "failed_files": failed_files,
+                "loaded_summaries": loaded_summaries,
+                "supported_scopes": SUPPORTED_SCOPES,
+                "normalized_source_counts": normalized_source_counts,
+            },
+            "findings": findings,
+            "metadata": {
+                "normalizer": "client_bundle",
+                "normalizer_version": "0.1.0",
+                "risk_engine": "source-priority-mapping",
+                "ai_required": False,
+                "detected_files": {key: display_path(bundle_dir, path, source_label) for key, path in detected_paths.items()},
+                "missing_files": missing_files,
+                "loaded_files": loaded_files,
+                "failed_files": failed_files,
+                "loaded_summaries": loaded_summaries,
+                "normalized_finding_count": len(findings),
+                "scope_finding_counts": scope_counts,
+            },
+            "notes": notes,
+        }
+    )
 
 
 def load_optional_json(
