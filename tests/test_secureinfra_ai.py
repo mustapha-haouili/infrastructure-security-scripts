@@ -23,6 +23,7 @@ from secureinfra.loaders.json_loader import load_json_file
 from secureinfra.normalizers.ad_inactive_users import normalize_ad_inactive_users
 from secureinfra.normalizers.ad_privileged_identity import normalize_privileged_identity
 from secureinfra.normalizers.ad_service_accounts import normalize_service_accounts
+from secureinfra.normalizers.ad_spn_exposure import normalize_spn_exposure
 from secureinfra.report_generator.markdown_report import generate_markdown_reports
 from secureinfra.risk_engine.rules import classify_ad_inactive_user
 from secureinfra.validators.schema_validator import SchemaValidationError, validate_normalized_report
@@ -37,6 +38,34 @@ spec.loader.exec_module(secureinfra_analyzer)
 
 
 class SecureInfraAITests(unittest.TestCase):
+    def built_in_admin_account_row(self) -> dict:
+        return {
+            "ReviewPriority": "Critical",
+            "ExposurePriority": "Critical",
+            "SamAccountName": "Administrator",
+            "AccountCategory": "BuiltInAdministrator",
+            "Enabled": True,
+            "InactiveDays": 2014,
+            "AdminCount": 1,
+            "PrivilegedGroupCount": 1,
+            "PrivilegedGroups": ["Domain Admins"],
+            "PasswordNeverExpires": True,
+            "HasSPN": True,
+            "SPNCount": 1,
+            "ServicePrincipalNames": ["HOST/example-dc01.example.local"],
+            "RiskFlags": [
+                "Enabled",
+                "PasswordNeverExpires",
+                "AdminCount1",
+                "HasSPN",
+                "PrivilegedGroupMember",
+                "ServiceAccountCandidate",
+            ],
+            "ReviewReasons": ["Built-in Administrator requires governance review."],
+            "DistinguishedName": "CN=Administrator,CN=Users,DC=example,DC=local",
+            "ObjectSid": "S-1-5-21-1111111111-2222222222-3333333333-500",
+        }
+
     def assert_evidence_contract(self, normalized: dict) -> None:
         for finding in normalized["findings"]:
             evidence = finding.get("evidence")
@@ -633,6 +662,70 @@ class SecureInfraAITests(unittest.TestCase):
         self.assertEqual(service["evidence"]["classification"], "Strict Service Accounts")
         self.assertEqual(service["evidence"]["service_account_confidence"], "High")
         self.assertEqual(service["object_type"], "Active Directory service account")
+
+    def test_built_in_administrator_with_spn_is_not_strict_service_account(self):
+        data = {
+            "GeneratedAtUtc": "2026-06-08T09:00:00Z",
+            "ServiceAccounts": [self.built_in_admin_account_row()],
+        }
+
+        report = normalize_service_accounts(data, SAMPLE_INPUT)
+        finding = report["findings"][0]
+        evidence = finding["evidence"]
+
+        self.assertEqual(evidence["classification"], "Built-in Administrator Governance Review")
+        self.assertEqual(evidence["service_account_confidence"], "NotApplicable")
+        self.assertNotEqual(evidence["classification"], "Strict Service Accounts")
+        self.assertNotIn("ServiceAccountCandidate", evidence["risk_flags"])
+        self.assertNotIn("service account", evidence["summary"].lower())
+        self.assertIn("built-in administrator account", evidence["summary"])
+        self.assertIn("enabled: true", evidence["summary"])
+        self.assertIn("inactivity evidence: 2014 days", evidence["summary"])
+        self.assertIn("AdminCount=1", evidence["summary"])
+        self.assertIn("PasswordNeverExpires: true", evidence["summary"])
+        self.assertIn("SPN/dependency review required", evidence["summary"])
+        self.assertIn("password custody", finding["recommendation"])
+        self.assertFalse(finding["safe_to_auto_remediate"])
+
+    def test_built_in_administrator_password_and_admincount_are_privileged_governance(self):
+        data = {
+            "GeneratedAtUtc": "2026-06-08T09:00:00Z",
+            "InactiveUsers": [self.built_in_admin_account_row()],
+        }
+
+        report = normalize_ad_inactive_users(data, SAMPLE_INPUT)
+        finding = report["findings"][0]
+        evidence = finding["evidence"]
+
+        self.assertEqual(finding["severity"], "Critical")
+        self.assertEqual(finding["title"], "Built-in Administrator enabled and inactive")
+        self.assertEqual(evidence["classification"], "Built-in Administrator Governance Review")
+        self.assertEqual(evidence["service_account_confidence"], "NotApplicable")
+        self.assertNotIn("ServiceAccountCandidate", evidence["risk_flags"])
+        self.assertNotIn("ServiceAccountCandidate", finding["risk_factors"])
+        self.assertIn("break-glass purpose", finding["recommendation"])
+        self.assertIn("password custody", finding["recommendation"])
+        self.assertIn("change approval", finding["recommendation"])
+        self.assertNotIn("delete", finding["recommendation"].lower().replace("do not delete", ""))
+        self.assertFalse(finding["safe_to_auto_remediate"])
+
+    def test_spn_on_built_in_administrator_is_dependency_review_not_service_classification(self):
+        data = {
+            "GeneratedAtUtc": "2026-06-08T09:00:00Z",
+            "SPNAccounts": [self.built_in_admin_account_row()],
+        }
+
+        report = normalize_spn_exposure(data, SAMPLE_INPUT)
+        finding = report["findings"][0]
+        evidence = finding["evidence"]
+
+        self.assertEqual(evidence["classification"], "Built-in Administrator Governance Review")
+        self.assertEqual(evidence["service_account_confidence"], "NotApplicable")
+        self.assertNotEqual(evidence["classification"], "Strict Service Accounts")
+        self.assertIn("SPN/dependency review required", evidence["summary"])
+        self.assertIn("SPN exposure", finding["technical_impact"])
+        self.assertIn("SPN/dependency exposure", finding["recommendation"])
+        self.assertNotIn("ServiceAccountCandidate", evidence["risk_flags"])
 
     def test_privileged_identity_missing_activity_is_not_zero_or_false(self):
         data = {

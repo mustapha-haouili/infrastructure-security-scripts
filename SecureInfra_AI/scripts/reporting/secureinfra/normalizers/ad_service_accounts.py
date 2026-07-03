@@ -7,6 +7,8 @@ from typing import Any
 
 from secureinfra.normalizers.ad_common import (
     activity_evidence_context,
+    account_review_recommendation,
+    account_risk_flags,
     ad_safety_reason,
     base_normalized_report,
     build_common_finding,
@@ -40,7 +42,7 @@ def build_evidence(row: dict[str, Any]) -> dict[str, Any]:
         "trusted_for_delegation": optional_bool(row.get("TrustedForDelegation")),
         "trusted_to_auth_for_delegation": optional_bool(row.get("TrustedToAuthForDelegation")),
         "owner_evidence_missing": optional_bool(row.get("OwnerEvidenceMissing")),
-        "risk_flags": split_text_or_list(row.get("RiskFlags") or row.get("RiskFlagsText")),
+        "risk_flags": account_risk_flags(row),
         "review_reasons": split_text_or_list(row.get("ReviewReasons") or row.get("ReviewReasonsText")),
         "distinguished_name": str(row.get("DistinguishedName") or ""),
         **activity_evidence_context(row),
@@ -50,6 +52,11 @@ def build_evidence(row: dict[str, Any]) -> dict[str, Any]:
 
 def title_for(classification: str) -> str:
     return {
+        "Built-in Administrator Governance Review": "Built-in Administrator governance review",
+        "Built-in Privileged Account Review": "Built-in privileged account requires governance review",
+        "Privileged Administrator Governance Review": "Privileged administrator requires governance review",
+        "Break-glass Account Governance Review": "Break-glass account requires governance review",
+        "Daily Administrator Governance Review": "Daily administrator account requires governance review",
         "Strict Service Accounts": "Strict service account requires owner and dependency review",
         "Service Account Candidates": "Service account candidate requires validation",
         "Privileged Residue Candidates": "Privileged residue candidate requires ownership review",
@@ -63,6 +70,14 @@ def object_type_for(classification: str) -> str:
         return "Active Directory service account"
     if classification == "Service Account Candidates":
         return "Active Directory service account candidate"
+    if classification in {
+        "Built-in Administrator Governance Review",
+        "Built-in Privileged Account Review",
+        "Privileged Administrator Governance Review",
+        "Break-glass Account Governance Review",
+        "Daily Administrator Governance Review",
+    }:
+        return "Active Directory privileged account"
     return "Active Directory account review candidate"
 
 
@@ -88,10 +103,14 @@ def normalize_service_accounts(data: dict[str, Any], source_file: str | Path) ->
                 object_type=object_type_for(classification),
                 source_script_name=script_name,
                 evidence=build_evidence(row),
-                risk_factors=split_text_or_list(row.get("RiskFlags") or row.get("RiskFlagsText")),
+                risk_factors=account_risk_flags(row),
                 business_impact="Service account changes can disrupt applications, but unmanaged or stale service accounts increase identity exposure.",
                 technical_impact="The source report identified service account risk indicators such as SPNs, old passwords, delegation, privilege, or missing ownership.",
-                recommendation=str(row.get("RecommendedAction") or "Confirm service owner, dependency, rotation plan, and maintenance window before any change."),
+                recommendation=account_review_recommendation(
+                    row,
+                    classification,
+                    "Confirm service owner, dependency, rotation plan, and maintenance window before any change.",
+                ),
                 timestamp_utc=timestamp_utc,
                 safety_reason=ad_safety_reason(row, "Service account"),
             )

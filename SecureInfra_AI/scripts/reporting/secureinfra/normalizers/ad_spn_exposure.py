@@ -7,6 +7,8 @@ from typing import Any
 
 from secureinfra.normalizers.ad_common import (
     activity_evidence_context,
+    account_review_recommendation,
+    account_risk_flags,
     ad_safety_reason,
     base_normalized_report,
     build_common_finding,
@@ -40,7 +42,7 @@ def build_evidence(row: dict[str, Any]) -> dict[str, Any]:
         "trusted_to_auth_for_delegation": optional_bool(row.get("TrustedToAuthForDelegation")),
         "encryption_risk": str(row.get("EncryptionRisk") or ""),
         "encryption_evidence": str(row.get("EncryptionEvidence") or ""),
-        "risk_flags": split_text_or_list(row.get("RiskFlags") or row.get("RiskFlagsText")),
+        "risk_flags": account_risk_flags(row),
         "review_reasons": split_text_or_list(row.get("ReviewReasons") or row.get("ReviewReasonsText")),
         "distinguished_name": str(row.get("DistinguishedName") or ""),
         **activity_evidence_context(row),
@@ -59,6 +61,7 @@ def normalize_spn_exposure(data: dict[str, Any], source_file: str | Path) -> dic
     for index, row in enumerate(rows, start=1):
         severity = normalize_source_severity(row.get("ExposurePriority") or row.get("ReviewPriority"))
         affected_object = row_identifier(row, f"spn-account-{index}")
+        classification = service_account_classification(row)["classification"]
         findings.append(
             build_common_finding(
                 finding_id=f"AD-SPN-{index:04d}",
@@ -69,10 +72,14 @@ def normalize_spn_exposure(data: dict[str, Any], source_file: str | Path) -> dic
                 object_type="Active Directory SPN account",
                 source_script_name=script_name,
                 evidence=build_evidence(row),
-                risk_factors=split_text_or_list(row.get("RiskFlags") or row.get("RiskFlagsText")),
+                risk_factors=account_risk_flags(row),
                 business_impact="SPN-bearing accounts can represent important application dependencies and require controlled ownership and rotation review.",
                 technical_impact="The source report identified SPN exposure indicators. This is defensive dependency and configuration evidence, not exploitation guidance.",
-                recommendation=str(row.get("RecommendedAction") or "Confirm application owner, SPN requirement, credential rotation plan, and delegation posture before any change."),
+                recommendation=account_review_recommendation(
+                    row,
+                    classification,
+                    "Confirm application owner, SPN requirement, credential rotation plan, and delegation posture before any change.",
+                ),
                 timestamp_utc=timestamp_utc,
                 safety_reason=ad_safety_reason(row, "SPN-bearing account"),
             )

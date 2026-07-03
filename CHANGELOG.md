@@ -7,6 +7,10 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 ## [Unreleased]
 
 ### Fixed
+- Fixed AD account classification precedence so built-in Administrator and
+  privileged administrator accounts are treated as governance reviews instead
+  of strict service accounts when SPN, AdminCount, privileged membership, or
+  PasswordNeverExpires evidence is present.
 - Standardized normalized finding evidence across analyzer outputs by adding
   `evidence.summary`, `evidence.details`, `evidence.confidence`, safe
   `evidence.key_fields`, and final-report sanitization for internal bundle

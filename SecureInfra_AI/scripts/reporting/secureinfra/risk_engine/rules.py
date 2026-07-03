@@ -113,6 +113,20 @@ def is_service_account_candidate(user: dict[str, Any]) -> bool:
     return "service" in category or sam.startswith("svc") or "service account" in reasons
 
 
+def has_explicit_service_dependency(user: dict[str, Any]) -> bool:
+    signals = " ".join(
+        as_list(user.get("DependencySignals"))
+        + as_list(user.get("ReviewReasons"))
+        + as_list(user.get("ServiceDependencies"))
+        + as_list(user.get("ServiceEvidence"))
+        + as_list(user.get("ServicePrincipalNames"))
+    ).lower()
+    return any(
+        needle in signals
+        for needle in ["service dependency", "runs as", "windows service", "scheduled task", "application dependency", "database", "mssql"]
+    )
+
+
 def remediation_priority_for(severity: str) -> str:
     return {
         "Critical": "Immediate Review",
@@ -126,6 +140,12 @@ def remediation_priority_for(severity: str) -> str:
 
 def base_risk_factors(user: dict[str, Any]) -> list[str]:
     factors = as_list(user.get("RiskFlags"))
+    if is_built_in_administrator(user) and not has_explicit_service_dependency(user):
+        factors = [
+            item
+            for item in factors
+            if item.strip().lower().replace(" ", "").replace("-", "") not in {"serviceaccountcandidate", "serviceaccount"}
+        ]
     if as_bool(user.get("PasswordNeverExpires")) and "PasswordNeverExpires" not in factors:
         factors.append("PasswordNeverExpires")
     if as_bool(user.get("HasSPN")) and "SPN present" not in factors:
@@ -182,7 +202,7 @@ def classify_ad_inactive_user(user: dict[str, Any]) -> dict[str, Any]:
         severity = "Critical"
         business_impact = "Break-glass access requires strict governance, monitoring, and documented ownership."
         technical_impact = "The built-in Administrator account is enabled and inactive in the audit evidence."
-        recommendation = "Review break-glass policy, monitoring, and access controls. Do not delete the account."
+        recommendation = "Validate owner, break-glass purpose, password custody, monitoring, and change approval. Do not delete the built-in account."
     elif enabled and high_inactivity and privileged_groups and has_spn:
         title = "Enabled inactive privileged account with SPN detected"
         severity = "Critical"

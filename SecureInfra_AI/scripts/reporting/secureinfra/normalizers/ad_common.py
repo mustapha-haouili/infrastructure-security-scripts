@@ -86,8 +86,17 @@ def activity_evidence_context(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+ADMIN_GOVERNANCE_CLASSIFICATIONS = {
+    "Built-in Administrator Governance Review",
+    "Built-in Privileged Account Review",
+    "Privileged Administrator Governance Review",
+    "Break-glass Account Governance Review",
+    "Daily Administrator Governance Review",
+}
+
+
 def service_account_classification(row: dict[str, Any]) -> dict[str, str]:
-    """Classify account evidence without treating privilege or missing owner as service proof."""
+    """Classify account evidence with admin/governance precedence before service signals."""
     account_type = str(first_present(row, ["AccountType", "AccountCategory", "classification"], "")).strip()
     object_class = str(first_present(row, ["ObjectClass"], "")).strip()
     reason_text = " ".join(
@@ -104,9 +113,22 @@ def service_account_classification(row: dict[str, Any]) -> dict[str, str]:
     privileged_group_count = optional_int(first_present(row, ["PrivilegedGroupCount"], None)) or 0
     password_never_expires = optional_bool(first_present(row, ["PasswordNeverExpires"], None)) is True
     owner_missing = optional_bool(first_present(row, ["OwnerEvidenceMissing", "MissingOwner"], None)) is True
+    admin_review = admin_governance_classification(row)
+
+    if admin_review:
+        return admin_review
 
     managed_service = "managedserviceaccount" in object_class.lower() or "managedserviceaccount" in account_type.lower()
-    explicit_service = account_type in {"UserSPNServiceAccount", "SPNServiceAccount", "GroupManagedServiceAccount", "StandaloneManagedServiceAccount"}
+    explicit_service = normalized_account_type(account_type) in {
+        "userspnserviceaccount",
+        "spnserviceaccount",
+        "groupmanagedserviceaccount",
+        "standalonemanagedserviceaccount",
+        "managedserviceaccount",
+        "userserviceaccount",
+        "serviceaccount",
+    }
+    service_dependency = has_explicit_service_dependency(row)
     service_pattern = (
         account_type == "UserServiceAccountCandidate"
         or "servicenamepattern" in reason_text
@@ -114,11 +136,12 @@ def service_account_classification(row: dict[str, Any]) -> dict[str, str]:
         or "ou=service accounts" in name_text
         or bool(re.search(r"(^|[^a-z0-9])(svc|gmsa|msa)[-_]", name_text))
     )
+    strong_service_evidence = managed_service or explicit_service or service_dependency or (has_spn and service_pattern)
 
-    if managed_service or explicit_service or has_spn:
+    if strong_service_evidence:
         return {
             "classification": "Strict Service Accounts",
-            "classification_reason": "Strong service-account evidence was present, such as SPN, managed service account class, or explicit service account type.",
+            "classification_reason": "Strong service-account evidence was present, such as explicit service account type, managed service account class, service dependency evidence, or SPN plus service-specific naming/OU evidence.",
             "service_account_confidence": "High",
             "account_review_reason": "Validate owner, dependency, credential handling, and monitoring before changes.",
         }
@@ -156,6 +179,198 @@ def service_account_classification(row: dict[str, Any]) -> dict[str, str]:
         "service_account_confidence": "Low",
         "account_review_reason": "Validate account purpose and owner.",
     }
+
+
+def normalized_account_type(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+
+def account_identity_text(row: dict[str, Any]) -> str:
+    values = []
+    for key in [
+        "AccountType",
+        "AccountCategory",
+        "IdentityCategory",
+        "classification",
+        "SamAccountName",
+        "Name",
+        "Description",
+        "DistinguishedName",
+        "RiskFlags",
+        "RiskFlagsText",
+        "ReviewReasons",
+        "ReviewReasonsText",
+    ]:
+        value = row.get(key)
+        if isinstance(value, list):
+            values.extend(str(item) for item in value)
+        elif value not in (None, ""):
+            values.append(str(value))
+    return " ".join(values).lower()
+
+
+def is_built_in_administrator_account(row: dict[str, Any]) -> bool:
+    sam = str(first_present(row, ["SamAccountName", "Subject", "Name"], "") or "").strip().lower()
+    sid = str(first_present(row, ["ObjectSid", "SID", "SubjectSID"], "") or "")
+    text = account_identity_text(row)
+    return (
+        sam == "administrator"
+        or "builtinadministrator" in normalized_account_type(text)
+        or "built-in administrator" in text
+        or sid.endswith("-500")
+    )
+
+
+def explicit_category_present(row: dict[str, Any], categories: set[str]) -> bool:
+    for key in ["AccountType", "AccountCategory", "IdentityCategory", "classification"]:
+        if normalized_account_type(row.get(key)) in categories:
+            return True
+    text = normalized_account_type(account_identity_text(row))
+    return any(category in text for category in categories)
+
+
+def admin_governance_classification(row: dict[str, Any]) -> dict[str, str] | None:
+    if is_built_in_administrator_account(row):
+        return admin_classification(
+            "Built-in Administrator Governance Review",
+            "Built-in Administrator evidence takes precedence over SPN, AdminCount, privileged membership, PasswordNeverExpires, and service-candidate signals.",
+            "Validate owner, break-glass purpose, password custody, monitoring, SPN/dependency exposure, and change approval before any account change.",
+            row,
+            "built-in administrator account",
+        )
+    if explicit_category_present(row, {"builtinprivilegedaccount", "builtinprivileged"}):
+        return admin_classification(
+            "Built-in Privileged Account Review",
+            "Built-in privileged-account evidence takes precedence over service-account indicators.",
+            "Validate owner, privileged purpose, monitoring, credential custody, and change approval before any account change.",
+            row,
+            "built-in privileged account",
+        )
+    if explicit_category_present(row, {"privilegedadministrator", "privilegedadmin"}):
+        return admin_classification(
+            "Privileged Administrator Governance Review",
+            "Explicit privileged-administrator evidence takes precedence over service-account indicators.",
+            "Validate owner, administrative purpose, monitoring, credential controls, SPN/dependency exposure, and change approval before any account change.",
+            row,
+            "privileged administrator account",
+        )
+    if explicit_category_present(row, {"breakglasscandidate", "breakglassaccount"}):
+        return admin_classification(
+            "Break-glass Account Governance Review",
+            "Explicit break-glass evidence takes precedence over service-account indicators.",
+            "Validate break-glass purpose, owner, password custody, activation process, monitoring, and review schedule before any account change.",
+            row,
+            "break-glass account candidate",
+        )
+    if explicit_category_present(row, {"dailyadmincandidate", "dailyadministrator"}):
+        return admin_classification(
+            "Daily Administrator Governance Review",
+            "Explicit daily-administrator evidence takes precedence over service-account indicators.",
+            "Validate owner, administrative purpose, current usage evidence, monitoring, and change approval before any account change.",
+            row,
+            "daily administrator account candidate",
+        )
+    return None
+
+
+def admin_classification(
+    classification: str,
+    reason: str,
+    review_reason: str,
+    row: dict[str, Any],
+    summary_label: str,
+) -> dict[str, str]:
+    return {
+        "classification": classification,
+        "classification_reason": reason,
+        "service_account_confidence": "NotApplicable",
+        "account_review_reason": review_reason,
+        "summary": account_governance_summary(row, summary_label),
+    }
+
+
+def account_governance_summary(row: dict[str, Any], label: str) -> str:
+    parts = [label]
+    enabled = optional_bool(first_present(row, ["Enabled"], None))
+    inactive_days = optional_int(first_present(row, ["InactiveDays", "DaysInactive"], None))
+    admin_count = optional_int(first_present(row, ["AdminCount"], None))
+    privileged_group_count = optional_int(first_present(row, ["PrivilegedGroupCount"], None))
+    password_never_expires = optional_bool(first_present(row, ["PasswordNeverExpires"], None))
+    has_spn = optional_bool(first_present(row, ["HasSPN"], None)) is True or (optional_int(first_present(row, ["SPNCount"], None)) or 0) > 0
+
+    if enabled is not None:
+        parts.append(f"enabled: {str(enabled).lower()}")
+    if inactive_days is not None:
+        parts.append(f"inactivity evidence: {inactive_days} days")
+    privileged_indicators = []
+    if admin_count is not None:
+        privileged_indicators.append(f"AdminCount={admin_count}")
+    if privileged_group_count:
+        privileged_indicators.append(f"privileged_group_count={privileged_group_count}")
+    groups = split_text_or_list(first_present(row, ["PrivilegedGroups", "PrivilegedGroupsText"], []))
+    if groups:
+        privileged_indicators.append("privileged groups: " + ", ".join(groups))
+    if privileged_indicators:
+        parts.append("privileged indicators: " + ", ".join(privileged_indicators))
+    if password_never_expires is not None:
+        parts.append(f"PasswordNeverExpires: {str(password_never_expires).lower()}")
+    if has_spn:
+        parts.append("SPN/dependency review required")
+    return "; ".join(parts)
+
+
+def has_explicit_service_dependency(row: dict[str, Any]) -> bool:
+    values = []
+    for key in [
+        "DependencySignals",
+        "DependencySignalsText",
+        "ServiceDependencies",
+        "ServiceDependencyEvidence",
+        "ServiceEvidence",
+        "ServiceName",
+        "ServiceOwner",
+        "ServicePrincipalNames",
+        "ServicePrincipalNamesText",
+        "ReviewReasons",
+        "ReviewReasonsText",
+    ]:
+        value = row.get(key)
+        if isinstance(value, list):
+            values.extend(str(item) for item in value)
+        elif value not in (None, ""):
+            values.append(str(value))
+    text = " ".join(values).lower()
+    if not text:
+        return False
+    if re.search(r"\b(service|application|app|scheduled task|runs as|dependency|database|mssql|http/|ldap/|cifs/)\b", text):
+        return True
+    return False
+
+
+def account_risk_flags(row: dict[str, Any]) -> list[str]:
+    flags = split_text_or_list(row.get("RiskFlags") or row.get("RiskFlagsText"))
+    if is_built_in_administrator_account(row) and not has_explicit_service_dependency(row):
+        return [
+            flag
+            for flag in flags
+            if normalized_account_type(flag) not in {"serviceaccountcandidate", "serviceaccount"}
+        ]
+    return flags
+
+
+def account_review_recommendation(row: dict[str, Any], classification: str, default: str) -> str:
+    supplied = row.get("RecommendedAction") or row.get("AdminAction")
+    if classification in ADMIN_GOVERNANCE_CLASSIFICATIONS:
+        base = str(supplied) if supplied else (
+            "Validate owner, break-glass or administrative purpose, password custody, monitoring, "
+            "SPN/dependency exposure, and change approval before any account change."
+        )
+        if "do not delete" not in base.lower():
+            base = f"{base} Do not delete built-in or privileged administrator accounts."
+        return base
+    if supplied:
+        return str(supplied)
+    return default
 
 
 def report_metadata(data: dict[str, Any]) -> dict[str, Any]:

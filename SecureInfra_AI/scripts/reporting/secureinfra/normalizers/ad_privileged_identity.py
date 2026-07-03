@@ -7,6 +7,8 @@ from typing import Any
 
 from secureinfra.normalizers.ad_common import (
     activity_evidence_context,
+    account_review_recommendation,
+    account_risk_flags,
     base_normalized_report,
     build_common_finding,
     generated_at_utc,
@@ -45,7 +47,7 @@ def build_evidence(row: dict[str, Any]) -> dict[str, Any]:
         "admin_count": optional_int(row.get("AdminCount")),
         "owner_evidence_missing": optional_bool(row.get("OwnerEvidenceMissing")),
         "mfa_conditional_access_status": str(row.get("MFAConditionalAccessStatus") or ""),
-        "risk_flags": split_text_or_list(row.get("RiskFlags") or row.get("RiskFlagsText")),
+        "risk_flags": account_risk_flags(row),
         "review_reasons": split_text_or_list(row.get("ReviewReasons") or row.get("ReviewReasonsText")),
         "evidence": str(row.get("Evidence") or ""),
         "admin_action": str(row.get("AdminAction") or row.get("RecommendedAction") or ""),
@@ -70,7 +72,7 @@ def title_for(row: dict[str, Any]) -> str:
 
 
 def risk_factors_for(row: dict[str, Any]) -> list[str]:
-    factors = split_text_or_list(row.get("RiskFlags") or row.get("RiskFlagsText"))
+    factors = account_risk_flags(row)
     factors.extend(split_text_or_list(row.get("ReviewReasons") or row.get("ReviewReasonsText")))
     finding_type = str(row.get("FindingType") or "").strip()
     if finding_type:
@@ -96,6 +98,7 @@ def normalize_privileged_identity(data: dict[str, Any], source_file: str | Path)
     for index, row in enumerate(rows, start=1):
         severity = normalize_source_severity(row.get("Severity") or row.get("ReviewPriority") or row.get("ActionPriority"))
         affected_object = row_identifier(row, f"privileged-identity-{index}")
+        classification = service_account_classification(row)["classification"]
         findings.append(
             build_common_finding(
                 finding_id=f"AD-PID-{index:04d}",
@@ -109,7 +112,11 @@ def normalize_privileged_identity(data: dict[str, Any], source_file: str | Path)
                 risk_factors=risk_factors_for(row),
                 business_impact="Privileged identities can change administrative control over the domain and require strong ownership and protection evidence.",
                 technical_impact="The source report identified privileged identity protection gaps, structural privileged access issues, or review blockers.",
-                recommendation=str(row.get("AdminAction") or row.get("RecommendedAction") or "Validate privileged access requirement, owner evidence, and protection controls before changing the account."),
+                recommendation=account_review_recommendation(
+                    row,
+                    classification,
+                    "Validate privileged access requirement, owner evidence, and protection controls before changing the account.",
+                ),
                 timestamp_utc=timestamp_utc,
                 safety_reason="Privileged identity changes require identity owner validation, access approval, and controlled verification before remediation.",
             )

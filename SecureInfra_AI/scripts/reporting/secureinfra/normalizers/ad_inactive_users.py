@@ -9,6 +9,7 @@ from typing import Any
 
 from secureinfra.normalizers.ad_common import (
     activity_evidence_context,
+    account_risk_flags,
     optional_bool,
     optional_int,
     service_account_classification,
@@ -47,7 +48,7 @@ def build_evidence(user: dict[str, Any]) -> dict[str, Any]:
         "has_spn": optional_bool(user.get("HasSPN")),
         "privileged_groups": as_list(user.get("PrivilegedGroups")),
         "dependency_signals": as_list(user.get("DependencySignals")),
-        "risk_flags": as_list(user.get("RiskFlags")),
+        "risk_flags": account_risk_flags(user),
         "review_reasons": as_list(user.get("ReviewReasons")),
         "distinguished_name": str(user.get("DistinguishedName") or ""),
         "object_sid": str(user.get("ObjectSid") or ""),
