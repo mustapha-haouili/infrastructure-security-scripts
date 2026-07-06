@@ -214,7 +214,10 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
         self.assertIn("Windows Remote Management (WinRM over HTTP)", evidence["summary"])
         self.assertIn("approved remote administration exposure", evidence["summary"])
         self.assertIn("binds to all local interfaces", evidence["risk_explanation"])
-        self.assertIn("actual reachability depends on firewall, routing, and network segmentation", evidence["risk_explanation"])
+        self.assertIn(
+            "Actual reachability depends on firewall rules, routing, segmentation, and allowed source networks",
+            evidence["risk_explanation"],
+        )
         self.assertIn("risk_explanation: WinRM over HTTP", evidence["details"])
         self.assertIn("customer_question: Which management tools", evidence["details"])
         self.assertIn("safe_next_step: Validate WinRM owner", evidence["details"])

@@ -483,7 +483,7 @@ def network_port_context_evidence(row: dict[str, Any], data: dict[str, Any], evi
     if scope == "All interfaces":
         risk_explanation = (
             risk_explanation
-            + " Listening on all interfaces means the service binds to all local interfaces; actual reachability depends on firewall, routing, and network segmentation."
+            + " Listening on all interfaces means the service binds to all local interfaces. Actual reachability depends on firewall rules, routing, segmentation, and allowed source networks."
         )
 
     summary = listening_port_summary(protocol, port, process, scope, bind_address, context)

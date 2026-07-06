@@ -316,8 +316,8 @@ ports are not treated as automatically exploitable, and the analyzer does not
 recommend disabling services automatically.
 
 `Listening on all interfaces` means the service is bound to all local
-interfaces. Actual reachability still depends on host firewall rules, upstream
-firewalls, routing, and network segmentation.
+interfaces. Actual reachability depends on firewall rules, routing,
+segmentation, and allowed source networks.
 
 Outputs:
 
