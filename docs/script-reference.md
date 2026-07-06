@@ -1617,8 +1617,8 @@ python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input reports
 For `windows-network-exposure`, normalized listener evidence includes fields
 such as `evidence.common_service`, `evidence.common_name`,
 `evidence.exposure_type`, `evidence.risk_explanation`,
-`evidence.customer_question`, `evidence.safe_next_step`, and
-`evidence.port_context_confidence`.
+`evidence.bind_scope_explanation`, `evidence.customer_question`,
+`evidence.safe_next_step`, and `evidence.port_context_confidence`.
 
 Safety notes:
 

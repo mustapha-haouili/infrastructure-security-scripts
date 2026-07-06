@@ -213,15 +213,37 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
         self.assertEqual(evidence["port_context_confidence"], "high")
         self.assertIn("Windows Remote Management (WinRM over HTTP)", evidence["summary"])
         self.assertIn("approved remote administration exposure", evidence["summary"])
-        self.assertIn("binds to all local interfaces", evidence["risk_explanation"])
+        self.assertEqual(evidence["risk_explanation"], "WinRM over HTTP is commonly used for Windows remote administration and automation. It should be restricted to trusted management networks and validated before changes.")
+        self.assertNotIn("Listening on all interfaces", evidence["risk_explanation"])
+        self.assertEqual(evidence["risk_explanation"].count("Listening on all interfaces"), 0)
+        self.assertEqual(evidence["risk_explanation"].count("WinRM over HTTP"), 1)
+        self.assertEqual(
+            evidence["bind_scope_explanation"],
+            "Listening on all interfaces means the service binds to all local interfaces. Actual reachability depends on firewall rules, routing, segmentation, and allowed source networks.",
+        )
+        self.assertEqual(evidence["bind_scope_explanation"].count("Listening on all interfaces"), 1)
         self.assertIn(
             "Actual reachability depends on firewall rules, routing, segmentation, and allowed source networks",
-            evidence["risk_explanation"],
+            evidence["bind_scope_explanation"],
         )
         self.assertIn("risk_explanation: WinRM over HTTP", evidence["details"])
+        self.assertIn("bind_scope_explanation: Listening on all interfaces means", evidence["details"])
+        self.assertEqual(evidence["details"].count("bind_scope_explanation:"), 1)
+        risk_detail = next(part for part in evidence["details"].split("; ") if part.startswith("risk_explanation:"))
+        bind_scope_detail = next(part for part in evidence["details"].split("; ") if part.startswith("bind_scope_explanation:"))
+        self.assertNotIn("Listening on all interfaces", risk_detail)
+        self.assertIn("Actual reachability depends on firewall rules", bind_scope_detail)
         self.assertIn("customer_question: Which management tools", evidence["details"])
         self.assertIn("safe_next_step: Validate WinRM owner", evidence["details"])
+        self.assertIn("Which management tools", evidence["customer_question"])
+        self.assertIn("Validate WinRM owner", evidence["safe_next_step"])
         self.assertFalse(winrm_http["safe_to_auto_remediate"])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = generate_markdown_reports(report, Path(tmp))
+            technical = (Path(tmp) / "technical-findings.md").read_text(encoding="utf-8")
+            self.assertIn("- Risk explanation: WinRM over HTTP", technical)
+            self.assertIn("- Bind scope explanation: Listening on all interfaces means", technical)
 
         self.assertEqual(by_port[5986]["evidence"]["common_name"], "WinRM over HTTPS")
         self.assertEqual(by_port[3389]["evidence"]["common_name"], "RDP")
@@ -230,6 +252,69 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
         self.assertEqual(by_port[49152]["evidence"]["common_service"], "Unknown or custom service")
         self.assertEqual(by_port[49152]["evidence"]["bind_scope"], "Loopback only")
         self.assertTrue(all(finding["safe_to_auto_remediate"] is False for finding in report["findings"]))
+
+    def test_windows_network_listener_findings_deduplicate_broad_ipv4_ipv6_endpoints(self):
+        data = {
+            "ToolName": "Get-WindowsNetworkExposureAudit",
+            "ReportType": "windows-network-exposure",
+            "GeneratedAtUtc": "2026-06-15T09:00:00Z",
+            "ComputerName": "ADSRV-2018-PR",
+            "Summary": {"FindingCount": 3},
+            "ListeningTcpPorts": [
+                {"LocalAddress": "::", "LocalPort": 3389, "OwningProcess": 1200, "ProcessName": "svchost"},
+                {"LocalAddress": "0.0.0.0", "LocalPort": 3389, "OwningProcess": 1200, "ProcessName": "svchost"},
+                {"LocalAddress": "::", "LocalPort": 5985, "OwningProcess": 4, "ProcessName": "System"},
+            ],
+            "Findings": [
+                {
+                    "FindingType": "RiskyListeningPort",
+                    "Severity": "High",
+                    "Title": "Sensitive TCP port is listening",
+                    "Evidence": "TCP 3389 is listening on all interfaces by process svchost.",
+                    "Recommendation": "Confirm the listener is required and restricted by host and network firewall policy.",
+                },
+                {
+                    "FindingType": "RiskyListeningPort",
+                    "Severity": "High",
+                    "Title": "Sensitive TCP port is listening",
+                    "Evidence": "TCP 3389 is listening on all interfaces by process svchost.",
+                    "Recommendation": "Confirm the listener is required and restricted by host and network firewall policy.",
+                },
+                {
+                    "FindingType": "RiskyListeningPort",
+                    "Severity": "High",
+                    "Title": "Sensitive TCP port is listening",
+                    "Evidence": "TCP 5985 is listening on all interfaces by process System.",
+                    "Recommendation": "Confirm the listener is required and restricted by host and network firewall policy.",
+                },
+            ],
+        }
+
+        report = normalize_windows_network_exposure(data, "windows-network-exposure.json")
+        risky_findings = [
+            finding
+            for finding in report["findings"]
+            if finding["evidence"].get("finding_type") == "RiskyListeningPort"
+        ]
+        tcp_3389_findings = [finding for finding in risky_findings if finding["evidence"].get("port") == 3389]
+
+        self.assertEqual(len(tcp_3389_findings), 1)
+        self.assertEqual(len(risky_findings), 2)
+        rdp = tcp_3389_findings[0]
+        self.assertEqual(rdp["finding_id"], "NETWORK-EXPOSURE-RISKYLISTENINGPORT-TCP-3389")
+        self.assertEqual(rdp["evidence"]["bind_addresses"], ["::", "0.0.0.0"])
+        self.assertEqual(rdp["evidence"]["source_endpoints"], [":::3389 svchost", "0.0.0.0:3389 svchost"])
+        self.assertEqual(rdp["evidence"]["bind_scope"], "All interfaces")
+        self.assertIn("Actual reachability depends on firewall rules", rdp["evidence"]["bind_scope_explanation"])
+        self.assertNotIn("Listening on all interfaces", rdp["evidence"]["risk_explanation"])
+        self.assertEqual(rdp["evidence"]["common_service"], "Remote Desktop Protocol")
+        self.assertEqual(rdp["evidence"]["common_name"], "RDP")
+        self.assertFalse(rdp["safe_to_auto_remediate"])
+
+        winrm = next(finding for finding in risky_findings if finding["evidence"].get("port") == 5985)
+        self.assertEqual(winrm["finding_id"], "NETWORK-EXPOSURE-RISKYLISTENINGPORT-TCP-5985")
+        self.assertEqual(winrm["evidence"]["common_service"], "Windows Remote Management")
+        self.assertEqual(winrm["evidence"]["common_name"], "WinRM over HTTP")
 
     def test_windows_network_sample_uses_port_context(self):
         data = load_json_file(WINDOWS_SAMPLE_ROOT / "sample-windows-network-exposure.json")
@@ -240,6 +325,65 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
         self.assertIn("Remote Desktop Protocol", rdp["evidence"]["summary"])
         self.assertIn("customer_question: Who requires RDP access", rdp["evidence"]["details"])
         self.assertFalse(rdp["safe_to_auto_remediate"])
+
+    def test_windows_host_aggregate_network_finding_includes_exposed_port_context(self):
+        data = {
+            "ToolName": "Invoke-WindowsSecurityAudit.ps1",
+            "ReportType": "windows-security-audit",
+            "GeneratedAtUtc": "2026-06-15T09:00:00Z",
+            "ComputerName": "LAB-SRV01",
+            "Summary": {"FindingCount": 1},
+            "Findings": [
+                {
+                    "Id": "WIN-NET-001",
+                    "Severity": "Medium",
+                    "Area": "Network exposure",
+                    "Title": "High-value Windows management or file-sharing ports are listening broadly",
+                    "WhyItMatters": "Broadly listening management and file-sharing ports should be limited to trusted networks.",
+                    "Recommendation": "Confirm firewall rules restrict these ports to required management, domain, or application networks.",
+                    "Evidence": ":::135 svchost; 0.0.0.0:135 svchost; :::445 System; :::3389 svchost; 0.0.0.0:3389 svchost; :::5985 System",
+                }
+            ],
+        }
+
+        report = normalize_windows_host_audit(data, "windows-security-audit.json")
+        finding = report["findings"][0]
+        evidence = finding["evidence"]
+        exposed_by_port = {item["port"]: item for item in evidence["exposed_ports"]}
+
+        self.assertEqual(len(evidence["exposed_ports"]), 4)
+        self.assertEqual(exposed_by_port[135]["common_service"], "RPC Endpoint Mapper")
+        self.assertEqual(exposed_by_port[445]["common_service"], "SMB")
+        self.assertEqual(exposed_by_port[3389]["common_name"], "RDP")
+        self.assertEqual(exposed_by_port[5985]["common_service"], "Windows Remote Management")
+        self.assertEqual(exposed_by_port[5985]["common_name"], "WinRM over HTTP")
+        self.assertEqual(exposed_by_port[135]["bind_addresses"], ["::", "0.0.0.0"])
+        self.assertEqual(exposed_by_port[3389]["bind_addresses"], ["::", "0.0.0.0"])
+
+        for item in evidence["exposed_ports"]:
+            self.assertEqual(item["bind_scope"], "All interfaces")
+            self.assertIn("Actual reachability depends on firewall rules", item["bind_scope_explanation"])
+            self.assertNotIn("Listening on all interfaces", item["risk_explanation"])
+
+        self.assertIn("TCP 135 RPC Endpoint Mapper", evidence["summary"])
+        self.assertIn("TCP 445 SMB", evidence["summary"])
+        self.assertIn("TCP 3389 RDP", evidence["summary"])
+        self.assertIn("TCP 5985 WinRM over HTTP", evidence["summary"])
+        self.assertIn("trusted domain, management, VPN, or application networks", evidence["summary"])
+        self.assertNotIn("Listening on all interfaces", evidence["risk_explanation"])
+        self.assertIn("Actual reachability depends on firewall rules", evidence["bind_scope_explanation"])
+        self.assertIn("risk_explanation: Broadly listening Windows management", evidence["details"])
+        self.assertIn("bind_scope_explanation: Listening on all interfaces means", evidence["details"])
+        self.assertIn("aggregate_network_context:", evidence["details"])
+        self.assertIn("does not prove internet exposure", evidence["details"])
+        self.assertIn("source_report_type: windows-security-audit", evidence["details"])
+        self.assertIn("machine_name: LAB-SRV01", evidence["details"])
+        self.assertIn("source_script: Invoke-WindowsSecurityAudit.ps1", evidence["details"])
+        self.assertIn("affected_object: WIN-NET-001", evidence["details"])
+        self.assertEqual(evidence["evidence"], data["Findings"][0]["Evidence"])
+        self.assertEqual(evidence["why_it_matters"], data["Findings"][0]["WhyItMatters"])
+        self.assertFalse(finding["safe_to_auto_remediate"])
+        self.assertNotIn("D:\\", json.dumps(report))
 
     def test_windows_strict_schema_rejects_missing_report_type_metadata(self):
         data = load_json_file(WINDOWS_SAMPLE_CASES[0]["path"])

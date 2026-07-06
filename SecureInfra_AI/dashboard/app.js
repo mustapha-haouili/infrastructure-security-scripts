@@ -702,7 +702,7 @@
       const item = document.createElement("div");
       item.className = "evidence-item";
       item.append(
-        textElement("span", key, "evidence-key"),
+        textElement("span", evidenceLabel(key), "evidence-key"),
         textElement("span", renderValue(value), "evidence-value")
       );
       container.appendChild(item);
@@ -1365,6 +1365,12 @@
     if (Array.isArray(value)) return value.map(renderValue).join(", ");
     if (value && typeof value === "object") return JSON.stringify(value);
     return stringValue(value);
+  }
+
+  function evidenceLabel(key) {
+    const text = stringValue(key).replace(/_/g, " ").trim();
+    if (!text) return "";
+    return text.charAt(0).toUpperCase() + text.slice(1);
   }
 
   function unique(values) {

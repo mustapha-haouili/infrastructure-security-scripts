@@ -112,6 +112,10 @@ MAX_ZIP_MEMBER_SIZE_BYTES = 25 * 1024 * 1024
 ALLOWED_ZIP_EXTENSIONS = {".json", ".csv", ".md", ".txt", ".log"}
 ALLOWED_ZIP_ROOT_FILES = {"client-info.json", "collection-summary.json", "manifest.json"}
 ALLOWED_ZIP_TOP_LEVEL_DIRS = {"ad-shared", "host", "server", "workstation", "network", "backup", "logs"}
+ALL_INTERFACES_BIND_SCOPE_EXPLANATION = (
+    "Listening on all interfaces means the service binds to all local interfaces. "
+    "Actual reachability depends on firewall rules, routing, segmentation, and allowed source networks."
+)
 
 
 @contextmanager
@@ -403,6 +407,7 @@ def normalize_source_rows(key: str, data: dict[str, Any], rows: list[dict[str, A
     scope = CLIENT_FILE_DEFINITIONS[key]["scope"]
     source_script_name = source_script_for(key, data, source_file)
     findings = []
+    seen_listener_keys: set[tuple[str, int, str, str]] = set()
     for index, row in enumerate(rows, start=1):
         severity = normalize_source_severity(first_value(row, ["Severity", "TriageSeverity", "ActionPriority", "ReviewPriority"]))
         source_id = first_value(row, ["Id", "FindingId", "FindingType", "ControlId"], "")
@@ -410,6 +415,8 @@ def normalize_source_rows(key: str, data: dict[str, Any], rows: list[dict[str, A
         evidence = compact_evidence(row)
         if key == "network_windows_network_exposure":
             evidence.update(network_port_context_evidence(row, data, evidence))
+        if key == "host_windows_security_audit":
+            evidence.update(aggregate_host_network_context_evidence(row, evidence))
         evidence.update(
             {
                 "scope": scope,
@@ -417,6 +424,13 @@ def normalize_source_rows(key: str, data: dict[str, Any], rows: list[dict[str, A
                 "source_file": str(source_file),
             }
         )
+        if key == "network_windows_network_exposure":
+            listener_key = network_listener_dedupe_key(evidence)
+            if listener_key is not None:
+                if listener_key in seen_listener_keys:
+                    continue
+                seen_listener_keys.add(listener_key)
+                source_id = network_listener_source_id(source_id, evidence)
         findings.append(
             build_common_finding(
                 finding_id=build_finding_id(PREFIX_BY_KEY[key], source_id, index),
@@ -456,6 +470,178 @@ def normalize_source_rows(key: str, data: dict[str, Any], rows: list[dict[str, A
     return findings
 
 
+def network_listener_dedupe_key(evidence: dict[str, Any]) -> tuple[str, int, str, str] | None:
+    finding_type = str(evidence.get("finding_type") or "")
+    if finding_type.lower() != "riskylisteningport":
+        return None
+    port = normalize_port_value(evidence.get("port"))
+    if port is None:
+        return None
+    return (
+        str(evidence.get("protocol") or "TCP").upper(),
+        port,
+        str(evidence.get("process_name") or "").lower(),
+        str(evidence.get("bind_scope") or "").lower(),
+    )
+
+
+def network_listener_source_id(source_id: Any, evidence: dict[str, Any]) -> str:
+    port = normalize_port_value(evidence.get("port"))
+    if port is None:
+        return str(source_id or "")
+    finding_type = str(evidence.get("finding_type") or source_id or "RiskyListeningPort")
+    protocol = str(evidence.get("protocol") or "TCP").upper()
+    return f"{finding_type}-{protocol}-{port}"
+
+
+def normalize_port_value(value: Any) -> int | None:
+    if isinstance(value, bool) or value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def aggregate_host_network_context_evidence(row: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+    if not is_aggregate_host_network_exposure(row, evidence):
+        return {}
+
+    raw_evidence = str(first_value(row, ["Evidence"], "") or evidence.get("evidence") or "")
+    exposed_ports = parse_aggregate_exposed_ports(raw_evidence)
+    if not exposed_ports:
+        return {}
+
+    return {
+        "exposed_ports": exposed_ports,
+        "summary": aggregate_exposed_ports_summary(exposed_ports),
+        "risk_explanation": (
+            "Broadly listening Windows management and file-sharing services may be expected on Windows servers, "
+            "but access should be validated against documented host role, service ownership, firewall scope, and monitoring."
+        ),
+        "bind_scope_explanation": ALL_INTERFACES_BIND_SCOPE_EXPLANATION,
+        "aggregate_network_context": (
+            "Broadly listening Windows management or file-sharing services may be expected on Windows servers, "
+            "but reachability should be validated against trusted domain, management, VPN, or application networks. "
+            "This evidence describes local listener bindings only and does not prove internet exposure."
+        ),
+    }
+
+
+def is_aggregate_host_network_exposure(row: dict[str, Any], evidence: dict[str, Any]) -> bool:
+    finding_id = str(first_value(row, ["Id", "FindingId"], "") or evidence.get("id") or evidence.get("finding_id") or "")
+    area = str(first_value(row, ["Area"], "") or evidence.get("area") or "")
+    title = str(first_value(row, ["Title"], "") or evidence.get("title") or "")
+    raw_evidence = str(first_value(row, ["Evidence"], "") or evidence.get("evidence") or "")
+
+    if finding_id.upper() == "WIN-NET-001":
+        return True
+    if area.lower() == "network exposure" and "ports are listening broadly" in title.lower():
+        return True
+    return bool(raw_evidence and "ports are listening broadly" in title.lower())
+
+
+def parse_aggregate_exposed_ports(raw_evidence: str) -> list[dict[str, Any]]:
+    deduped: dict[tuple[str, int, str], dict[str, Any]] = {}
+    for fragment in str(raw_evidence or "").split(";"):
+        parsed = parse_aggregate_endpoint_fragment(fragment)
+        if parsed is None:
+            continue
+        protocol, port, bind_address, process = parsed
+        scope = bind_scope(bind_address)
+        context = lookup_port_context(protocol, port)
+        key = (protocol.upper(), port, process.lower())
+        entry = deduped.get(key)
+        if entry is None:
+            entry = {
+                "protocol": protocol.upper(),
+                "port": port,
+                "bind_addresses": [],
+                "bind_address": bind_address,
+                "bind_scope": scope,
+                "process_name": process,
+                "common_service": context["common_service"],
+                "common_name": context["common_name"],
+                "exposure_type": context["exposure_type"],
+                "risk_explanation": context["risk_explanation"],
+                "acceptable_when": context["acceptable_when"],
+                "customer_question": context["customer_question"],
+                "safe_next_step": context["safe_next_step"],
+                "port_context_confidence": context["mapping_confidence"],
+            }
+            if scope == "All interfaces":
+                entry["bind_scope_explanation"] = ALL_INTERFACES_BIND_SCOPE_EXPLANATION
+            deduped[key] = entry
+
+        addresses = entry.setdefault("bind_addresses", [])
+        if bind_address and bind_address not in addresses:
+            addresses.append(bind_address)
+        if entry.get("bind_scope") != "All interfaces" and scope == "All interfaces":
+            entry["bind_scope"] = "All interfaces"
+            entry["bind_scope_explanation"] = ALL_INTERFACES_BIND_SCOPE_EXPLANATION
+
+    return sorted(deduped.values(), key=lambda item: (as_int(item.get("port")), str(item.get("process_name", "")).lower()))
+
+
+def parse_aggregate_endpoint_fragment(fragment: str) -> tuple[str, int, str, str] | None:
+    text = str(fragment or "").strip()
+    if not text:
+        return None
+
+    endpoint, _, process = text.partition(" ")
+    process = process.strip()
+    if not process:
+        process = "Unknown"
+
+    endpoint = endpoint.strip()
+    match = re.match(r"^(?P<address>.+):(?P<port>\d{1,5})$", endpoint)
+    if not match:
+        return None
+
+    address = normalize_aggregate_bind_address(match.group("address"))
+    port = as_int(match.group("port"), -1)
+    if port < 0 or port > 65535:
+        return None
+    return "TCP", port, address, process
+
+
+def normalize_aggregate_bind_address(address: str) -> str:
+    text = str(address or "").strip()
+    if text in {"", "::", "[::]"}:
+        return "::"
+    return text
+
+
+def aggregate_exposed_ports_summary(exposed_ports: list[dict[str, Any]]) -> str:
+    labels = [aggregate_port_label(item) for item in exposed_ports]
+    port_text = join_human_list(labels)
+    return (
+        f"High-value Windows management and file-sharing ports are listening broadly: {port_text}. "
+        "These services may be expected on Windows servers, but reachability should be limited to trusted domain, management, VPN, or application networks."
+    )
+
+
+def aggregate_port_label(item: dict[str, Any]) -> str:
+    common_name = str(item.get("common_name") or "")
+    service = str(item.get("common_service") or "")
+    if service == "Windows Remote Management" and common_name:
+        service_label = common_name
+    elif common_name == "RDP":
+        service_label = common_name
+    else:
+        service_label = service or common_name
+    return f"{item.get('protocol', 'TCP')} {item.get('port')} {service_label}".strip()
+
+
+def join_human_list(values: list[str]) -> str:
+    values = [value for value in values if value]
+    if len(values) <= 1:
+        return "".join(values)
+    if len(values) == 2:
+        return " and ".join(values)
+    return ", ".join(values[:-1]) + f", and {values[-1]}"
+
+
 def network_port_context_evidence(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
     finding_type = str(first_value(row, ["FindingType"], "") or evidence.get("finding_type") or "")
     if finding_type.lower() != "riskylisteningport":
@@ -466,43 +652,57 @@ def network_port_context_evidence(row: dict[str, Any], data: dict[str, Any], evi
     if port is None:
         return {}
 
-    listener = matching_listener(data, port, protocol, process_name(row))
+    listeners = matching_listeners(data, port, protocol, process_name(row))
+    listener = listeners[0] if listeners else {}
     process = process_name(row) or str(listener.get("ProcessName") or listener.get("process_name") or "")
-    bind_address = str(
+    row_bind_address = str(
         first_value(row, ["LocalAddress", "BindAddress", "ListeningAddress"], "")
         or listener.get("LocalAddress")
         or listener.get("local_address")
         or ""
     ).strip()
-    scope = bind_scope(bind_address, combined_row_text(row))
+    bind_addresses = unique_string_values(
+        [
+            row_bind_address,
+            *listener_bind_addresses(listeners),
+        ]
+    )
+    bind_address = row_bind_address or (bind_addresses[0] if bind_addresses else "")
+    scope = bind_scope_for_addresses(bind_addresses, combined_row_text(row))
     if not bind_address and scope == "All interfaces":
         bind_address = "0.0.0.0"
+        bind_addresses = unique_string_values([bind_address, *bind_addresses])
 
     context = lookup_port_context(protocol, port)
-    risk_explanation = context["risk_explanation"]
-    if scope == "All interfaces":
-        risk_explanation = (
-            risk_explanation
-            + " Listening on all interfaces means the service binds to all local interfaces. Actual reachability depends on firewall rules, routing, segmentation, and allowed source networks."
-        )
+    bind_scope_explanation = ALL_INTERFACES_BIND_SCOPE_EXPLANATION if scope == "All interfaces" else ""
+    source_endpoints = [
+        source_endpoint_label(address, port, process)
+        for address in bind_addresses
+        if address
+    ]
 
     summary = listening_port_summary(protocol, port, process, scope, bind_address, context)
-    return {
+    context_evidence = {
         "protocol": protocol.upper(),
         "port": port,
         "process_name": process,
         "bind_address": bind_address,
+        "bind_addresses": bind_addresses,
+        "source_endpoints": source_endpoints,
         "bind_scope": scope,
         "common_service": context["common_service"],
         "common_name": context["common_name"],
         "exposure_type": context["exposure_type"],
-        "risk_explanation": risk_explanation,
+        "risk_explanation": context["risk_explanation"],
         "acceptable_when": context["acceptable_when"],
         "customer_question": context["customer_question"],
         "safe_next_step": context["safe_next_step"],
         "port_context_confidence": context["mapping_confidence"],
         "summary": summary,
     }
+    if bind_scope_explanation:
+        context_evidence["bind_scope_explanation"] = bind_scope_explanation
+    return context_evidence
 
 
 def listener_protocol(row: dict[str, Any]) -> str:
@@ -533,16 +733,62 @@ def listener_port(row: dict[str, Any]) -> int | None:
 
 
 def matching_listener(data: dict[str, Any], port: int, protocol: str, process: str = "") -> dict[str, Any]:
+    candidates = matching_listeners(data, port, protocol, process)
+    return candidates[0] if candidates else {}
+
+
+def matching_listeners(data: dict[str, Any], port: int, protocol: str, process: str = "") -> list[dict[str, Any]]:
     listener_key = "ListeningUdpPorts" if protocol.upper() == "UDP" else "ListeningTcpPorts"
     candidates = []
     for listener in as_records(data.get(listener_key)):
         if as_int(listener.get("LocalPort"), -1) == port:
             candidates.append(listener)
     if process:
-        for listener in candidates:
-            if str(listener.get("ProcessName") or "").lower() == process.lower():
-                return listener
-    return candidates[0] if candidates else {}
+        process_matches = [
+            listener
+            for listener in candidates
+            if str(listener.get("ProcessName") or "").lower() == process.lower()
+        ]
+        if process_matches:
+            return process_matches
+    return candidates
+
+
+def listener_bind_addresses(listeners: list[dict[str, Any]]) -> list[str]:
+    addresses = []
+    for listener in listeners:
+        address = str(listener.get("LocalAddress") or listener.get("local_address") or "").strip()
+        if address:
+            addresses.append(address)
+    return addresses
+
+
+def unique_string_values(values: list[Any]) -> list[str]:
+    output = []
+    seen = set()
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        output.append(text)
+    return output
+
+
+def bind_scope_for_addresses(addresses: list[str], row_text: str = "") -> str:
+    scopes = [bind_scope(address, row_text) for address in addresses if address]
+    if "All interfaces" in scopes or "all interfaces" in row_text.lower():
+        return "All interfaces"
+    if "Specific interface" in scopes:
+        return "Specific interface"
+    if scopes and all(scope == "Loopback only" for scope in scopes):
+        return "Loopback only"
+    return bind_scope("", row_text)
+
+
+def source_endpoint_label(address: str, port: int, process: str) -> str:
+    process_text = f" {process}" if process else ""
+    return f"{address}:{port}{process_text}"
 
 
 def process_name(row: dict[str, Any]) -> str:

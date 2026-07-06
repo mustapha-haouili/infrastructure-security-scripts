@@ -23,6 +23,11 @@ def md(value: Any) -> str:
     return text.replace("|", "\\|")
 
 
+def evidence_label(key: Any) -> str:
+    text = str(key or "").replace("_", " ").strip()
+    return text[:1].upper() + text[1:] if text else ""
+
+
 def severity_count(report: dict[str, Any], severity: str) -> int:
     return int(report.get("summary", {}).get("severity_counts", {}).get(severity, 0))
 
@@ -669,7 +674,7 @@ def render_technical_findings(report: dict[str, Any], language: str = "en") -> s
                 rendered = ", ".join(md(part) for part in value) or "None"
             else:
                 rendered = md(value)
-            lines.append(f"- {md(key)}: {rendered}")
+            lines.append(f"- {md(evidence_label(key))}: {rendered}")
 
         lines.extend(["", "### Risk Factors", ""])
         lines.extend(bullet_list([md(value) for value in risk_factors]))
