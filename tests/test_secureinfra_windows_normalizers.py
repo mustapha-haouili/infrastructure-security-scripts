@@ -326,6 +326,94 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
         self.assertIn("customer_question: Who requires RDP access", rdp["evidence"]["details"])
         self.assertFalse(rdp["safe_to_auto_remediate"])
 
+    def test_windows_server_unquoted_service_path_suppresses_service_host_noise(self):
+        def unquoted_row(name: str, path_name: str) -> dict:
+            return {
+                "FindingType": "UnquotedServicePath",
+                "Severity": "High",
+                "Name": name,
+                "Title": "Service path is unquoted and contains spaces",
+                "Evidence": f"{name} PathName={path_name}.",
+                "Recommendation": "Validate the executable path and quote it during approved maintenance if required.",
+            }
+
+        data = {
+            "ToolName": "Get-WindowsServerSecurityInventory",
+            "ReportType": "windows-server-security-inventory",
+            "GeneratedAtUtc": "2026-06-15T09:00:00Z",
+            "ComputerName": "LAB-SRV01",
+            "Summary": {"FindingCount": 7},
+            "Findings": [
+                unquoted_row("RpcSs", "svchost.exe -k LocalServiceNetworkRestricted -p"),
+                unquoted_row("NetSvcHost", "svchost.exe -k netsvcs -p"),
+                unquoted_row("FullSvchost", r"C:\Windows\System32\svchost.exe -k netsvcs -p"),
+                unquoted_row("RelativeSvchost", r"system32\svchost.exe -k DcomLaunch -p"),
+                unquoted_row("RealUnquotedA", r"C:\Program Files\Vendor App\Service.exe -service"),
+                unquoted_row("RealUnquotedB", r"C:\Program Files (x86)\Some App\daemon.exe /run"),
+                unquoted_row("QuotedVendor", r'"C:\Program Files\Vendor App\Service.exe" -service'),
+            ],
+        }
+
+        report = normalize_windows_server_audit(data, "windows-server-security.json")
+        emitted_names = {finding["affected_object"] for finding in report["findings"]}
+        unquoted = [
+            finding
+            for finding in report["findings"]
+            if finding["evidence"].get("finding_type") == "UnquotedServicePath"
+        ]
+        high_unquoted = [finding for finding in unquoted if finding["severity"] == "High"]
+        source_unquoted_count = sum(1 for row in data["Findings"] if row["FindingType"] == "UnquotedServicePath")
+
+        self.assertNotIn("RpcSs", emitted_names)
+        self.assertNotIn("NetSvcHost", emitted_names)
+        self.assertNotIn("FullSvchost", emitted_names)
+        self.assertNotIn("RelativeSvchost", emitted_names)
+        self.assertNotIn("QuotedVendor", emitted_names)
+        self.assertEqual({finding["affected_object"] for finding in unquoted}, {"RealUnquotedA", "RealUnquotedB"})
+        self.assertEqual(len(high_unquoted), 2)
+        self.assertLess(len(high_unquoted), source_unquoted_count)
+        self.assertTrue(
+            all(
+                "Confirmed unquoted executable path" in finding["evidence"].get("path_parsing_status", "")
+                for finding in unquoted
+            )
+        )
+        self.assertTrue(
+            all(finding["evidence"].get("executable_path", "").endswith(".exe") for finding in unquoted)
+        )
+        finding_ids = [finding["finding_id"] for finding in report["findings"]]
+        self.assertEqual(len(finding_ids), len(set(finding_ids)))
+        self.assertTrue(all("UNQUOTEDSERVICEPATH" in finding["finding_id"] for finding in unquoted))
+        self.assertTrue(all(finding["safe_to_auto_remediate"] is False for finding in report["findings"]))
+
+    def test_windows_server_uncertain_service_path_is_not_high_unquoted_service_path(self):
+        data = {
+            "ToolName": "Get-WindowsServerSecurityInventory",
+            "ReportType": "windows-server-security-inventory",
+            "GeneratedAtUtc": "2026-06-15T09:00:00Z",
+            "ComputerName": "LAB-SRV01",
+            "Summary": {"FindingCount": 1},
+            "Findings": [
+                {
+                    "FindingType": "UnquotedServicePath",
+                    "Severity": "High",
+                    "Name": "LegacyLauncher",
+                    "Title": "Service path is unquoted and contains spaces",
+                    "Evidence": "LegacyLauncher PathName=LegacyLauncher -service.",
+                    "Recommendation": "Validate the executable path and quote it during approved maintenance if required.",
+                }
+            ],
+        }
+
+        report = normalize_windows_server_audit(data, "windows-server-security.json")
+        finding = report["findings"][0]
+
+        self.assertEqual(finding["severity"], "Info")
+        self.assertEqual(finding["evidence"]["finding_type"], "ServicePathNeedsValidation")
+        self.assertIn("Needs validation", finding["evidence"]["path_parsing_status"])
+        self.assertNotEqual(finding["finding_id"], "SERVER-SECURITY-UNQUOTEDSERVICEPATH")
+        self.assertFalse(finding["safe_to_auto_remediate"])
+
     def test_windows_host_aggregate_network_finding_includes_exposed_port_context(self):
         data = {
             "ToolName": "Invoke-WindowsSecurityAudit.ps1",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import tempfile
 import zipfile
@@ -409,6 +410,10 @@ def normalize_source_rows(key: str, data: dict[str, Any], rows: list[dict[str, A
     findings = []
     seen_listener_keys: set[tuple[str, int, str, str]] = set()
     for index, row in enumerate(rows, start=1):
+        normalized_row = normalize_source_row_before_finding(key, row)
+        if normalized_row is None:
+            continue
+        row = normalized_row
         severity = normalize_source_severity(first_value(row, ["Severity", "TriageSeverity", "ActionPriority", "ReviewPriority"]))
         source_id = first_value(row, ["Id", "FindingId", "FindingType", "ControlId"], "")
         affected_object = affected_object_for(row, data, key, index)
@@ -431,6 +436,8 @@ def normalize_source_rows(key: str, data: dict[str, Any], rows: list[dict[str, A
                     continue
                 seen_listener_keys.add(listener_key)
                 source_id = network_listener_source_id(source_id, evidence)
+        if key == "server_windows_server_security":
+            source_id = server_security_source_id(source_id, row, affected_object, evidence)
         findings.append(
             build_common_finding(
                 finding_id=build_finding_id(PREFIX_BY_KEY[key], source_id, index),
@@ -468,6 +475,114 @@ def normalize_source_rows(key: str, data: dict[str, Any], rows: list[dict[str, A
             )
         )
     return findings
+
+
+def normalize_source_row_before_finding(key: str, row: dict[str, Any]) -> dict[str, Any] | None:
+    if key != "server_windows_server_security":
+        return row
+    finding_type = str(first_value(row, ["FindingType"], "") or "").strip().lower()
+    if finding_type != "unquotedservicepath":
+        return row
+
+    path_name = service_path_from_row(row)
+    assessment = unquoted_service_path_assessment(path_name)
+    if assessment["status"] == "safe":
+        return None
+
+    normalized = dict(row)
+    if path_name:
+        normalized.setdefault("PathName", path_name)
+    if assessment.get("executable_path"):
+        normalized["ExecutablePath"] = assessment["executable_path"]
+    normalized["PathParsingStatus"] = assessment["label"]
+    normalized["PathParsingReason"] = assessment["reason"]
+
+    if assessment["status"] == "uncertain":
+        normalized["FindingType"] = "ServicePathNeedsValidation"
+        normalized["Severity"] = "Info"
+        normalized["Title"] = "Service path requires validation"
+        normalized["Recommendation"] = (
+            "Validate the service ImagePath manually before treating this as an unquoted service path risk."
+        )
+    return normalized
+
+
+def service_path_from_row(row: dict[str, Any]) -> str:
+    value = first_value(row, ["PathName", "ImagePath", "ServicePath", "CommandLine"], "")
+    if value:
+        return str(value).strip()
+    evidence = str(first_value(row, ["Evidence", "Details", "TechnicalImpact"], "") or "")
+    match = re.search(r"\b(?:PathName|ImagePath|ServicePath)\s*=\s*(?P<path>.+?)(?:;|$)", evidence, flags=re.IGNORECASE)
+    if not match:
+        return ""
+    path_name = match.group("path").strip()
+    return path_name.rstrip(".").strip()
+
+
+def unquoted_service_path_assessment(path_name: str) -> dict[str, str]:
+    text = str(path_name or "").strip()
+    if not text:
+        return {
+            "status": "uncertain",
+            "label": "Needs validation",
+            "reason": "No service executable path was available to verify the unquoted service path finding.",
+            "executable_path": "",
+        }
+    if text.startswith('"'):
+        return {
+            "status": "safe",
+            "label": "Suppressed",
+            "reason": "The service executable path is already quoted.",
+            "executable_path": "",
+        }
+
+    executable_path = service_command_executable_path(text)
+    if not executable_path:
+        return {
+            "status": "uncertain",
+            "label": "Needs validation",
+            "reason": "The parser could not confirm an executable path ending in .exe.",
+            "executable_path": "",
+        }
+    if not re.search(r"\s", executable_path):
+        return {
+            "status": "safe",
+            "label": "Suppressed",
+            "reason": "Only command arguments contain spaces; the unquoted executable path itself does not.",
+            "executable_path": executable_path,
+        }
+    return {
+        "status": "unsafe",
+        "label": "Confirmed unquoted executable path",
+        "reason": "The unquoted executable path contains spaces before the .exe extension.",
+        "executable_path": executable_path,
+    }
+
+
+def service_command_executable_path(command_line: str) -> str:
+    match = re.search(r"\.exe\b", str(command_line or ""), flags=re.IGNORECASE)
+    if not match:
+        return ""
+    return str(command_line or "")[: match.end()].strip()
+
+
+def server_security_source_id(source_id: Any, row: dict[str, Any], affected_object: str, evidence: dict[str, Any]) -> str:
+    finding_type = str(first_value(row, ["FindingType"], "") or source_id or "").strip()
+    if finding_type.lower() not in {"servicerunsascustomaccount", "unquotedservicepath", "servicepathneedsvalidation"}:
+        return str(source_id or "")
+
+    service_name = str(first_value(row, ["Name", "ServiceName"], "") or affected_object or "").strip()
+    if not service_name:
+        return str(source_id or "")
+    digest = stable_row_digest(finding_type, service_name, evidence.get("path_name"), evidence.get("evidence"))
+    type_token = sanitize_id(finding_type)[:20]
+    service_token = sanitize_id(service_name)[:16]
+    return f"{type_token}-{service_token}-{digest}"
+
+
+def stable_row_digest(*values: Any) -> str:
+    text = "\x1f".join(str(value or "") for value in values)
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:8].upper()
 
 
 def network_listener_dedupe_key(evidence: dict[str, Any]) -> tuple[str, int, str, str] | None:

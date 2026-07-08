@@ -65,6 +65,22 @@ function Test-ServiceAccountNeedsReview {
     return $true
 }
 
+function Get-ServiceCommandExecutablePath {
+    param([AllowNull()][object]$Value)
+    $text = "$Value".Trim()
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return ""
+    }
+    if ($text.StartsWith('"')) {
+        return ""
+    }
+    $match = [regex]::Match($text, "\.exe\b", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if (-not $match.Success) {
+        return ""
+    }
+    return $text.Substring(0, $match.Index + $match.Length).Trim()
+}
+
 function Test-UnquotedServicePath {
     param([AllowNull()][object]$Value)
     $text = "$Value".Trim()
@@ -74,7 +90,11 @@ function Test-UnquotedServicePath {
     if ($text.StartsWith('"')) {
         return $false
     }
-    return ($text -match "\s" -and $text -match "\.exe")
+    $executablePath = Get-ServiceCommandExecutablePath -Value $text
+    if ([string]::IsNullOrWhiteSpace($executablePath)) {
+        return $false
+    }
+    return ($executablePath -match "\s")
 }
 
 function Test-BroadPrincipal {
