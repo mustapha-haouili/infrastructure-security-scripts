@@ -509,6 +509,7 @@ write_findings_summary() {
         echo "Critical: $(count_findings_by_severity critical)"
         echo "High: $(count_findings_by_severity high)"
         echo "Medium: $(count_findings_by_severity medium)"
+        echo "Low: $(count_findings_by_severity low)"
         echo "Info: $(count_findings_by_severity info)"
         echo
         echo "Recommended actions"
@@ -548,6 +549,7 @@ write_summary_json() {
         printf '    "critical": %s,\n' "$(count_findings_by_severity critical)"
         printf '    "high": %s,\n' "$(count_findings_by_severity high)"
         printf '    "medium": %s,\n' "$(count_findings_by_severity medium)"
+        printf '    "low": %s,\n' "$(count_findings_by_severity low)"
         printf '    "info": %s\n' "$(count_findings_by_severity info)"
         echo '  },'
         echo '  "findings": ['
