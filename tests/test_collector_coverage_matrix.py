@@ -70,6 +70,12 @@ class CollectorCoverageMatrixTests(unittest.TestCase):
         self.assertIn("scripts/windows/Start-WindowsSecurity.ps1", self.matrix)
         self.assertIn("Interactive helper", self.matrix)
 
+    def test_metadata_only_outputs_are_documented(self):
+        self.assertIn("host/windows-remediation-plan.json", self.matrix)
+        self.assertIn("host/windows-hardening-preview.json", self.matrix)
+        self.assertIn("Metadata only", self.matrix)
+        self.assertIn("Final metadata-only output contract", self.matrix)
+
 
 if __name__ == "__main__":
     unittest.main()

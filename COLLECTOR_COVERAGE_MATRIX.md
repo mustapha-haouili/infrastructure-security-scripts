@@ -73,6 +73,19 @@ Linux host
 | `scripts/linux/linux-hardening-baseline.sh` | Auto dry-run/report-only | Linux launcher dry-run | hardening plan log under `linux/` | Metadata only | Preview/dry-run only in collection. Do not apply system changes in client collection. |
 | `scripts/linux/backup-readiness-audit.sh` | Auto | Linux launcher | `backup/backup-readiness.json`, `.csv` | Yes | Metadata-only backup readiness evidence. |
 
+## Final metadata-only output contract
+
+These Windows/Linux outputs are intentionally loaded for package visibility and coverage metadata, but they are not converted into normalized findings by themselves:
+
+| Output | Producer | Analyzer handling | Reason |
+|---|---|---|---|
+| `host/windows-remediation-plan.json` | `scripts/windows/host/New-WindowsRemediationPlan.ps1` | Metadata only | Derived remediation planning data produced from `host/windows-security-audit.json`; it must not create duplicate findings. |
+| `host/windows-hardening-preview.json` | `scripts/windows/host/Set-WindowsBaselineHardening.ps1` dry-run/report mode | Metadata only | Preview of potential hardening actions; collection mode must not apply changes or turn preview rows into duplicate findings. |
+| `linux/linux-inventory.json` | `scripts/linux/collect-linux-inventory.sh` | Inventory metadata | Host inventory enriches bundle context but should not create risk findings unless a dedicated normalizer rule is added. |
+| Linux hardening preview logs | `scripts/linux/linux-hardening-baseline.sh` dry-run/report mode | Metadata only | Preview/report-only output; it must not apply hardening changes during collection or duplicate findings from Linux audit summaries. |
+
+If any metadata-only output is promoted to normalized findings later, add an explicit normalizer, update `CLIENT_FILE_DEFINITIONS`, update this matrix, and add tests proving the new evidence is not duplicated.
+
 ## Manual-only and future platform notes
 
 - DevSecOps, Docker, and Kubernetes scripts are not part of this Windows/Linux completion gate yet. They will receive dedicated launchers and normalizers before being treated as automated platform collectors.

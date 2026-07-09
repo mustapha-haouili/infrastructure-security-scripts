@@ -1297,6 +1297,130 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
         transcription = by_id["HOST-WIN-WIN-PS-002"]
         self.assertIn("sensitive command content", transcription["evidence"]["data_sensitivity_note"])
 
+    def test_host_password_audit_local_and_llmnr_findings_include_structured_context(self):
+        data = {
+            "ToolName": "Invoke-WindowsSecurityAudit",
+            "ReportType": "windows-host-audit",
+            "GeneratedAtUtc": "2026-06-15T09:00:00Z",
+            "ComputerName": "LAB-SRV01",
+            "PasswordPolicy": {
+                "Minimum password length": 8,
+                "Lockout threshold": 0,
+                "Lockout duration (minutes)": 0,
+            },
+            "LocalAccounts": {
+                "Guest": {
+                    "Name": "Guest",
+                    "Disabled": False,
+                    "SID": "S-1-5-21-111-222-333-501",
+                    "LocalAccount": True,
+                }
+            },
+            "AuditPolicy": [
+                {
+                    "Subcategory": "Logon",
+                    "Subcategory GUID": "{0CCE9215-69AE-11D9-BED3-505054503030}",
+                    "Inclusion Setting": "Success",
+                },
+                {
+                    "Subcategory": "Process Creation",
+                    "Subcategory GUID": "{0CCE922B-69AE-11D9-BED3-505054503030}",
+                    "Inclusion Setting": "No Auditing",
+                },
+            ],
+            "CoreSettings": {
+                "LlmnrEnabledPolicy": 1,
+            },
+            "Findings": [
+                {
+                    "Id": "WIN-PWD-001",
+                    "Severity": "Medium",
+                    "Area": "Password policy",
+                    "Title": "Minimum password length is below 14 characters",
+                    "Evidence": "Minimum password length=8",
+                    "Recommendation": "Use at least 14 characters.",
+                },
+                {
+                    "Id": "WIN-PWD-002",
+                    "Severity": "High",
+                    "Area": "Password policy",
+                    "Title": "Account lockout threshold is disabled",
+                    "Evidence": "Lockout threshold=0",
+                    "Recommendation": "Set a nonzero account lockout threshold.",
+                },
+                {
+                    "Id": "WIN-AUDIT-LOGON",
+                    "Severity": "High",
+                    "Area": "Audit policy",
+                    "Title": "Logon auditing is incomplete",
+                    "Evidence": "Logon Inclusion Setting=Success; missing Failure",
+                    "Recommendation": "Enable Success and Failure auditing for Logon.",
+                },
+                {
+                    "Id": "WIN-AUDIT-PROC",
+                    "Severity": "Medium",
+                    "Area": "Audit policy",
+                    "Title": "Process Creation auditing is incomplete",
+                    "Evidence": "Process Creation Inclusion Setting=No Auditing; missing Success",
+                    "Recommendation": "Enable Success auditing for Process Creation.",
+                },
+                {
+                    "Id": "WIN-LOCAL-002",
+                    "Severity": "High",
+                    "Area": "Local accounts",
+                    "Title": "Built-in Guest account is enabled",
+                    "Evidence": "Guest Disabled=False",
+                    "Recommendation": "Disable the built-in Guest account.",
+                },
+                {
+                    "Id": "WIN-LLMNR-001",
+                    "Severity": "Medium",
+                    "Area": "Name resolution",
+                    "Title": "LLMNR disable policy is not enforced",
+                    "Evidence": "EnableMulticast=1",
+                    "Recommendation": "Set EnableMulticast to 0 through policy if LLMNR is not required.",
+                },
+            ],
+        }
+
+        findings = normalize_client_source_file("host_windows_security_audit", data, Path("windows-security-audit.json"))
+        by_id = {finding["finding_id"]: finding for finding in findings}
+
+        min_length = by_id["HOST-WIN-WIN-PWD-001"]
+        self.assertEqual(min_length["evidence"]["control_family"], "Windows password policy baseline")
+        self.assertEqual(min_length["evidence"]["setting_key"], "Minimum password length")
+        self.assertEqual(min_length["evidence"]["current_value"], 8)
+        self.assertIn("domain, Entra ID, MFA", min_length["evidence"]["risk_explanation"])
+        self.assertIn("Which identity policy owns", min_length["evidence"]["customer_question"])
+
+        lockout = by_id["HOST-WIN-WIN-PWD-002"]
+        self.assertEqual(lockout["evidence"]["policy_name"], "Account lockout threshold")
+        self.assertEqual(lockout["evidence"]["current_value"], 0)
+        self.assertIn("identity change control", lockout["evidence"]["safe_next_step"])
+
+        audit = by_id["HOST-WIN-WIN-AUDIT-LOGON"]
+        self.assertEqual(audit["evidence"]["control_family"], "Windows audit policy baseline")
+        self.assertEqual(audit["evidence"]["audit_subcategory"], "Logon")
+        self.assertEqual(audit["evidence"]["current_inclusion_setting"], "Success")
+        self.assertEqual(audit["evidence"]["required_inclusion"], ["Success", "Failure"])
+        self.assertIn("central log collection", audit["evidence"]["safe_next_step"])
+
+        process_creation = by_id["HOST-WIN-WIN-AUDIT-PROC"]
+        self.assertEqual(process_creation["evidence"]["audit_subcategory"], "Process Creation")
+        self.assertEqual(process_creation["evidence"]["current_inclusion_setting"], "No Auditing")
+
+        guest = by_id["HOST-WIN-WIN-LOCAL-002"]
+        self.assertEqual(guest["evidence"]["control_family"], "Windows local account baseline")
+        self.assertEqual(guest["evidence"]["account_name"], "Guest")
+        self.assertFalse(guest["evidence"]["current_value"])
+        self.assertIn("temporary support exception", guest["evidence"]["customer_question"])
+
+        llmnr = by_id["HOST-WIN-WIN-LLMNR-001"]
+        self.assertEqual(llmnr["evidence"]["control_family"], "Windows name resolution baseline")
+        self.assertEqual(llmnr["evidence"]["protocol_family"], "LLMNR")
+        self.assertEqual(llmnr["evidence"]["current_value"], 1)
+        self.assertIn("not proof of active exploitation", llmnr["evidence"]["risk_explanation"])
+
     def test_windows_samples_do_not_include_sensitive_or_customer_looking_data(self):
         blocked_fragments = [
             "mustapha",

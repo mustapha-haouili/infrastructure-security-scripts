@@ -878,6 +878,14 @@ def host_security_context_evidence(row: dict[str, Any], data: dict[str, Any], ev
         return host_uac_baseline_context(row, data, evidence, finding_id)
     if finding_id.startswith("WIN-PS-"):
         return host_powershell_logging_context(row, data, evidence, finding_id)
+    if finding_id.startswith("WIN-PWD-"):
+        return host_password_policy_context(row, data, evidence, finding_id)
+    if finding_id.startswith("WIN-AUDIT-"):
+        return host_audit_policy_context(row, data, evidence, finding_id)
+    if finding_id.startswith("WIN-LOCAL-"):
+        return host_local_account_context(row, data, evidence, finding_id)
+    if finding_id.startswith("WIN-LLMNR-"):
+        return host_llmnr_context(row, data, evidence, finding_id)
     return {}
 
 
@@ -1007,6 +1015,128 @@ def host_powershell_logging_context(row: dict[str, Any], data: dict[str, Any], e
         "customer_question": "How is PowerShell activity monitored centrally, and what protected log collection or alternate EDR telemetry covers this host?",
         "safe_next_step": "Validate central log collection, retention, sensitive-data handling, and EDR telemetry before enabling or changing PowerShell logging policy.",
         "data_sensitivity_note": item.get("data_sensitivity_note", ""),
+    }
+
+
+def host_password_policy_context(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any], finding_id: str) -> dict[str, Any]:
+    password_policy = as_dict(data.get("PasswordPolicy"))
+    mapping = {
+        "WIN-PWD-001": {
+            "policy_name": "Minimum password length",
+            "setting_key": "Minimum password length",
+            "current_value": password_policy.get("Minimum password length", ""),
+            "expected_value": ">= 14 characters unless domain, MFA, passwordless, or approved identity policy supersedes local settings",
+        },
+        "WIN-PWD-002": {
+            "policy_name": "Account lockout threshold",
+            "setting_key": "Lockout threshold",
+            "current_value": password_policy.get("Lockout threshold", ""),
+            "expected_value": "Nonzero threshold aligned to identity policy",
+        },
+    }
+    item = mapping.get(finding_id, {})
+    policy_name = str(item.get("policy_name") or "Windows password policy")
+    return {
+        "baseline_control_id": finding_id,
+        "control_family": "Windows password policy baseline",
+        "identity_control": "Local or domain password policy",
+        "policy_name": policy_name,
+        "setting_key": item.get("setting_key", ""),
+        "current_value": item.get("current_value", ""),
+        "expected_value": item.get("expected_value", ""),
+        "password_policy_values": password_policy,
+        "summary": f"{policy_name} is not aligned with the expected Windows identity baseline and requires ownership validation.",
+        "risk_explanation": "Weak local password or lockout settings can increase password guessing, spraying, or offline cracking risk. Local evidence must be validated against the effective domain, Entra ID, MFA, or passwordless policy before remediation.",
+        "customer_question": "Which identity policy owns password and lockout enforcement for this host, and is the local setting superseded by domain, Entra ID, MFA, or passwordless controls?",
+        "safe_next_step": "Validate effective policy scope with the identity owner, confirm whether local settings are overridden, and change password or lockout policy only through approved identity change control.",
+    }
+
+
+def host_audit_policy_context(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any], finding_id: str) -> dict[str, Any]:
+    mapping = {
+        "WIN-AUDIT-LOGON": {"subcategory_name": "Logon", "subcategory_guid": "{0CCE9215-69AE-11D9-BED3-505054503030}", "required_inclusion": ["Success", "Failure"]},
+        "WIN-AUDIT-LOCKOUT": {"subcategory_name": "Account Lockout", "subcategory_guid": "{0CCE9217-69AE-11D9-BED3-505054503030}", "required_inclusion": ["Failure"]},
+        "WIN-AUDIT-UAM": {"subcategory_name": "User Account Management", "subcategory_guid": "{0CCE9235-69AE-11D9-BED3-505054503030}", "required_inclusion": ["Success", "Failure"]},
+        "WIN-AUDIT-SGM": {"subcategory_name": "Security Group Management", "subcategory_guid": "{0CCE9237-69AE-11D9-BED3-505054503030}", "required_inclusion": ["Success"]},
+        "WIN-AUDIT-PROC": {"subcategory_name": "Process Creation", "subcategory_guid": "{0CCE922B-69AE-11D9-BED3-505054503030}", "required_inclusion": ["Success"]},
+        "WIN-AUDIT-POLICY": {"subcategory_name": "Audit Policy Change", "subcategory_guid": "{0CCE922F-69AE-11D9-BED3-505054503030}", "required_inclusion": ["Success"]},
+    }
+    item = mapping.get(finding_id, {})
+    policy_records = as_records(data.get("AuditPolicy"))
+    matched_record = matching_audit_policy_record(policy_records, item.get("subcategory_guid", ""), item.get("subcategory_name", ""))
+    inclusion_setting = first_value(matched_record, ["Inclusion Setting", "InclusionSetting"], "") if matched_record else ""
+    subcategory_name = str(item.get("subcategory_name") or first_value(row, ["Name", "Title"], "Audit policy subcategory"))
+    return {
+        "baseline_control_id": finding_id,
+        "control_family": "Windows audit policy baseline",
+        "audit_subcategory": subcategory_name,
+        "audit_subcategory_guid": item.get("subcategory_guid", ""),
+        "required_inclusion": item.get("required_inclusion", []),
+        "current_inclusion_setting": inclusion_setting,
+        "audit_policy_record": matched_record,
+        "summary": f"{subcategory_name} auditing is not aligned with the expected Windows detection baseline.",
+        "risk_explanation": "Incomplete Windows audit policy can reduce visibility into logon, account, process, policy, and group-management activity after suspicious behavior or compromise.",
+        "customer_question": "Which GPO or endpoint baseline owns this audit subcategory, and does SIEM/EDR coverage compensate for any intentionally different setting?",
+        "safe_next_step": "Validate effective audit policy with Group Policy or endpoint management, confirm central log collection, and enable the missing audit category through approved change control.",
+    }
+
+
+def matching_audit_policy_record(records: list[dict[str, Any]], guid: Any, name: Any) -> dict[str, Any]:
+    target_guid = str(guid or "").lower()
+    target_name = str(name or "").lower()
+    for record in records:
+        record_guid = str(first_value(record, ["Subcategory GUID", "SubcategoryGuid"], "") or "").lower()
+        if target_guid and record_guid == target_guid:
+            return record
+    for record in records:
+        record_name = str(first_value(record, ["Subcategory", "Name", "Subcategory Name"], "") or "").lower()
+        if target_name and target_name == record_name:
+            return record
+    return {}
+
+
+def host_local_account_context(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any], finding_id: str) -> dict[str, Any]:
+    local_accounts = as_dict(data.get("LocalAccounts"))
+    guest = as_dict(local_accounts.get("Guest"))
+    guest_disabled = guest.get("Disabled", "")
+    if finding_id == "WIN-LOCAL-001":
+        current_value: Any = "Unknown / not collected"
+        summary = "Local Guest account status could not be verified and requires administrator validation."
+    else:
+        current_value = guest_disabled
+        summary = "Built-in Guest account is enabled or not aligned with the expected local-account baseline."
+    return {
+        "baseline_control_id": finding_id,
+        "control_family": "Windows local account baseline",
+        "account_name": guest.get("Name", "Guest"),
+        "account_sid": guest.get("SID", ""),
+        "local_account": guest.get("LocalAccount", ""),
+        "setting_key": "Guest.Disabled",
+        "current_value": current_value,
+        "expected_value": "True / Disabled",
+        "guest_account_record": guest,
+        "summary": summary,
+        "risk_explanation": "Enabled or unverifiable built-in Guest access can create weakly governed local access paths. Remediation should consider local policy, domain policy, support processes, and monitoring.",
+        "customer_question": "Is the built-in Guest account disabled by policy, and is any temporary support exception documented with an owner and expiry?",
+        "safe_next_step": "Validate the local Guest account state and effective policy, then disable it through approved endpoint or GPO change control unless a documented temporary exception exists.",
+    }
+
+
+def host_llmnr_context(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any], finding_id: str) -> dict[str, Any]:
+    core = as_dict(data.get("CoreSettings"))
+    return {
+        "baseline_control_id": finding_id,
+        "control_family": "Windows name resolution baseline",
+        "protocol_family": "LLMNR",
+        "setting_name": "Turn off multicast name resolution",
+        "setting_key": "LlmnrEnabledPolicy",
+        "registry_name": "EnableMulticast",
+        "current_value": core.get("LlmnrEnabledPolicy", ""),
+        "expected_value": "0 / Disabled by policy",
+        "summary": "LLMNR disable policy is not enforced and requires local name-resolution dependency validation.",
+        "risk_explanation": "LLMNR can support local-network spoofing and credential capture scenarios. This is local name-resolution policy evidence, not proof of active exploitation.",
+        "customer_question": "Which name-resolution mechanisms are approved on this network, and are there legacy applications that still require LLMNR?",
+        "safe_next_step": "Validate DNS and legacy name-resolution dependencies before disabling LLMNR through Group Policy or endpoint management.",
     }
 
 
