@@ -87,7 +87,7 @@ class LinuxSecurityNormalizerTests(unittest.TestCase):
 
             self.assertEqual(normalized["summary"]["normalized_finding_count"], 7)
             ssh = normalized["findings"][0]
-            self.assertEqual(ssh["finding_id"], "LINUX-SECURITY-LINUX-SSH-001")
+            self.assertEqual(ssh["finding_id"], "LINUX-SSH-001")
             self.assertEqual(ssh["category"], "Linux SSH Configuration")
             self.assertEqual(ssh["severity"], "High")
             self.assertEqual(ssh["source_script"], "linux-security-audit.sh")

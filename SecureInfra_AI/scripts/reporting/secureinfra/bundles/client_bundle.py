@@ -38,6 +38,8 @@ CLIENT_FILE_DEFINITIONS: dict[str, dict[str, str]] = {
     "workstation_windows_rdp_exposure": {"scope": "Workstation", "path": "workstation/windows-rdp-exposure.json"},
     "backup_backup_readiness": {"scope": "Backup", "path": "backup/backup-readiness.json"},
     "linux_security_summary": {"scope": "Linux", "path": "linux/linux-security-summary.json"},
+    "linux_network_exposure_summary": {"scope": "Linux", "path": "linux/linux-network-exposure-summary.json"},
+    "linux_log_audit_summary": {"scope": "Linux", "path": "linux/linux-log-audit-summary.json"},
     "linux_inventory": {"scope": "Linux", "path": "linux/linux-inventory.json"},
 }
 FINDING_SOURCE_KEYS = {
@@ -53,6 +55,8 @@ FINDING_SOURCE_KEYS = {
     "workstation_windows_rdp_exposure",
     "backup_backup_readiness",
     "linux_security_summary",
+    "linux_network_exposure_summary",
+    "linux_log_audit_summary",
 }
 SUPPORTED_SCOPES = ["AD", "Host", "Server", "Workstation", "Network", "Backup", "Linux"]
 DISPLAY_NAME_BY_KEY = {
@@ -70,6 +74,8 @@ DISPLAY_NAME_BY_KEY = {
     "workstation_windows_rdp_exposure": "Workstation RDP exposure",
     "backup_backup_readiness": "Backup readiness audit",
     "linux_security_summary": "Linux security audit summary",
+    "linux_network_exposure_summary": "Linux network exposure audit summary",
+    "linux_log_audit_summary": "Linux log and audit coverage summary",
     "linux_inventory": "Linux host inventory",
 }
 PREFIX_BY_KEY = {
@@ -254,6 +260,14 @@ def discover_client_bundle(input_dir: str | Path) -> dict[str, Path]:
             ) + sorted(linux_dir.glob("*linux-security*.summary.json"))
             if summary_candidates:
                 detected["linux_security_summary"] = summary_candidates[0]
+        if "linux_network_exposure_summary" not in detected:
+            network_candidates = sorted(linux_dir.glob("linux-network-exposure-audit-*.summary.json")) + sorted(linux_dir.glob("*linux-network*.summary.json"))
+            if network_candidates:
+                detected["linux_network_exposure_summary"] = network_candidates[0]
+        if "linux_log_audit_summary" not in detected:
+            log_candidates = sorted(linux_dir.glob("linux-log-audit-*.summary.json")) + sorted(linux_dir.glob("*linux-log*.summary.json"))
+            if log_candidates:
+                detected["linux_log_audit_summary"] = log_candidates[0]
         if "linux_inventory" not in detected:
             inventory_candidates = sorted(linux_dir.glob("linux-inventory-*.json"))
             if inventory_candidates:
@@ -420,8 +434,8 @@ def load_optional_json(
 
 
 def normalize_client_source_file(key: str, data: dict[str, Any], source_file: Path) -> list[dict[str, Any]]:
-    if key == "linux_security_summary":
-        return normalize_linux_security_findings(data, source_file)
+    if key in {"linux_security_summary", "linux_network_exposure_summary", "linux_log_audit_summary"}:
+        return normalize_linux_security_findings(data, source_file, source_script_name=linux_source_script_for_key(key, data))
     if key == "host_windows_events_summary":
         rows = as_records(as_dict(data.get("InvestigationSummary")).get("Findings"))
     elif key == "server_rdp_profile_cache_cleanup":
@@ -430,6 +444,17 @@ def normalize_client_source_file(key: str, data: dict[str, Any], source_file: Pa
         rows = as_records(data.get("Findings"))
     return normalize_source_rows(key, data, rows, source_file)
 
+
+
+def linux_source_script_for_key(key: str, data: dict[str, Any]) -> str:
+    explicit = data.get("source_script") or data.get("SourceScript")
+    if explicit:
+        return str(explicit)
+    return {
+        "linux_security_summary": "linux-security-audit.sh",
+        "linux_network_exposure_summary": "linux-network-exposure-audit.sh",
+        "linux_log_audit_summary": "linux-log-audit.sh",
+    }.get(key, "linux-security-audit.sh")
 
 def normalize_source_rows(key: str, data: dict[str, Any], rows: list[dict[str, Any]], source_file: Path) -> list[dict[str, Any]]:
     timestamp = source_timestamp(data)

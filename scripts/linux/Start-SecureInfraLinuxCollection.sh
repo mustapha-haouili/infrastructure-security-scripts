@@ -7,6 +7,8 @@ SKIP_ARCHIVE=0
 QUIET=0
 RUN_BACKUP=1
 RUN_HARDENING_PLAN=1
+RUN_NETWORK=1
+RUN_LOG_AUDIT=1
 EXPECTED_BACKUP_PATHS=()
 COLLECTOR_TIMEOUT_SECONDS=180
 
@@ -26,6 +28,8 @@ Options:
                                    May be supplied more than once.
   --skip-backup                    Do not run backup-readiness-audit.sh.
   --skip-hardening-plan            Do not generate the dry-run hardening plan log.
+  --skip-network                   Do not run linux-network-exposure-audit.sh.
+  --skip-log-audit                 Do not run linux-log-audit.sh.
   --skip-archive                   Leave the bundle directory only; do not create ZIP.
   --collector-timeout-seconds N     Per-collector timeout. Default: 180. Use 0 to disable.
   -q, --quiet                      Reduce console output.
@@ -70,6 +74,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-hardening-plan)
             RUN_HARDENING_PLAN=0
+            shift
+            ;;
+        --skip-network)
+            RUN_NETWORK=0
+            shift
+            ;;
+        --skip-log-audit)
+            RUN_LOG_AUDIT=0
             shift
             ;;
         --skip-archive)
@@ -132,6 +144,26 @@ record_status() {
     printf '%s\t%s\t%s\n' "$name" "$status" "$output_path" >> "$COLLECTOR_STATUS_FILE"
 }
 
+validate_or_quarantine_json_output() {
+    local name="$1"
+    local output_hint="$2"
+    local output_path="$BUNDLE_ROOT/$output_hint"
+    if [[ "$output_hint" != *.json || "$output_hint" == *"*"* ]]; then
+        return 0
+    fi
+    if [[ ! -f "$output_path" ]]; then
+        return 0
+    fi
+    if python3 -m json.tool "$output_path" >/dev/null 2>&1; then
+        return 0
+    fi
+    local safe_name
+    safe_name="$(basename "$output_path")"
+    mv "$output_path" "$LOG_DIR/${name}-${safe_name}.invalid.txt"
+    echo "Collector produced invalid partial JSON: ${name}. Moved to logs/${name}-${safe_name}.invalid.txt" >&2
+    return 1
+}
+
 run_collector() {
     local name="$1"
     local output_hint="$2"
@@ -145,9 +177,15 @@ run_collector() {
         "$@" > "$log_file" 2>&1 || command_status=$?
     fi
 
-    if [[ "$command_status" -eq 0 ]]; then
+    local json_valid=0
+    validate_or_quarantine_json_output "$name" "$output_hint" || json_valid=1
+
+    if [[ "$command_status" -eq 0 && "$json_valid" -eq 0 ]]; then
         record_status "$name" "completed" "$output_hint"
         log "Completed ${name}"
+    elif [[ "$command_status" -eq 0 && "$json_valid" -ne 0 ]]; then
+        record_status "$name" "invalid-json" "$output_hint"
+        echo "Collector produced invalid JSON: ${name}. See ${log_file}" >&2
     elif [[ "$command_status" -eq 124 ]]; then
         record_status "$name" "timeout" "$output_hint"
         echo "Collector timed out: ${name}. See ${log_file}" >&2
@@ -198,7 +236,7 @@ JSON
   "CollectionId": "$BUNDLE_NAME",
   "GeneratedAtUtc": "$GENERATED_AT_UTC",
   "SafetyMode": "Read-only collection. No remediation or configuration changes are applied by this launcher.",
-  "ScopeResolved": ["Linux", "Backup"],
+  "ScopeResolved": ["Linux", "Network", "Logging", "Backup"],
   "QuickMode": $([[ "$QUICK_MODE" -eq 1 ]] && echo true || echo false),
   "Collectors": $collector_json
 }
@@ -216,6 +254,8 @@ JSON
   "SafetyMode": "Read-only collection; remediation is not applied.",
   "CanonicalEvidence": {
     "LinuxSecuritySummary": "linux/linux-security-summary.json",
+    "LinuxNetworkExposureSummary": "linux/linux-network-exposure-summary.json",
+    "LinuxLogAuditSummary": "linux/linux-log-audit-summary.json",
     "LinuxInventory": "linux/linux-inventory.json",
     "BackupReadiness": "backup/backup-readiness.json"
   },
@@ -263,6 +303,26 @@ if [[ "$QUICK_MODE" -eq 1 ]]; then
     SECURITY_ARGS+=(--quick)
 fi
 run_collector "linux-security-audit" "linux/linux-security-summary.json" "${SECURITY_ARGS[@]}"
+
+NETWORK_ARGS=(bash "$SCRIPT_DIR/linux-network-exposure-audit.sh" --output-dir "$LINUX_DIR" --summary-json "$LINUX_DIR/linux-network-exposure-summary.json")
+if [[ "$QUICK_MODE" -eq 1 ]]; then
+    NETWORK_ARGS+=(--quick)
+fi
+if [[ "$RUN_NETWORK" -eq 1 ]]; then
+    run_collector "linux-network-exposure-audit" "linux/linux-network-exposure-summary.json" "${NETWORK_ARGS[@]}"
+else
+    record_status "linux-network-exposure-audit" "skipped" "linux/linux-network-exposure-summary.json"
+fi
+
+LOG_AUDIT_ARGS=(bash "$SCRIPT_DIR/linux-log-audit.sh" --output-dir "$LINUX_DIR" --summary-json "$LINUX_DIR/linux-log-audit-summary.json")
+if [[ "$QUICK_MODE" -eq 1 ]]; then
+    LOG_AUDIT_ARGS+=(--quick)
+fi
+if [[ "$RUN_LOG_AUDIT" -eq 1 ]]; then
+    run_collector "linux-log-audit" "linux/linux-log-audit-summary.json" "${LOG_AUDIT_ARGS[@]}"
+else
+    record_status "linux-log-audit" "skipped" "linux/linux-log-audit-summary.json"
+fi
 
 if [[ "$RUN_HARDENING_PLAN" -eq 1 ]]; then
     run_collector \

@@ -1085,7 +1085,7 @@ class SecureInfraAITests(unittest.TestCase):
             self.assertEqual(normalized["summary"]["scope_finding_counts"]["Server"], 6)
             machine_names = {item["machine_name"] for item in normalized["report_type_metadata"]["machine_inventory"]}
             self.assertEqual(machine_names, {"EXAMPLE-SRV01", "EXAMPLE-SRV02"})
-            self.assertEqual(len(normalized["report_type_metadata"]["coverage_matrix"]), 12)
+            self.assertEqual(len(normalized["report_type_metadata"]["coverage_matrix"]), 14)
             finding_ids = [item["finding_id"] for item in normalized["findings"]]
             self.assertEqual(len(finding_ids), len(set(finding_ids)))
             self.assertTrue(all(item.startswith("FLEET-") for item in finding_ids))
