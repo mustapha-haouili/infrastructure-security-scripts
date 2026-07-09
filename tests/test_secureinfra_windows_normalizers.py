@@ -15,6 +15,7 @@ WINDOWS_SAMPLE_ROOT = ROOT / "SecureInfra_AI" / "examples" / "sample-input" / "w
 sys.path.insert(0, str(SECUREINFRA_REPORTING))
 
 from secureinfra.loaders.json_loader import load_json_file
+from secureinfra.bundles.client_bundle import normalize_client_source_file
 from secureinfra.network_context.port_catalog import lookup_port_context
 from secureinfra.normalizers.windows_host import normalize_windows_host_audit
 from secureinfra.normalizers.windows_network import normalize_windows_network_exposure
@@ -130,6 +131,172 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
         self.assertEqual(fallback["common_service"], "Unknown or custom service")
         self.assertEqual(fallback["exposure_type"], "Listening service requiring validation")
         self.assertIn("Validate owner, purpose, firewall scope, and monitoring", fallback["risk_explanation"])
+
+    def test_windows_local_admin_findings_use_stable_principal_ids_and_context(self):
+        data = {
+            "ToolName": "Get-WindowsLocalAdminInventory",
+            "ReportType": "windows-local-admin-inventory",
+            "GeneratedAtUtc": "2026-06-15T09:00:00Z",
+            "ComputerName": "LAB-SRV01",
+            "AdministratorsGroupName": "Administrators",
+            "AdministratorsGroupSid": "S-1-5-32-544",
+            "Summary": {"FindingCount": 3},
+            "LocalAdministrators": [
+                {
+                    "Name": r"EXAMPLE\Server Admins",
+                    "ObjectClass": "Group",
+                    "PrincipalSource": "ActiveDirectory",
+                    "PrincipalCategory": "DomainGroup",
+                    "Sid": "S-1-5-21-100-200-300-1001",
+                },
+                {
+                    "Name": r"EXAMPLE\Helpdesk Admins",
+                    "ObjectClass": "Group",
+                    "PrincipalSource": "ActiveDirectory",
+                    "PrincipalCategory": "DomainGroup",
+                    "Sid": "S-1-5-21-100-200-300-1002",
+                },
+                {
+                    "Name": r"LAB-SRV01\breakglass",
+                    "ObjectClass": "User",
+                    "PrincipalSource": "Local",
+                    "PrincipalCategory": "LocalUser",
+                    "Sid": "S-1-5-21-100-200-300-501",
+                    "Enabled": True,
+                    "LastLogonUtc": "2026-06-01T10:00:00Z",
+                    "PasswordRequired": True,
+                },
+            ],
+            "Findings": [
+                {
+                    "FindingType": "DomainGroupLocalAdmin",
+                    "Severity": "High",
+                    "Principal": r"EXAMPLE\Server Admins",
+                    "Title": "Domain group has local administrator rights",
+                    "Evidence": r"EXAMPLE\Server Admins is a domain group in local Administrators.",
+                    "Recommendation": "Confirm this group is approved for local administration.",
+                },
+                {
+                    "FindingType": "DomainGroupLocalAdmin",
+                    "Severity": "High",
+                    "Principal": r"EXAMPLE\Helpdesk Admins",
+                    "Title": "Domain group has local administrator rights",
+                    "Evidence": r"EXAMPLE\Helpdesk Admins is a domain group in local Administrators.",
+                    "Recommendation": "Confirm this group is approved for local administration.",
+                },
+                {
+                    "FindingType": "EnabledLocalAdminUser",
+                    "Severity": "Medium",
+                    "Principal": r"LAB-SRV01\breakglass",
+                    "Title": "Enabled local user has administrator rights",
+                    "Evidence": r"LAB-SRV01\breakglass is enabled and belongs to local Administrators.",
+                    "Recommendation": "Confirm owner and password management.",
+                },
+            ],
+        }
+
+        findings = normalize_client_source_file("server_windows_local_admins", data, Path("windows-local-admins.json"))
+        finding_ids = [finding["finding_id"] for finding in findings]
+
+        self.assertEqual(len(finding_ids), 3)
+        self.assertEqual(len(finding_ids), len(set(finding_ids)))
+        self.assertTrue(all(finding_id.startswith("SERVER-LADMIN-") for finding_id in finding_ids))
+        first = findings[0]
+        self.assertEqual(first["affected_object"], r"EXAMPLE\Server Admins")
+        self.assertEqual(first["evidence"]["principal_category"], "DomainGroup")
+        self.assertEqual(first["evidence"]["object_class"], "Group")
+        self.assertEqual(first["evidence"]["principal_source"], "ActiveDirectory")
+        self.assertIn("local administrator rights", first["evidence"]["summary"])
+        self.assertIn("Who owns this local administrator principal", first["evidence"]["customer_question"])
+        self.assertFalse(first["safe_to_auto_remediate"])
+
+    def test_windows_rdp_exposure_findings_include_configuration_and_port_context(self):
+        data = {
+            "ToolName": "Get-WindowsRDPExposureAudit",
+            "ReportType": "windows-rdp-exposure",
+            "GeneratedAtUtc": "2026-06-15T09:00:00Z",
+            "ComputerName": "LAB-SRV01",
+            "Summary": {
+                "FindingCount": 5,
+                "RdpEnabled": True,
+                "NetworkLevelAuthenticationRequired": False,
+                "RdpPort": 3389,
+                "TermServiceStatus": "Running",
+                "TermServiceStartMode": "Manual",
+                "RemoteDesktopUserCount": 1,
+                "EnabledInboundAllowRuleCount": 1,
+                "ListenerCount": 1,
+            },
+            "Registry": {"fDenyTSConnections": 0, "UserAuthentication": 0, "PortNumber": 3389},
+            "TermService": {"Name": "TermService", "Status": "Running", "StartMode": "Manual"},
+            "RemoteDesktopUsers": [{"Name": r"EXAMPLE\RDP Users", "ObjectClass": "Group", "PrincipalSource": "ActiveDirectory"}],
+            "FirewallRules": [
+                {
+                    "Name": "RemoteDesktop-UserMode-In-TCP",
+                    "DisplayName": "Remote Desktop - User Mode (TCP-In)",
+                    "Enabled": "True",
+                    "Direction": "Inbound",
+                    "Action": "Allow",
+                    "Profile": "Domain",
+                }
+            ],
+            "Listeners": [{"LocalAddress": "0.0.0.0", "LocalPort": 3389, "ProcessName": "svchost"}],
+            "Findings": [
+                {
+                    "FindingType": "RdpEnabled",
+                    "Severity": "Medium",
+                    "Title": "Remote Desktop is enabled",
+                    "Evidence": "fDenyTSConnections=0; TermService=Running; Port=3389.",
+                    "Recommendation": "Confirm RDP is business-required and restricted.",
+                },
+                {
+                    "FindingType": "RdpNlaDisabled",
+                    "Severity": "High",
+                    "Title": "RDP Network Level Authentication is not required",
+                    "Evidence": "UserAuthentication=0.",
+                    "Recommendation": "Require NLA unless a documented legacy exception exists.",
+                },
+                {
+                    "FindingType": "RdpAllowedUsersPresent",
+                    "Severity": "Medium",
+                    "Title": "Remote Desktop Users group has direct members",
+                    "Evidence": "1 direct member(s) are present.",
+                    "Recommendation": "Review each member.",
+                },
+                {
+                    "FindingType": "RdpFirewallAllowsInbound",
+                    "Severity": "Medium",
+                    "Title": "Firewall has enabled inbound Remote Desktop allow rules",
+                    "Evidence": "1 enabled allow rule(s) were found.",
+                    "Recommendation": "Restrict RDP firewall exposure.",
+                },
+                {
+                    "FindingType": "RdpListening",
+                    "Severity": "High",
+                    "Title": "RDP listener is active",
+                    "Evidence": "TCP port 3389 has 1 listening endpoint(s).",
+                    "Recommendation": "Confirm exposure is intended.",
+                },
+            ],
+        }
+
+        findings = normalize_client_source_file("server_windows_rdp_exposure", data, Path("windows-rdp-exposure.json"))
+        by_type = {finding["evidence"]["finding_type"]: finding for finding in findings}
+        rdp_enabled = by_type["RdpEnabled"]
+        rdp_listening = by_type["RdpListening"]
+
+        self.assertEqual(rdp_enabled["finding_id"], "SERVER-RDP-RDPENABLED")
+        self.assertEqual(rdp_enabled["evidence"]["port"], 3389)
+        self.assertEqual(rdp_enabled["evidence"]["common_name"], "RDP")
+        self.assertEqual(rdp_enabled["evidence"]["rdp_enabled"], True)
+        self.assertEqual(rdp_enabled["evidence"]["network_level_authentication_required"], False)
+        self.assertEqual(rdp_enabled["evidence"]["remote_desktop_users"], [r"EXAMPLE\RDP Users"])
+        self.assertEqual(rdp_enabled["evidence"]["enabled_inbound_firewall_rules"], ["Remote Desktop - User Mode (TCP-In)"])
+        self.assertIn("Who requires RDP access", rdp_enabled["evidence"]["customer_question"])
+        self.assertEqual(rdp_listening["finding_id"], "SERVER-RDP-RDPLISTENING-TCP-3389")
+        self.assertEqual(rdp_listening["evidence"]["bind_scope"], "All interfaces")
+        self.assertIn("does not prove internet exposure", rdp_listening["evidence"]["summary"])
+        self.assertFalse(rdp_listening["safe_to_auto_remediate"])
 
     def test_windows_network_listener_findings_include_port_context(self):
         data = {

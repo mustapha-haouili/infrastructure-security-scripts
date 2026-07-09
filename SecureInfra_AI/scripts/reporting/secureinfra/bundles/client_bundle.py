@@ -522,6 +522,10 @@ def normalize_source_rows(key: str, data: dict[str, Any], rows: list[dict[str, A
         evidence = compact_evidence(row)
         if key == "network_windows_network_exposure":
             evidence.update(network_port_context_evidence(row, data, evidence))
+        if key in {"server_windows_rdp_exposure", "workstation_windows_rdp_exposure"}:
+            evidence.update(rdp_exposure_context_evidence(row, data, evidence))
+        if key in {"server_windows_local_admins", "workstation_windows_local_admins"}:
+            evidence.update(local_admin_context_evidence(row, data, evidence))
         if key == "host_windows_security_audit":
             evidence.update(aggregate_host_network_context_evidence(row, evidence))
         evidence.update(
@@ -538,6 +542,10 @@ def normalize_source_rows(key: str, data: dict[str, Any], rows: list[dict[str, A
                     continue
                 seen_listener_keys.add(listener_key)
                 source_id = network_listener_source_id(source_id, evidence)
+        if key in {"server_windows_local_admins", "workstation_windows_local_admins"}:
+            source_id = local_admin_source_id(source_id, row, affected_object, evidence)
+        if key in {"server_windows_rdp_exposure", "workstation_windows_rdp_exposure"}:
+            source_id = rdp_exposure_source_id(source_id, row, evidence)
         if key == "server_windows_server_security":
             source_id = server_security_source_id(source_id, row, affected_object, evidence)
         findings.append(
@@ -725,6 +733,36 @@ def network_listener_source_id(source_id: Any, evidence: dict[str, Any]) -> str:
     return f"{finding_type}-{protocol}-{port}"
 
 
+def local_admin_source_id(source_id: Any, row: dict[str, Any], affected_object: str, evidence: dict[str, Any]) -> str:
+    explicit_source_id = first_value(row, ["Id", "FindingId", "ControlId"], "")
+    if explicit_source_id:
+        return str(explicit_source_id)
+    finding_type = str(first_value(row, ["FindingType"], "") or source_id or "LocalAdminFinding")
+    principal = str(first_value(row, ["Principal", "Name"], "") or affected_object or "principal")
+    digest = stable_row_digest(
+        finding_type,
+        principal,
+        evidence.get("principal_category"),
+        evidence.get("object_class"),
+        evidence.get("principal_source"),
+        evidence.get("sid"),
+    )
+    principal_token = sanitize_id(principal)[:20] or "PRINCIPAL"
+    return f"{sanitize_id(finding_type)[:28]}-{principal_token}-{digest}"
+
+
+def rdp_exposure_source_id(source_id: Any, row: dict[str, Any], evidence: dict[str, Any]) -> str:
+    explicit_source_id = first_value(row, ["Id", "FindingId", "ControlId"], "")
+    if explicit_source_id:
+        return str(explicit_source_id)
+    finding_type = str(first_value(row, ["FindingType"], "") or source_id or "RdpExposureFinding")
+    if str(finding_type).lower() == "rdplistening":
+        port = normalize_port_value(evidence.get("port"))
+        if port is not None:
+            return f"{finding_type}-TCP-{port}"
+    return finding_type
+
+
 def normalize_port_value(value: Any) -> int | None:
     if isinstance(value, bool) or value in (None, ""):
         return None
@@ -871,6 +909,149 @@ def join_human_list(values: list[str]) -> str:
     if len(values) == 2:
         return " and ".join(values)
     return ", ".join(values[:-1]) + f", and {values[-1]}"
+
+
+def local_admin_context_evidence(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+    principal = str(first_value(row, ["Principal", "Name"], "") or "").strip()
+    member = matching_local_admin_member(data, principal)
+    principal_category = str(first_value(row, ["PrincipalCategory"], "") or member.get("PrincipalCategory") or "").strip()
+    object_class = str(first_value(row, ["ObjectClass"], "") or member.get("ObjectClass") or "").strip()
+    principal_source = str(first_value(row, ["PrincipalSource"], "") or member.get("PrincipalSource") or "").strip()
+    sid = str(first_value(row, ["Sid", "SID"], "") or member.get("Sid") or member.get("SID") or "").strip()
+    enabled = first_value(row, ["Enabled"], member.get("Enabled") if member else "")
+    last_logon_utc = str(first_value(row, ["LastLogonUtc"], "") or member.get("LastLogonUtc") or "").strip()
+    admin_group_name = str(data.get("AdministratorsGroupName") or "Administrators").strip()
+    admin_group_sid = str(data.get("AdministratorsGroupSid") or "S-1-5-32-544").strip()
+    finding_type = str(first_value(row, ["FindingType"], "") or evidence.get("finding_type") or "").strip()
+    summary = local_admin_summary(principal, principal_category, object_class, principal_source, admin_group_name, finding_type)
+    return {
+        "principal": principal,
+        "principal_category": principal_category,
+        "object_class": object_class,
+        "principal_source": principal_source,
+        "sid": sid,
+        "enabled": enabled,
+        "last_logon_utc": last_logon_utc,
+        "administrators_group_name": admin_group_name,
+        "administrators_group_sid": admin_group_sid,
+        "summary": summary,
+        "risk_explanation": (
+            "Local administrator membership grants full administrative control on the host. "
+            "Membership should be limited to approved break-glass, endpoint management, or server administration principals."
+        ),
+        "customer_question": "Who owns this local administrator principal, why is it required, and how is membership approved and reviewed?",
+        "safe_next_step": "Validate owner, business purpose, group membership, and change approval before removing or changing local administrator access.",
+    }
+
+
+def matching_local_admin_member(data: dict[str, Any], principal: str) -> dict[str, Any]:
+    if not principal:
+        return {}
+    principal_lower = principal.lower()
+    principal_leaf = principal_lower.split("\\")[-1]
+    for member in as_records(data.get("LocalAdministrators")):
+        name = str(member.get("Name") or "").lower()
+        if name == principal_lower or name.split("\\")[-1] == principal_leaf:
+            return member
+    return {}
+
+
+def local_admin_summary(
+    principal: str,
+    principal_category: str,
+    object_class: str,
+    principal_source: str,
+    admin_group_name: str,
+    finding_type: str,
+) -> str:
+    principal_text = principal or "A principal"
+    category_text = principal_category or object_class or principal_source or "principal"
+    group_text = admin_group_name or "Administrators"
+    if finding_type == "UnresolvedLocalAdmin":
+        return f"{principal_text} is an unresolved SID in the local {group_text} group and requires ownership validation."
+    return f"{principal_text} ({category_text}) has local administrator rights through the {group_text} group."
+
+
+def rdp_exposure_context_evidence(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+    summary_data = as_dict(data.get("Summary"))
+    registry = as_dict(data.get("Registry"))
+    term_service = as_dict(data.get("TermService"))
+    finding_type = str(first_value(row, ["FindingType"], "") or evidence.get("finding_type") or "").strip()
+    port = normalize_port_value(first_value(row, ["Port", "RdpPort", "LocalPort"], summary_data.get("RdpPort") or registry.get("PortNumber") or 3389))
+    if port is None:
+        port = 3389
+    listeners = matching_rdp_listeners(data, port)
+    bind_addresses = unique_string_values(listener_bind_addresses(listeners))
+    bind_address = bind_addresses[0] if bind_addresses else ""
+    scope = bind_scope_for_addresses(bind_addresses, combined_row_text(row))
+    context = lookup_port_context("TCP", port)
+    remote_users = as_records(data.get("RemoteDesktopUsers"))
+    firewall_rules = enabled_inbound_allow_firewall_rules(data)
+    output = {
+        "protocol": "TCP",
+        "port": port,
+        "bind_address": bind_address,
+        "bind_addresses": bind_addresses,
+        "bind_scope": scope,
+        "common_service": context["common_service"],
+        "common_name": context["common_name"],
+        "exposure_type": context["exposure_type"],
+        "rdp_enabled": summary_data.get("RdpEnabled"),
+        "network_level_authentication_required": summary_data.get("NetworkLevelAuthenticationRequired"),
+        "term_service_status": summary_data.get("TermServiceStatus") or term_service.get("Status"),
+        "term_service_start_mode": summary_data.get("TermServiceStartMode") or term_service.get("StartMode"),
+        "remote_desktop_user_count": summary_data.get("RemoteDesktopUserCount", len(remote_users)),
+        "enabled_inbound_allow_rule_count": summary_data.get("EnabledInboundAllowRuleCount", len(firewall_rules)),
+        "listener_count": summary_data.get("ListenerCount", len(listeners)),
+        "remote_desktop_users": [str(item.get("Name") or "").strip() for item in remote_users if str(item.get("Name") or "").strip()][:20],
+        "enabled_inbound_firewall_rules": [str(item.get("DisplayName") or item.get("Name") or "").strip() for item in firewall_rules if str(item.get("DisplayName") or item.get("Name") or "").strip()][:20],
+        "risk_explanation": context["risk_explanation"],
+        "customer_question": context["customer_question"],
+        "safe_next_step": context["safe_next_step"],
+        "summary": rdp_exposure_summary(finding_type, port, scope, summary_data, len(remote_users), len(firewall_rules), len(listeners)),
+    }
+    if scope == "All interfaces":
+        output["bind_scope_explanation"] = ALL_INTERFACES_BIND_SCOPE_EXPLANATION
+    return output
+
+
+def matching_rdp_listeners(data: dict[str, Any], port: int) -> list[dict[str, Any]]:
+    listeners = []
+    for listener in as_records(data.get("Listeners")):
+        if as_int(listener.get("LocalPort"), -1) == port:
+            listeners.append(listener)
+    return listeners
+
+
+def enabled_inbound_allow_firewall_rules(data: dict[str, Any]) -> list[dict[str, Any]]:
+    rules = []
+    for rule in as_records(data.get("FirewallRules")):
+        if str(rule.get("Enabled") or "").lower() == "true" and str(rule.get("Action") or "").lower() == "allow" and str(rule.get("Direction") or "").lower() == "inbound":
+            rules.append(rule)
+    return rules
+
+
+def rdp_exposure_summary(
+    finding_type: str,
+    port: int,
+    bind_scope_value: str,
+    summary_data: dict[str, Any],
+    remote_user_count: int,
+    firewall_rule_count: int,
+    listener_count: int,
+) -> str:
+    enabled = summary_data.get("RdpEnabled")
+    nla = summary_data.get("NetworkLevelAuthenticationRequired")
+    if finding_type == "RdpNlaDisabled":
+        return "RDP is enabled but Network Level Authentication is not required. Validate legacy client requirements before changing policy."
+    if finding_type == "RdpAllowedUsersPresent":
+        return f"The Remote Desktop Users group has {remote_user_count} direct member(s) that require owner and approval review."
+    if finding_type == "RdpFirewallAllowsInbound":
+        return f"{firewall_rule_count} enabled inbound firewall allow rule(s) were found for Remote Desktop. Validate allowed profiles and source networks."
+    if finding_type == "RdpListening":
+        scope_text = f" with bind scope {bind_scope_value}" if bind_scope_value else ""
+        return f"RDP is listening on TCP {port}{scope_text}. This is local listener evidence only and does not prove internet exposure."
+    return f"Remote Desktop configuration requires review. RDP enabled={enabled}; NLA required={nla}; TCP port={port}; listeners={listener_count}."
 
 
 def network_port_context_evidence(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
