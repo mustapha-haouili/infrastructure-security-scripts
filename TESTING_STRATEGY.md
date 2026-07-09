@@ -159,3 +159,8 @@ it is either called automatically or documented as manual-only.
 ## Linux coverage checks
 
 Linux tests must cover the launcher, `linux-security-audit.sh`, `linux-network-exposure-audit.sh`, `linux-log-audit.sh`, `linux-service-inventory-audit.sh`, `linux-service-inventory-audit.sh`, bundle validation, and client-bundle normalization for all Linux summary JSON files.
+
+## Collector coverage matrix
+
+Windows and Linux collectors are tracked in `COLLECTOR_COVERAGE_MATRIX.md`. The test `tests/test_collector_coverage_matrix.py` fails if a Windows/Linux collector script is not documented or if an automated collector is no longer invoked by its platform launcher. This prevents orphan collector scripts and protects the rule that every new script must be automatically invoked or explicitly documented as manual-only.
+
