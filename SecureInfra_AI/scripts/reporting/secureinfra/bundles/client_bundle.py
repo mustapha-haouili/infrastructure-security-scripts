@@ -533,6 +533,7 @@ def normalize_source_rows(key: str, data: dict[str, Any], rows: list[dict[str, A
             evidence.update(workstation_security_context_evidence(row, data, evidence))
         if key == "host_windows_security_audit":
             evidence.update(aggregate_host_network_context_evidence(row, evidence))
+            evidence.update(host_security_context_evidence(row, data, evidence))
         evidence.update(
             {
                 "scope": scope,
@@ -849,6 +850,151 @@ def is_aggregate_host_network_exposure(row: dict[str, Any], evidence: dict[str, 
     if area.lower() == "network exposure" and "ports are listening broadly" in title.lower():
         return True
     return bool(raw_evidence and "ports are listening broadly" in title.lower())
+
+
+HOST_WINRM_POLICY_BY_ID = {
+    "WIN-WINRM-002": {"policy_name": "ClientAllowBasic", "scope": "Client", "setting_label": "AllowBasic"},
+    "WIN-WINRM-003": {"policy_name": "ClientAllowUnencryptedTraffic", "scope": "Client", "setting_label": "AllowUnencryptedTraffic"},
+    "WIN-WINRM-004": {"policy_name": "ClientAllowDigest", "scope": "Client", "setting_label": "AllowDigest"},
+    "WIN-WINRM-005": {"policy_name": "ServiceAllowBasic", "scope": "Service", "setting_label": "AllowBasic"},
+    "WIN-WINRM-006": {"policy_name": "ServiceAllowAutoConfig", "scope": "Service", "setting_label": "AllowAutoConfig"},
+    "WIN-WINRM-007": {"policy_name": "ServiceAllowUnencryptedTraffic", "scope": "Service", "setting_label": "AllowUnencryptedTraffic"},
+    "WIN-WINRM-008": {"policy_name": "ServiceDisableRunAs", "scope": "Service", "setting_label": "DisableRunAs"},
+    "WIN-WINRM-009": {"policy_name": "AllowRemoteShellAccess", "scope": "WinRS", "setting_label": "AllowRemoteShellAccess"},
+}
+
+
+def host_security_context_evidence(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+    finding_id = str(first_value(row, ["Id", "FindingId", "ControlId"], "") or evidence.get("id") or evidence.get("finding_id") or "").strip().upper()
+    if finding_id.startswith("WIN-SMB-"):
+        return host_smb_baseline_context(row, data, evidence, finding_id)
+    if finding_id.startswith("WIN-WINRM-"):
+        return host_winrm_baseline_context(row, data, evidence, finding_id)
+    if finding_id.startswith("WIN-FW-"):
+        return host_firewall_baseline_context(row, data, evidence, finding_id)
+    return {}
+
+
+def host_smb_baseline_context(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any], finding_id: str) -> dict[str, Any]:
+    core = as_dict(data.get("CoreSettings"))
+    mapping = {
+        "WIN-SMB-001": {
+            "protocol_setting": "SMBv1 server protocol",
+            "setting_key": "Smb1ServerEnabled",
+            "current_value": core.get("Smb1ServerEnabled"),
+            "expected_value": "False / Disabled",
+        },
+        "WIN-SMB-002": {
+            "protocol_setting": "SMBv1 client driver",
+            "setting_key": "Smb1ClientDriverStart",
+            "current_value": core.get("Smb1ClientDriverStart"),
+            "expected_value": "4 / Disabled",
+        },
+        "WIN-SMB-003": {
+            "protocol_setting": "Insecure SMB guest logons",
+            "setting_key": "InsecureGuestAuthPolicy",
+            "current_value": core.get("InsecureGuestAuthPolicy"),
+            "expected_value": "0 / Disabled",
+        },
+    }
+    item = mapping.get(finding_id, {})
+    setting = str(item.get("protocol_setting") or "SMB baseline control")
+    return {
+        "baseline_control_id": finding_id,
+        "control_family": "SMB baseline",
+        "protocol_family": "SMB",
+        "protocol_setting": setting,
+        "setting_key": item.get("setting_key", ""),
+        "current_value": item.get("current_value", ""),
+        "expected_value": item.get("expected_value", ""),
+        "summary": f"{setting} is not aligned with the expected Windows hardening baseline and requires legacy dependency validation.",
+        "risk_explanation": "Legacy or weak SMB settings can increase lateral movement, downgrade, or unauthenticated access risk. This is protocol policy evidence, not proof that TCP 445 is reachable from untrusted networks.",
+        "customer_question": "Is there a documented legacy SMB dependency, owner, compensating control, and retirement date for this host?",
+        "safe_next_step": "Validate application, NAS, print, and legacy file-sharing dependencies before changing SMB policy through approved change control.",
+    }
+
+
+def host_winrm_baseline_context(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any], finding_id: str) -> dict[str, Any]:
+    remote_access = as_dict(data.get("RemoteAccess"))
+    winrm_policy = as_dict(data.get("WinRmPolicy"))
+    base = {
+        "baseline_control_id": finding_id,
+        "control_family": "WinRM baseline",
+        "protocol_family": "WinRM",
+        "common_service": "Windows Remote Management",
+        "summary": "WinRM remote management configuration requires owner, source-network, authentication, encryption, and logging validation.",
+        "risk_explanation": "WinRM is a legitimate administration channel, but weak authentication, unencrypted traffic, broad listener configuration, or remote shell access can increase remote management exposure. This is configuration evidence only and does not prove internet reachability.",
+        "customer_question": "Which management platform owns WinRM on this host, which source networks may use it, and what authentication and logging controls apply?",
+        "safe_next_step": "Validate management dependency, allowed source networks, authentication policy, encryption, and log collection before disabling or changing WinRM settings.",
+    }
+    if finding_id == "WIN-WINRM-001":
+        base.update(
+            {
+                "winrm_service_status": remote_access.get("WinRmService", ""),
+                "setting_key": "WinRmService",
+                "current_value": remote_access.get("WinRmService", ""),
+                "expected_value": "Stopped unless explicitly required and restricted",
+                "summary": f"WinRM service status is {remote_access.get('WinRmService', 'Unknown')} and requires remote administration scope validation.",
+            }
+        )
+        return base
+
+    policy = HOST_WINRM_POLICY_BY_ID.get(finding_id, {})
+    policy_name = str(policy.get("policy_name") or "")
+    current_value = winrm_policy.get(policy_name, "") if policy_name else ""
+    expected_value = "1 / Enabled" if finding_id == "WIN-WINRM-008" else "0 / Disabled"
+    base.update(
+        {
+            "winrm_policy_scope": policy.get("scope", ""),
+            "winrm_policy_name": policy_name,
+            "setting_key": policy_name,
+            "setting_label": policy.get("setting_label", ""),
+            "current_value": current_value,
+            "expected_value": expected_value,
+            "summary": f"WinRM policy {policy_name or finding_id} is not aligned with the expected management hardening baseline.",
+        }
+    )
+    return base
+
+
+def host_firewall_baseline_context(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any], finding_id: str) -> dict[str, Any]:
+    profile_name = firewall_profile_name_from_row(row, evidence)
+    profile = matching_firewall_profile(data, profile_name)
+    if not profile_name:
+        profile_name = str(profile.get("Name") or "")
+    return {
+        "baseline_control_id": finding_id,
+        "control_family": "Windows Firewall baseline",
+        "firewall_profile": profile_name,
+        "firewall_enabled": profile.get("Enabled", ""),
+        "default_inbound_action": profile.get("DefaultInboundAction", ""),
+        "default_outbound_action": profile.get("DefaultOutboundAction", ""),
+        "allow_inbound_rules": profile.get("AllowInboundRules", ""),
+        "log_allowed": profile.get("LogAllowed", ""),
+        "log_blocked": profile.get("LogBlocked", ""),
+        "summary": f"Windows Firewall profile {profile_name or 'Unknown'} is not aligned with the expected host firewall baseline.",
+        "risk_explanation": "Host firewall profile settings affect local exposure and lateral movement resistance. This is local firewall configuration evidence, not a claim of internet exposure.",
+        "customer_question": "Which endpoint policy owns this firewall profile, which inbound services are approved, and is the current profile behavior intentional?",
+        "safe_next_step": "Validate endpoint management policy, required inbound rules, remote administration paths, and profile assignment before changing firewall defaults.",
+    }
+
+
+def firewall_profile_name_from_row(row: dict[str, Any], evidence: dict[str, Any]) -> str:
+    for value in [first_value(row, ["ProfileName", "Name", "FirewallProfile"], ""), evidence.get("profile_name"), evidence.get("firewall_profile")]:
+        text = str(value or "").strip()
+        if text in {"Domain", "Private", "Public"}:
+            return text
+    evidence_text = str(first_value(row, ["Evidence"], "") or evidence.get("evidence") or "")
+    match = re.search(r"\b(Domain|Private|Public)\s+profile\b", evidence_text, flags=re.IGNORECASE)
+    return match.group(1).title() if match else ""
+
+
+def matching_firewall_profile(data: dict[str, Any], profile_name: str) -> dict[str, Any]:
+    target = str(profile_name or "").lower()
+    for profile in as_records(data.get("FirewallProfiles")):
+        if str(profile.get("Name") or "").lower() == target:
+            return profile
+    return {}
 
 
 def parse_aggregate_exposed_ports(raw_evidence: str) -> list[dict[str, Any]]:

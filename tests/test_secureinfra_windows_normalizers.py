@@ -1107,6 +1107,98 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
                     self.assertEqual(normalized["report_type"], case["report_type"])
                     self.assertEqual(normalized["report_type_metadata"]["normalizer_status"], "beta")
 
+    def test_host_smb_winrm_and_firewall_baseline_findings_include_structured_context(self):
+        data = {
+            "ToolName": "Invoke-WindowsSecurityAudit",
+            "ReportType": "windows-host-audit",
+            "GeneratedAtUtc": "2026-06-15T09:00:00Z",
+            "ComputerName": "LAB-SRV01",
+            "FirewallProfiles": [
+                {
+                    "Name": "Domain",
+                    "Enabled": False,
+                    "DefaultInboundAction": "Allow",
+                    "DefaultOutboundAction": "Allow",
+                    "AllowInboundRules": True,
+                    "LogAllowed": False,
+                    "LogBlocked": True,
+                }
+            ],
+            "RemoteAccess": {"WinRmService": "Running"},
+            "CoreSettings": {
+                "Smb1ServerEnabled": True,
+                "Smb1ClientDriverStart": 2,
+                "InsecureGuestAuthPolicy": 1,
+            },
+            "WinRmPolicy": {
+                "ClientAllowBasic": 1,
+                "ClientAllowUnencryptedTraffic": 1,
+                "ServiceDisableRunAs": 0,
+            },
+            "Findings": [
+                {
+                    "Id": "WIN-SMB-001",
+                    "Severity": "Critical",
+                    "Area": "Legacy protocols",
+                    "Title": "SMBv1 server protocol is enabled",
+                    "Evidence": "Smb1ServerEnabled=True",
+                    "Recommendation": "Disable SMBv1 server protocol unless approved.",
+                },
+                {
+                    "Id": "WIN-WINRM-003",
+                    "Severity": "Medium",
+                    "Area": "Remote management",
+                    "Title": "WinRM client unencrypted traffic is allowed",
+                    "Evidence": "Client AllowUnencryptedTraffic=1",
+                    "Recommendation": "Disable unencrypted WinRM client traffic.",
+                },
+                {
+                    "Id": "WIN-WINRM-008",
+                    "Severity": "Medium",
+                    "Area": "Remote management",
+                    "Title": "WinRM RunAs credential storage is not disallowed by policy",
+                    "Evidence": "Service DisableRunAs=0; expected 1",
+                    "Recommendation": "Set WinRM service DisableRunAs to 1.",
+                },
+                {
+                    "Id": "WIN-FW-001",
+                    "Severity": "High",
+                    "Area": "Firewall",
+                    "Title": "Windows Firewall profile is disabled",
+                    "Evidence": "Domain profile Enabled=False",
+                    "Recommendation": "Enable Windows Firewall for the Domain profile.",
+                },
+            ],
+        }
+
+        findings = normalize_client_source_file("host_windows_security_audit", data, Path("windows-security-audit.json"))
+        by_id = {finding["finding_id"]: finding for finding in findings}
+
+        smb = by_id["HOST-WIN-WIN-SMB-001"]
+        self.assertEqual(smb["evidence"]["control_family"], "SMB baseline")
+        self.assertEqual(smb["evidence"]["protocol_family"], "SMB")
+        self.assertEqual(smb["evidence"]["setting_key"], "Smb1ServerEnabled")
+        self.assertIs(smb["evidence"]["current_value"], True)
+        self.assertIn("not proof that TCP 445 is reachable", smb["evidence"]["risk_explanation"])
+        self.assertIn("legacy SMB dependency", smb["evidence"]["customer_question"])
+
+        winrm = by_id["HOST-WIN-WIN-WINRM-003"]
+        self.assertEqual(winrm["evidence"]["control_family"], "WinRM baseline")
+        self.assertEqual(winrm["evidence"]["winrm_policy_name"], "ClientAllowUnencryptedTraffic")
+        self.assertEqual(winrm["evidence"]["current_value"], 1)
+        self.assertIn("does not prove internet reachability", winrm["evidence"]["risk_explanation"])
+
+        winrm_runas = by_id["HOST-WIN-WIN-WINRM-008"]
+        self.assertEqual(winrm_runas["evidence"]["winrm_policy_name"], "ServiceDisableRunAs")
+        self.assertEqual(winrm_runas["evidence"]["expected_value"], "1 / Enabled")
+
+        firewall = by_id["HOST-WIN-WIN-FW-001"]
+        self.assertEqual(firewall["evidence"]["control_family"], "Windows Firewall baseline")
+        self.assertEqual(firewall["evidence"]["firewall_profile"], "Domain")
+        self.assertIs(firewall["evidence"]["firewall_enabled"], False)
+        self.assertEqual(firewall["evidence"]["default_inbound_action"], "Allow")
+        self.assertIn("not a claim of internet exposure", firewall["evidence"]["risk_explanation"])
+
     def test_windows_samples_do_not_include_sensitive_or_customer_looking_data(self):
         blocked_fragments = [
             "mustapha",
