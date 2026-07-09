@@ -94,6 +94,7 @@ function Test-PublicIntegrationContracts {
 
     Require-File "SecureInfra_AI\scripts\reporting\secureinfra_analyzer.py"
     Require-File "scripts\reporting\validate_schema.py"
+    Require-File "scripts\reporting\validate_bundle.py"
     Require-File "scripts\windows\Start-SecureInfraClientCollection.ps1"
     Require-File "scripts\windows\Start-WindowsSecurity.ps1"
     Require-Directory "tests"
@@ -116,6 +117,11 @@ function Test-PublicIntegrationContracts {
         -Label "normalized report schema validator"
 
     Require-TextMarker `
+        -RelativePath "scripts\reporting\validate_bundle.py" `
+        -Needle "validate_input_bundle" `
+        -Label "input bundle validator"
+
+    Require-TextMarker `
         -RelativePath "scripts\windows\Start-SecureInfraClientCollection.ps1" `
         -Needle "Backup" `
         -Label "client collection launcher backup scope"
@@ -128,6 +134,7 @@ function Invoke-PublicTests {
         $Args = @(
             "-m", "unittest", "-v",
             "tests.test_validate_schema",
+            "tests.test_validate_bundle",
             "tests.test_client_collection_launcher",
             "tests.test_secureinfra_windows_normalizers.SecureInfraWindowsNormalizerTests.test_windows_samples_pass_schema_validation",
             "tests.test_secureinfra_backup_readiness.SecureInfraBackupReadinessTests.test_normalized_output_schema_compatibility",
@@ -183,6 +190,37 @@ function Invoke-SampleAnalyzerSmokeTest {
 
     if ($KeepSampleOutput) {
         Write-Host "Keeping sample output at: $OutputPath"
+    }
+}
+
+function Invoke-SampleBundleValidationSmokeTest {
+    Write-Section "Run input bundle validation smoke test"
+
+    $BundleRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("secureinfra-public-bundle-validation-" + [guid]::NewGuid().ToString("N"))
+    $BundlePath = Join-Path $BundleRoot "secureinfra-client-collection-QG-SRV01-20260709-120000"
+
+    try {
+        New-Item -ItemType Directory -Path (Join-Path $BundlePath "host") -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $BundlePath "logs") -Force | Out-Null
+
+        Set-Content -LiteralPath (Join-Path $BundlePath "client-info.json") -Encoding UTF8 -Value '{"ComputerName":"QG-SRV01","UserDomain":"example"}'
+        Set-Content -LiteralPath (Join-Path $BundlePath "collection-summary.json") -Encoding UTF8 -Value '{"CollectionId":"secureinfra-client-QG-SRV01-20260709-120000","GeneratedAtUtc":"2026-07-09T12:00:00Z","SafetyMode":"Audit and dry-run only. No remediation is applied.","ScopeResolved":["Host"]}'
+        Set-Content -LiteralPath (Join-Path $BundlePath "manifest.json") -Encoding UTF8 -Value '{"SchemaVersion":"1.0","CollectionId":"secureinfra-client-QG-SRV01-20260709-120000","GeneratedAtUtc":"2026-07-09T12:00:00Z","ScopeResolved":["Host"]}'
+        Set-Content -LiteralPath (Join-Path $BundlePath "host\windows-security-audit.json") -Encoding UTF8 -Value '{"ReportMetadata":{"ComputerName":"QG-SRV01","ScriptName":"Invoke-WindowsSecurityAudit.ps1"},"Summary":{"FindingCount":0},"Findings":[]}'
+        Set-Content -LiteralPath (Join-Path $BundlePath "logs\windows-security-audit.log") -Encoding UTF8 -Value 'collector log'
+
+        $BundleValidatorArgs = @(
+            ".\scripts\reporting\validate_bundle.py",
+            "--input", $BundlePath,
+            "--strict-safety",
+            "--expected-bundle-count", "1"
+        )
+        Invoke-CheckedCommand -Label "Validate sample client collection bundle" -Executable $Python -Arguments $BundleValidatorArgs
+    }
+    finally {
+        if (Test-Path -LiteralPath $BundleRoot) {
+            Remove-Item -LiteralPath $BundleRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 
@@ -255,6 +293,7 @@ Push-Location $RepoRoot
 try {
     Test-PublicIntegrationContracts
     Invoke-PublicTests
+    Invoke-SampleBundleValidationSmokeTest
     Invoke-SampleAnalyzerSmokeTest
     Test-GitSafety
     Write-Section "Public quality gate passed"

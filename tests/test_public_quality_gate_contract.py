@@ -25,9 +25,18 @@ class PublicQualityGateContractTests(unittest.TestCase):
         content = self.read_gate()
 
         self.assertIn("test_validate_schema", content)
+        self.assertIn("test_validate_bundle", content)
         self.assertIn("test_client_collection_launcher", content)
         self.assertIn("test_secureinfra_backup_readiness", content)
         self.assertIn('"discover", "-s", "tests", "-p", "test_*.py"', content)
+
+    def test_quality_gate_runs_input_bundle_validator_smoke_test(self):
+        content = self.read_gate()
+
+        self.assertIn("validate_bundle.py", content)
+        self.assertIn("Invoke-SampleBundleValidationSmokeTest", content)
+        self.assertIn("--expected-bundle-count", content)
+        self.assertIn("--strict-safety", content)
 
     def test_quality_gate_checks_new_script_integration_contract(self):
         content = self.read_gate()
