@@ -1125,10 +1125,26 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
                 }
             ],
             "RemoteAccess": {"WinRmService": "Running"},
+            "Defender": {
+                "AMServiceEnabled": True,
+                "AntivirusEnabled": True,
+                "RealTimeProtectionEnabled": False,
+                "BehaviorMonitorEnabled": True,
+                "IoavProtectionEnabled": False,
+                "AntivirusSignatureLastUpdated": "2026-06-15T08:00:00Z",
+            },
             "CoreSettings": {
                 "Smb1ServerEnabled": True,
                 "Smb1ClientDriverStart": 2,
                 "InsecureGuestAuthPolicy": 1,
+                "DefenderDisableAntiSpywarePolicy": 1,
+                "UacEnabled": 0,
+                "UacConsentPromptBehaviorAdmin": 5,
+                "UacPromptOnSecureDesktop": 0,
+            },
+            "PowerShellLogging": {
+                "ScriptBlockLoggingEnabled": 0,
+                "TranscriptionEnabled": 0,
             },
             "WinRmPolicy": {
                 "ClientAllowBasic": 1,
@@ -1168,6 +1184,62 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
                     "Evidence": "Domain profile Enabled=False",
                     "Recommendation": "Enable Windows Firewall for the Domain profile.",
                 },
+                {
+                    "Id": "WIN-DEF-002",
+                    "Severity": "High",
+                    "Area": "Endpoint protection",
+                    "Title": "Microsoft Defender protection components are disabled",
+                    "Evidence": "RealTimeProtectionEnabled=False; IoavProtectionEnabled=False",
+                    "Recommendation": "Validate endpoint protection ownership.",
+                },
+                {
+                    "Id": "WIN-DEF-003",
+                    "Severity": "High",
+                    "Area": "Endpoint protection",
+                    "Title": "Microsoft Defender Antivirus is disabled by policy",
+                    "Evidence": "DisableAntiSpyware=1",
+                    "Recommendation": "Validate approved EDR ownership.",
+                },
+                {
+                    "Id": "WIN-UAC-001",
+                    "Severity": "High",
+                    "Area": "Privilege control",
+                    "Title": "User Account Control is disabled",
+                    "Evidence": "EnableLUA=0",
+                    "Recommendation": "Enable UAC after validation.",
+                },
+                {
+                    "Id": "WIN-UAC-002",
+                    "Severity": "Medium",
+                    "Area": "Privilege control",
+                    "Title": "Administrator elevation prompt is not set to a secure desktop prompt",
+                    "Evidence": "ConsentPromptBehaviorAdmin=5",
+                    "Recommendation": "Validate UAC prompt behavior.",
+                },
+                {
+                    "Id": "WIN-UAC-003",
+                    "Severity": "Medium",
+                    "Area": "Privilege control",
+                    "Title": "UAC secure desktop prompting is not enabled",
+                    "Evidence": "PromptOnSecureDesktop=0",
+                    "Recommendation": "Enable secure desktop prompting after validation.",
+                },
+                {
+                    "Id": "WIN-PS-001",
+                    "Severity": "Medium",
+                    "Area": "PowerShell logging",
+                    "Title": "PowerShell script block logging is not enabled by policy",
+                    "Evidence": "EnableScriptBlockLogging=0",
+                    "Recommendation": "Validate PowerShell logging coverage.",
+                },
+                {
+                    "Id": "WIN-PS-002",
+                    "Severity": "Medium",
+                    "Area": "PowerShell logging",
+                    "Title": "PowerShell transcription is not enabled by policy",
+                    "Evidence": "EnableTranscripting=0",
+                    "Recommendation": "Validate protected transcription path.",
+                },
             ],
         }
 
@@ -1198,6 +1270,32 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
         self.assertIs(firewall["evidence"]["firewall_enabled"], False)
         self.assertEqual(firewall["evidence"]["default_inbound_action"], "Allow")
         self.assertIn("not a claim of internet exposure", firewall["evidence"]["risk_explanation"])
+
+        defender = by_id["HOST-WIN-WIN-DEF-002"]
+        self.assertEqual(defender["evidence"]["control_family"], "Endpoint protection baseline")
+        self.assertFalse(defender["evidence"]["defender_realtime_protection_enabled"])
+        self.assertIn("IoavProtectionEnabled", defender["evidence"]["disabled_defender_components"])
+        self.assertIn("approved third-party EDR", defender["evidence"]["risk_explanation"])
+
+        defender_policy = by_id["HOST-WIN-WIN-DEF-003"]
+        self.assertEqual(defender_policy["evidence"]["setting_key"], "DefenderDisableAntiSpywarePolicy")
+        self.assertEqual(defender_policy["evidence"]["current_value"], 1)
+        self.assertIn("approved endpoint protection", defender_policy["evidence"]["summary"])
+
+        uac = by_id["HOST-WIN-WIN-UAC-001"]
+        self.assertEqual(uac["evidence"]["control_family"], "Windows privilege control baseline")
+        self.assertEqual(uac["evidence"]["registry_name"], "EnableLUA")
+        self.assertEqual(uac["evidence"]["current_value"], 0)
+        self.assertIn("legacy application", uac["evidence"]["customer_question"])
+
+        powershell = by_id["HOST-WIN-WIN-PS-001"]
+        self.assertEqual(powershell["evidence"]["control_family"], "PowerShell logging baseline")
+        self.assertEqual(powershell["evidence"]["policy_name"], "PowerShell Script Block Logging")
+        self.assertEqual(powershell["evidence"]["current_value"], 0)
+        self.assertIn("centrally", powershell["evidence"]["customer_question"])
+
+        transcription = by_id["HOST-WIN-WIN-PS-002"]
+        self.assertIn("sensitive command content", transcription["evidence"]["data_sensitivity_note"])
 
     def test_windows_samples_do_not_include_sensitive_or_customer_looking_data(self):
         blocked_fragments = [

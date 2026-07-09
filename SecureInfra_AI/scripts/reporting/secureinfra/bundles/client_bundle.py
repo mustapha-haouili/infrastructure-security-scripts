@@ -872,7 +872,142 @@ def host_security_context_evidence(row: dict[str, Any], data: dict[str, Any], ev
         return host_winrm_baseline_context(row, data, evidence, finding_id)
     if finding_id.startswith("WIN-FW-"):
         return host_firewall_baseline_context(row, data, evidence, finding_id)
+    if finding_id.startswith("WIN-DEF-"):
+        return host_defender_baseline_context(row, data, evidence, finding_id)
+    if finding_id.startswith("WIN-UAC-"):
+        return host_uac_baseline_context(row, data, evidence, finding_id)
+    if finding_id.startswith("WIN-PS-"):
+        return host_powershell_logging_context(row, data, evidence, finding_id)
     return {}
+
+
+def host_defender_baseline_context(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any], finding_id: str) -> dict[str, Any]:
+    defender = as_dict(data.get("Defender"))
+    core = as_dict(data.get("CoreSettings"))
+    disabled_components = []
+    for component in ["AMServiceEnabled", "AntivirusEnabled", "RealTimeProtectionEnabled", "BehaviorMonitorEnabled", "IoavProtectionEnabled", "NISEnabled"]:
+        if component in defender and not bool(defender.get(component)):
+            disabled_components.append(component)
+
+    setting_key = ""
+    current_value: Any = ""
+    expected_value = "Enabled or approved managed EDR replacement"
+    if finding_id == "WIN-DEF-001":
+        setting_key = "Get-MpComputerStatus"
+        current_value = "Unavailable"
+        summary = "Microsoft Defender status could not be collected and endpoint protection health requires validation."
+    elif finding_id == "WIN-DEF-003":
+        setting_key = "DefenderDisableAntiSpywarePolicy"
+        current_value = core.get("DefenderDisableAntiSpywarePolicy", "")
+        expected_value = "0 / Not configured unless an approved EDR owns this control"
+        summary = "Microsoft Defender Antivirus is disabled by policy and requires approved endpoint protection ownership validation."
+    else:
+        setting_key = "DefenderProtectionComponents"
+        current_value = ", ".join(disabled_components) if disabled_components else str(first_value(row, ["Evidence"], "") or evidence.get("evidence") or "")
+        summary = "Microsoft Defender protection components are disabled or unhealthy and require endpoint protection validation."
+
+    return {
+        "baseline_control_id": finding_id,
+        "control_family": "Endpoint protection baseline",
+        "endpoint_protection_product": "Microsoft Defender or approved EDR",
+        "setting_key": setting_key,
+        "current_value": current_value,
+        "expected_value": expected_value,
+        "defender_am_service_enabled": defender.get("AMServiceEnabled", ""),
+        "defender_antivirus_enabled": defender.get("AntivirusEnabled", ""),
+        "defender_realtime_protection_enabled": defender.get("RealTimeProtectionEnabled", ""),
+        "defender_behavior_monitor_enabled": defender.get("BehaviorMonitorEnabled", ""),
+        "defender_ioav_protection_enabled": defender.get("IoavProtectionEnabled", ""),
+        "defender_signature_last_updated": defender.get("AntivirusSignatureLastUpdated", ""),
+        "disabled_defender_components": disabled_components,
+        "summary": summary,
+        "risk_explanation": "Endpoint protection findings can indicate missing preventive controls or an approved third-party EDR replacement that must be documented with management ownership and current health evidence.",
+        "customer_question": "Which endpoint protection platform owns this host, is it centrally managed, and was the current protection state intentionally approved?",
+        "safe_next_step": "Validate endpoint protection policy, EDR ownership, host assignment, and last healthy check-in before changing Defender or equivalent controls.",
+    }
+
+
+def host_uac_baseline_context(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any], finding_id: str) -> dict[str, Any]:
+    core = as_dict(data.get("CoreSettings"))
+    mapping = {
+        "WIN-UAC-001": {
+            "setting_name": "User Account Control",
+            "setting_key": "UacEnabled",
+            "registry_name": "EnableLUA",
+            "current_value": core.get("UacEnabled", ""),
+            "expected_value": "1 / Enabled",
+        },
+        "WIN-UAC-002": {
+            "setting_name": "Administrator elevation prompt behavior",
+            "setting_key": "UacConsentPromptBehaviorAdmin",
+            "registry_name": "ConsentPromptBehaviorAdmin",
+            "current_value": core.get("UacConsentPromptBehaviorAdmin", ""),
+            "expected_value": "1 or 2 / Secure desktop credential or consent prompt",
+        },
+        "WIN-UAC-003": {
+            "setting_name": "UAC secure desktop prompting",
+            "setting_key": "UacPromptOnSecureDesktop",
+            "registry_name": "PromptOnSecureDesktop",
+            "current_value": core.get("UacPromptOnSecureDesktop", ""),
+            "expected_value": "1 / Enabled",
+        },
+    }
+    item = mapping.get(finding_id, {})
+    setting_name = str(item.get("setting_name") or "UAC baseline control")
+    return {
+        "baseline_control_id": finding_id,
+        "control_family": "Windows privilege control baseline",
+        "privilege_control": "User Account Control",
+        "setting_name": setting_name,
+        "setting_key": item.get("setting_key", ""),
+        "registry_name": item.get("registry_name", ""),
+        "current_value": item.get("current_value", ""),
+        "expected_value": item.get("expected_value", ""),
+        "summary": f"{setting_name} is not aligned with the expected Windows privilege-control baseline and requires application dependency validation.",
+        "risk_explanation": "Weak UAC settings can reduce Windows privilege boundaries and make elevation prompts easier to bypass, spoof, or miss during user-session compromise.",
+        "customer_question": "Is there a documented legacy application, remote-support, or managed elevation workflow that requires this UAC configuration?",
+        "safe_next_step": "Validate application compatibility, support workflow, user impact, and change window before changing UAC policy.",
+    }
+
+
+def host_powershell_logging_context(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any], finding_id: str) -> dict[str, Any]:
+    ps_logging = as_dict(data.get("PowerShellLogging"))
+    mapping = {
+        "WIN-PS-001": {
+            "policy_name": "PowerShell Script Block Logging",
+            "setting_key": "ScriptBlockLoggingEnabled",
+            "registry_name": "EnableScriptBlockLogging",
+            "current_value": ps_logging.get("ScriptBlockLoggingEnabled", ""),
+            "expected_value": "1 / Enabled",
+            "data_sensitivity_note": "Script block logging records executed PowerShell content and should be forwarded to protected central logging with retention and access controls.",
+        },
+        "WIN-PS-002": {
+            "policy_name": "PowerShell Transcription",
+            "setting_key": "TranscriptionEnabled",
+            "registry_name": "EnableTranscripting",
+            "current_value": ps_logging.get("TranscriptionEnabled", ""),
+            "expected_value": "1 / Enabled after protected transcript path approval",
+            "data_sensitivity_note": "PowerShell transcripts can contain sensitive command content; enable only with a protected transcript path, restricted access, and retention rules.",
+        },
+    }
+    item = mapping.get(finding_id, {})
+    policy_name = str(item.get("policy_name") or "PowerShell logging policy")
+    return {
+        "baseline_control_id": finding_id,
+        "control_family": "PowerShell logging baseline",
+        "logging_channel": "PowerShell",
+        "policy_name": policy_name,
+        "setting_key": item.get("setting_key", ""),
+        "registry_name": item.get("registry_name", ""),
+        "current_value": item.get("current_value", ""),
+        "expected_value": item.get("expected_value", ""),
+        "policy_values": ps_logging,
+        "summary": f"{policy_name} is not enabled by policy and requires detection and logging coverage validation.",
+        "risk_explanation": "Limited PowerShell logging can reduce visibility into administrative misuse, malware execution, and post-compromise activity. Logging must be balanced with sensitive-data handling requirements.",
+        "customer_question": "How is PowerShell activity monitored centrally, and what protected log collection or alternate EDR telemetry covers this host?",
+        "safe_next_step": "Validate central log collection, retention, sensitive-data handling, and EDR telemetry before enabling or changing PowerShell logging policy.",
+        "data_sensitivity_note": item.get("data_sensitivity_note", ""),
+    }
 
 
 def host_smb_baseline_context(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any], finding_id: str) -> dict[str, Any]:
