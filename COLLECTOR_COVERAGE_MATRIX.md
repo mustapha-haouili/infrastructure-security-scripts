@@ -57,7 +57,7 @@ Linux host
 | `scripts/windows/server/Get-WindowsServerSecurityInventory.ps1` | Auto | `Server` / `All` | `server/windows-server-security.json`, `.csv`, `.md` | Yes | Server services, shares, firewall, SMB/RDP/WinRM, and configuration evidence. |
 | `scripts/windows/server/Clear-RDPUserProfileCache.ps1` | Auto dry-run/report-only | `Server` / `All` | `server/rdp-profile-cache-cleanup.json` | Yes | Report-only cache cleanup candidate evidence; no deletion in client collection. |
 | `scripts/windows/workstation/Get-WindowsWorkstationSecurityInventory.ps1` | Auto | `Workstation` / `All` | `workstation/windows-workstation-security.json`, `.csv`, `.md` | Yes | Workstation baseline, local configuration, and exposure evidence. |
-| `scripts/windows/network/Get-WindowsNetworkExposureAudit.ps1` | Auto | `Network` / `All` | `network/windows-network-exposure.json`, `.csv`, `.md` | Yes | Local listening service and firewall exposure evidence. Does not prove internet exposure. |
+| `scripts/windows/network/Get-WindowsNetworkExposureAudit.ps1` | Auto | `Network` / `All` | `network/windows-network-exposure.json`, `.csv`, `.md` | Yes | Local TCP/UDP listener, process, Windows service, bind scope, firewall, and network profile evidence. Does not prove internet exposure. |
 | `scripts/windows/backup/Get-WindowsBackupReadinessAudit.ps1` | Auto | `Backup` / `All` | `backup/backup-readiness.json`, `.csv`, `.md` | Yes | Metadata-only backup readiness evidence. |
 
 ## Linux collectors

@@ -60,9 +60,20 @@ function New-NetworkFinding {
         [Parameter(Mandatory = $true)][string]$Severity,
         [Parameter(Mandatory = $true)][string]$Title,
         [Parameter(Mandatory = $true)][string]$Evidence,
-        [Parameter(Mandatory = $true)][string]$Recommendation
+        [Parameter(Mandatory = $true)][string]$Recommendation,
+        [string]$Protocol = "",
+        [AllowNull()][object]$LocalPort = $null,
+        [string]$LocalAddress = "",
+        [string]$BindScope = "",
+        [AllowNull()][object]$OwningProcess = $null,
+        [string]$ProcessName = "",
+        [string]$ProcessPath = "",
+        [string]$ServiceName = "",
+        [string]$ServiceDisplayName = "",
+        [string]$ServiceStartMode = "",
+        [string]$ServiceState = ""
     )
-    [pscustomobject][ordered]@{
+    $item = [ordered]@{
         FindingType          = $FindingType
         Severity             = $Severity
         Title                = $Title
@@ -71,17 +82,118 @@ function New-NetworkFinding {
         RequiresOwnerReview  = $true
         SafeToAutoRemediate  = $false
     }
+    if (-not [string]::IsNullOrWhiteSpace($Protocol)) { $item["Protocol"] = $Protocol }
+    if ($null -ne $LocalPort -and "$LocalPort" -ne "") { $item["LocalPort"] = [int]$LocalPort }
+    if (-not [string]::IsNullOrWhiteSpace($LocalAddress)) { $item["LocalAddress"] = $LocalAddress }
+    if (-not [string]::IsNullOrWhiteSpace($BindScope)) { $item["BindScope"] = $BindScope }
+    if ($null -ne $OwningProcess -and "$OwningProcess" -ne "") { $item["OwningProcess"] = $OwningProcess }
+    if (-not [string]::IsNullOrWhiteSpace($ProcessName)) { $item["ProcessName"] = $ProcessName }
+    if (-not [string]::IsNullOrWhiteSpace($ProcessPath)) { $item["ProcessPath"] = $ProcessPath }
+    if (-not [string]::IsNullOrWhiteSpace($ServiceName)) { $item["ServiceName"] = $ServiceName }
+    if (-not [string]::IsNullOrWhiteSpace($ServiceDisplayName)) { $item["ServiceDisplayName"] = $ServiceDisplayName }
+    if (-not [string]::IsNullOrWhiteSpace($ServiceStartMode)) { $item["ServiceStartMode"] = $ServiceStartMode }
+    if (-not [string]::IsNullOrWhiteSpace($ServiceState)) { $item["ServiceState"] = $ServiceState }
+    [pscustomobject]$item
 }
 
 function Get-ListenerSeverity {
-    param([int]$Port)
-    if ($Port -in @(3389, 5985, 5986, 445, 135, 139, 1433, 3306, 5432)) {
+    param(
+        [int]$Port,
+        [string]$Protocol = "TCP"
+    )
+    if ($Protocol.ToUpperInvariant() -eq "TCP" -and $Port -in @(3389, 5985, 5986, 445, 135, 139, 1433, 3306, 5432)) {
         return "High"
     }
-    if ($Port -in @(21, 23, 25, 53, 389, 636, 8080, 8443, 9200, 9300)) {
+    if ($Protocol.ToUpperInvariant() -eq "UDP" -and $Port -in @(53, 88, 137, 138, 500, 4500)) {
+        return "Medium"
+    }
+    if ($Port -in @(21, 23, 25, 53, 389, 636, 8080, 8443, 9200, 9300, 161, 162)) {
         return "Medium"
     }
     return "Info"
+}
+
+function Get-BindScope {
+    param([AllowNull()][object]$Address)
+    $text = "$Address".Trim()
+    if ($text -in @("0.0.0.0", "::", "::0", "*")) {
+        return "All interfaces"
+    }
+    if ($text -like "127.*" -or $text -eq "::1" -or $text -eq "localhost") {
+        return "Loopback only"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($text)) {
+        return "Specific interface"
+    }
+    return "Not collected"
+}
+
+function Get-ProcessLookup {
+    $lookup = @{}
+    $processRows = @(Invoke-Safe -ScriptBlock {
+            Get-CimInstance Win32_Process -ErrorAction Stop | ForEach-Object {
+                [pscustomobject][ordered]@{
+                    ProcessId       = [int]$_.ProcessId
+                    Name            = "$($_.Name)"
+                    ExecutablePath  = "$($_.ExecutablePath)"
+                    CommandLine     = "$($_.CommandLine)"
+                    ParentProcessId = $_.ParentProcessId
+                }
+            }
+        } -Default @())
+    foreach ($process in $processRows) {
+        $lookup["$($process.ProcessId)"] = $process
+    }
+    return $lookup
+}
+
+function Get-ServiceLookupByProcessId {
+    $lookup = @{}
+    $services = @(Invoke-Safe -ScriptBlock {
+            Get-CimInstance Win32_Service -ErrorAction Stop | Where-Object { $_.ProcessId -gt 0 } | ForEach-Object {
+                [pscustomobject][ordered]@{
+                    Name        = "$($_.Name)"
+                    DisplayName = "$($_.DisplayName)"
+                    ProcessId   = [int]$_.ProcessId
+                    State       = "$($_.State)"
+                    StartMode   = "$($_.StartMode)"
+                    PathName    = "$($_.PathName)"
+                }
+            }
+        } -Default @())
+    foreach ($service in $services) {
+        $pid = "$($service.ProcessId)"
+        if (-not $lookup.ContainsKey($pid)) {
+            $lookup[$pid] = @()
+        }
+        $lookup[$pid] = @($lookup[$pid]) + @($service)
+    }
+    return $lookup
+}
+
+function Get-ServiceHint {
+    param(
+        [hashtable]$ServiceLookup,
+        [AllowNull()][object]$ProcessId
+    )
+    $services = @()
+    if ($null -ne $ProcessId -and $ServiceLookup.ContainsKey("$ProcessId")) {
+        $services = @($ServiceLookup["$ProcessId"])
+    }
+    if ($services.Count -eq 0) {
+        return [pscustomobject][ordered]@{
+            ServiceName        = ""
+            ServiceDisplayName = ""
+            ServiceStartMode   = ""
+            ServiceState       = ""
+        }
+    }
+    return [pscustomobject][ordered]@{
+        ServiceName        = (($services | ForEach-Object { $_.Name }) -join ",")
+        ServiceDisplayName = (($services | ForEach-Object { $_.DisplayName }) -join ",")
+        ServiceStartMode   = (($services | ForEach-Object { $_.StartMode } | Select-Object -Unique) -join ",")
+        ServiceState       = (($services | ForEach-Object { $_.State } | Select-Object -Unique) -join ",")
+    }
 }
 
 function Test-WildcardListener {
@@ -125,7 +237,9 @@ function Write-MarkdownReport {
     Add-MarkdownLine -Lines $lines -Text "## Summary"
     Add-MarkdownLine -Lines $lines
     Add-MarkdownLine -Lines $lines -Text "- Listening TCP ports: $($Report.Summary.ListeningTcpPortCount)"
+    Add-MarkdownLine -Lines $lines -Text "- Listening UDP ports: $($Report.Summary.ListeningUdpPortCount)"
     Add-MarkdownLine -Lines $lines -Text "- Risky listeners: $($Report.Summary.RiskyListenerCount)"
+    Add-MarkdownLine -Lines $lines -Text "- Listeners mapped to Windows services: $($Report.Summary.ServiceMappedListenerCount)"
     Add-MarkdownLine -Lines $lines -Text "- Disabled firewall profiles: $($Report.Summary.DisabledFirewallProfileCount)"
     Add-MarkdownLine -Lines $lines -Text "- Public network profiles: $($Report.Summary.PublicNetworkProfileCount)"
     Add-MarkdownLine -Lines $lines -Text "- Finding count: $($Report.Summary.FindingCount)"
@@ -233,14 +347,51 @@ $networkProfiles = @(Invoke-Safe -ScriptBlock {
         }
     } -Default @())
 
+$processLookup = Get-ProcessLookup
+$serviceLookup = Get-ServiceLookupByProcessId
+
 $listeningTcpPorts = @(Invoke-Safe -ScriptBlock {
         Get-NetTCPConnection -State Listen -ErrorAction Stop | ForEach-Object {
             $owningProcess = $_.OwningProcess
+            $processDetails = $processLookup["$owningProcess"]
+            $serviceHint = Get-ServiceHint -ServiceLookup $serviceLookup -ProcessId $owningProcess
+            $processName = if ($processDetails -and $processDetails.Name) { "$($processDetails.Name)" } else { Invoke-Safe -ScriptBlock { (Get-Process -Id $owningProcess -ErrorAction Stop).ProcessName } -Default "unknown" }
             [pscustomobject][ordered]@{
-                LocalAddress  = "$($_.LocalAddress)"
-                LocalPort     = [int]$_.LocalPort
-                OwningProcess = $owningProcess
-                ProcessName   = Invoke-Safe -ScriptBlock { (Get-Process -Id $owningProcess -ErrorAction Stop).ProcessName } -Default "unknown"
+                Protocol           = "TCP"
+                LocalAddress       = "$($_.LocalAddress)"
+                LocalPort          = [int]$_.LocalPort
+                BindScope          = Get-BindScope -Address $_.LocalAddress
+                OwningProcess      = $owningProcess
+                ProcessName        = $processName
+                ProcessPath        = if ($processDetails) { "$($processDetails.ExecutablePath)" } else { "" }
+                CommandLine        = if ($processDetails) { "$($processDetails.CommandLine)" } else { "" }
+                ServiceName        = $serviceHint.ServiceName
+                ServiceDisplayName = $serviceHint.ServiceDisplayName
+                ServiceStartMode   = $serviceHint.ServiceStartMode
+                ServiceState       = $serviceHint.ServiceState
+            }
+        }
+    } -Default @())
+
+$listeningUdpPorts = @(Invoke-Safe -ScriptBlock {
+        Get-NetUDPEndpoint -ErrorAction Stop | ForEach-Object {
+            $owningProcess = $_.OwningProcess
+            $processDetails = $processLookup["$owningProcess"]
+            $serviceHint = Get-ServiceHint -ServiceLookup $serviceLookup -ProcessId $owningProcess
+            $processName = if ($processDetails -and $processDetails.Name) { "$($processDetails.Name)" } else { Invoke-Safe -ScriptBlock { (Get-Process -Id $owningProcess -ErrorAction Stop).ProcessName } -Default "unknown" }
+            [pscustomobject][ordered]@{
+                Protocol           = "UDP"
+                LocalAddress       = "$($_.LocalAddress)"
+                LocalPort          = [int]$_.LocalPort
+                BindScope          = Get-BindScope -Address $_.LocalAddress
+                OwningProcess      = $owningProcess
+                ProcessName        = $processName
+                ProcessPath        = if ($processDetails) { "$($processDetails.ExecutablePath)" } else { "" }
+                CommandLine        = if ($processDetails) { "$($processDetails.CommandLine)" } else { "" }
+                ServiceName        = $serviceHint.ServiceName
+                ServiceDisplayName = $serviceHint.ServiceDisplayName
+                ServiceStartMode   = $serviceHint.ServiceStartMode
+                ServiceState       = $serviceHint.ServiceState
             }
         }
     } -Default @())
@@ -263,14 +414,31 @@ foreach ($profile in $networkProfiles) {
 }
 
 $riskyListeners = @()
-foreach ($listener in $listeningTcpPorts) {
-    $severity = Get-ListenerSeverity -Port $listener.LocalPort
+foreach ($listener in @($listeningTcpPorts + $listeningUdpPorts)) {
+    $severity = Get-ListenerSeverity -Port $listener.LocalPort -Protocol $listener.Protocol
     if ($severity -eq "Info") {
         continue
     }
     $riskyListeners += $listener
     $wildcardText = if (Test-WildcardListener -Address $listener.LocalAddress) { " on all interfaces" } else { "" }
-    $findings.Add((New-NetworkFinding -FindingType "RiskyListeningPort" -Severity $severity -Title "Sensitive TCP port is listening" -Evidence "TCP $($listener.LocalPort) is listening$wildcardText by process $($listener.ProcessName)." -Recommendation "Confirm the listener is required and restricted by host and network firewall policy.")) | Out-Null
+    $serviceText = if (-not [string]::IsNullOrWhiteSpace($listener.ServiceName)) { " service $($listener.ServiceName)" } else { "" }
+    $findings.Add((New-NetworkFinding `
+        -FindingType "RiskyListeningPort" `
+        -Severity $severity `
+        -Title "Sensitive $($listener.Protocol) port is listening" `
+        -Evidence "$($listener.Protocol) $($listener.LocalPort) is listening$wildcardText by process $($listener.ProcessName)$serviceText." `
+        -Recommendation "Confirm the listener is required and restricted by host and network firewall policy." `
+        -Protocol $listener.Protocol `
+        -LocalPort $listener.LocalPort `
+        -LocalAddress $listener.LocalAddress `
+        -BindScope $listener.BindScope `
+        -OwningProcess $listener.OwningProcess `
+        -ProcessName $listener.ProcessName `
+        -ProcessPath $listener.ProcessPath `
+        -ServiceName $listener.ServiceName `
+        -ServiceDisplayName $listener.ServiceDisplayName `
+        -ServiceStartMode $listener.ServiceStartMode `
+        -ServiceState $listener.ServiceState)) | Out-Null
 }
 
 $severityCounts = [ordered]@{
@@ -294,7 +462,9 @@ $report = [pscustomobject][ordered]@{
         DisabledFirewallProfileCount = @($firewallProfiles | Where-Object { -not $_.Enabled }).Count
         PublicNetworkProfileCount    = @($networkProfiles | Where-Object { $_.NetworkCategory -eq "Public" }).Count
         ListeningTcpPortCount        = $listeningTcpPorts.Count
+        ListeningUdpPortCount        = $listeningUdpPorts.Count
         RiskyListenerCount           = @($riskyListeners).Count
+        ServiceMappedListenerCount   = @(@($listeningTcpPorts + $listeningUdpPorts) | Where-Object { -not [string]::IsNullOrWhiteSpace($_.ServiceName) }).Count
         FindingCount                 = $findings.Count
         SeverityCounts               = $severityCounts
     }
@@ -305,6 +475,7 @@ $report = [pscustomobject][ordered]@{
     FirewallProfiles     = @($firewallProfiles)
     NetworkProfiles      = @($networkProfiles)
     ListeningTcpPorts    = @($listeningTcpPorts)
+    ListeningUdpPorts    = @($listeningUdpPorts)
     Findings             = @($findings.ToArray())
     ReportErrors         = @($reportErrors.ToArray())
     Notes                = @(
@@ -320,5 +491,6 @@ Write-MarkdownReport -Path $markdownPath -Report $report
 if (-not $Quiet) {
     Write-Host "Windows network exposure report written to: $jsonPath"
     Write-Host "Listening TCP ports: $($listeningTcpPorts.Count)"
+    Write-Host "Listening UDP ports: $($listeningUdpPorts.Count)"
     Write-Host "Findings: $($findings.Count)"
 }

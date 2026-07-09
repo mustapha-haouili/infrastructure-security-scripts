@@ -253,6 +253,94 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
         self.assertEqual(by_port[49152]["evidence"]["bind_scope"], "Loopback only")
         self.assertTrue(all(finding["safe_to_auto_remediate"] is False for finding in report["findings"]))
 
+
+    def test_windows_network_structured_tcp_udp_service_metadata_is_normalized(self):
+        data = {
+            "ToolName": "Get-WindowsNetworkExposureAudit",
+            "ReportType": "windows-network-exposure",
+            "GeneratedAtUtc": "2026-06-15T09:00:00Z",
+            "ComputerName": "LAB-SRV01",
+            "Summary": {"FindingCount": 2, "ListeningTcpPortCount": 1, "ListeningUdpPortCount": 1},
+            "ListeningTcpPorts": [
+                {
+                    "Protocol": "TCP",
+                    "LocalAddress": "0.0.0.0",
+                    "LocalPort": 5985,
+                    "BindScope": "All interfaces",
+                    "OwningProcess": 4,
+                    "ProcessName": "svchost.exe",
+                    "ProcessPath": r"C:\Windows\System32\svchost.exe",
+                    "ServiceName": "WinRM",
+                    "ServiceDisplayName": "Windows Remote Management",
+                    "ServiceStartMode": "Auto",
+                    "ServiceState": "Running",
+                }
+            ],
+            "ListeningUdpPorts": [
+                {
+                    "Protocol": "UDP",
+                    "LocalAddress": "0.0.0.0",
+                    "LocalPort": 53,
+                    "BindScope": "All interfaces",
+                    "OwningProcess": 2222,
+                    "ProcessName": "dns.exe",
+                    "ServiceName": "DNS",
+                    "ServiceDisplayName": "DNS Server",
+                }
+            ],
+            "Findings": [
+                {
+                    "FindingType": "RiskyListeningPort",
+                    "Severity": "High",
+                    "Title": "Sensitive TCP port is listening",
+                    "Protocol": "TCP",
+                    "LocalPort": 5985,
+                    "LocalAddress": "0.0.0.0",
+                    "BindScope": "All interfaces",
+                    "ProcessName": "svchost.exe",
+                    "ProcessPath": r"C:\Windows\System32\svchost.exe",
+                    "ServiceName": "WinRM",
+                    "ServiceDisplayName": "Windows Remote Management",
+                    "Evidence": "TCP 5985 is listening on all interfaces by process svchost.exe service WinRM.",
+                    "Recommendation": "Confirm the listener is required and restricted.",
+                },
+                {
+                    "FindingType": "RiskyListeningPort",
+                    "Severity": "Medium",
+                    "Title": "Sensitive UDP port is listening",
+                    "Protocol": "UDP",
+                    "LocalPort": 53,
+                    "LocalAddress": "0.0.0.0",
+                    "BindScope": "All interfaces",
+                    "ProcessName": "dns.exe",
+                    "ServiceName": "DNS",
+                    "ServiceDisplayName": "DNS Server",
+                    "Evidence": "UDP 53 is listening on all interfaces by process dns.exe service DNS.",
+                    "Recommendation": "Confirm the listener is required and restricted.",
+                },
+            ],
+        }
+
+        report = normalize_windows_network_exposure(data, "windows-network-exposure.json")
+        by_port = {finding["evidence"].get("port"): finding for finding in report["findings"]}
+
+        winrm = by_port[5985]
+        self.assertEqual(winrm["finding_id"], "NETWORK-EXPOSURE-RISKYLISTENINGPORT-TCP-5985")
+        self.assertEqual(winrm["evidence"]["protocol"], "TCP")
+        self.assertEqual(winrm["evidence"]["bind_scope"], "All interfaces")
+        self.assertEqual(winrm["evidence"]["service_name"], "WinRM")
+        self.assertEqual(winrm["evidence"]["service_display_name"], "Windows Remote Management")
+        self.assertEqual(winrm["evidence"]["process_path"], "svchost.exe")
+        self.assertIn("Actual reachability depends", winrm["evidence"]["bind_scope_explanation"])
+
+        dns = by_port[53]
+        self.assertEqual(dns["finding_id"], "NETWORK-EXPOSURE-RISKYLISTENINGPORT-UDP-53")
+        self.assertEqual(dns["evidence"]["protocol"], "UDP")
+        self.assertEqual(dns["evidence"]["service_name"], "DNS")
+        self.assertEqual(dns["evidence"]["common_name"], "Domain Name System")
+        self.assertFalse(dns["safe_to_auto_remediate"])
+        validate_normalized_report(report)
+
     def test_windows_network_listener_findings_deduplicate_broad_ipv4_ipv6_endpoints(self):
         data = {
             "ToolName": "Get-WindowsNetworkExposureAudit",

@@ -886,6 +886,9 @@ def network_port_context_evidence(row: dict[str, Any], data: dict[str, Any], evi
     listeners = matching_listeners(data, port, protocol, process_name(row))
     listener = listeners[0] if listeners else {}
     process = process_name(row) or str(listener.get("ProcessName") or listener.get("process_name") or "")
+    service_name = str(first_value(row, ["ServiceName", "Service"], "") or listener.get("ServiceName") or listener.get("service_name") or "").strip()
+    service_display_name = str(first_value(row, ["ServiceDisplayName"], "") or listener.get("ServiceDisplayName") or listener.get("service_display_name") or "").strip()
+    process_path = str(first_value(row, ["ProcessPath", "ExecutablePath"], "") or listener.get("ProcessPath") or listener.get("ExecutablePath") or "").strip()
     row_bind_address = str(
         first_value(row, ["LocalAddress", "BindAddress", "ListeningAddress"], "")
         or listener.get("LocalAddress")
@@ -917,6 +920,9 @@ def network_port_context_evidence(row: dict[str, Any], data: dict[str, Any], evi
         "protocol": protocol.upper(),
         "port": port,
         "process_name": process,
+        "service_name": service_name,
+        "service_display_name": service_display_name,
+        "process_path": process_path,
         "bind_address": bind_address,
         "bind_addresses": bind_addresses,
         "source_endpoints": source_endpoints,
