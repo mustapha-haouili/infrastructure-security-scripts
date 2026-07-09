@@ -86,6 +86,9 @@ Expected Linux files:
 
 ```text
 linux/linux-security-summary.json
+linux/linux-network-exposure-summary.json
+linux/linux-log-audit-summary.json
+linux/linux-service-inventory-summary.json
 linux/linux-inventory.json
 linux/linux-security-audit-<host>-<timestamp>.txt
 linux/linux-hardening-plan-<host>-<timestamp>.log
@@ -94,7 +97,7 @@ backup/backup-readiness-findings.csv
 logs/*.log
 ```
 
-`linux/linux-security-summary.json` is the normalized input for Linux host findings. It should contain:
+`linux/linux-security-summary.json`, `linux/linux-network-exposure-summary.json`, `linux/linux-log-audit-summary.json`, and `linux/linux-service-inventory-summary.json` are normalized inputs for Linux host findings. The network exposure file is local listener/firewall evidence only; it is not an active subnet scan. It should contain:
 
 ```json
 {

@@ -40,6 +40,7 @@ CLIENT_FILE_DEFINITIONS: dict[str, dict[str, str]] = {
     "linux_security_summary": {"scope": "Linux", "path": "linux/linux-security-summary.json"},
     "linux_network_exposure_summary": {"scope": "Linux", "path": "linux/linux-network-exposure-summary.json"},
     "linux_log_audit_summary": {"scope": "Linux", "path": "linux/linux-log-audit-summary.json"},
+    "linux_service_inventory_summary": {"scope": "Linux", "path": "linux/linux-service-inventory-summary.json"},
     "linux_inventory": {"scope": "Linux", "path": "linux/linux-inventory.json"},
 }
 FINDING_SOURCE_KEYS = {
@@ -57,6 +58,7 @@ FINDING_SOURCE_KEYS = {
     "linux_security_summary",
     "linux_network_exposure_summary",
     "linux_log_audit_summary",
+    "linux_service_inventory_summary",
 }
 SUPPORTED_SCOPES = ["AD", "Host", "Server", "Workstation", "Network", "Backup", "Linux"]
 DISPLAY_NAME_BY_KEY = {
@@ -76,6 +78,7 @@ DISPLAY_NAME_BY_KEY = {
     "linux_security_summary": "Linux security audit summary",
     "linux_network_exposure_summary": "Linux network exposure audit summary",
     "linux_log_audit_summary": "Linux log and audit coverage summary",
+    "linux_service_inventory_summary": "Linux service inventory summary",
     "linux_inventory": "Linux host inventory",
 }
 PREFIX_BY_KEY = {
@@ -268,6 +271,10 @@ def discover_client_bundle(input_dir: str | Path) -> dict[str, Path]:
             log_candidates = sorted(linux_dir.glob("linux-log-audit-*.summary.json")) + sorted(linux_dir.glob("*linux-log*.summary.json"))
             if log_candidates:
                 detected["linux_log_audit_summary"] = log_candidates[0]
+        if "linux_service_inventory_summary" not in detected:
+            service_candidates = sorted(linux_dir.glob("linux-service-inventory-audit-*.summary.json")) + sorted(linux_dir.glob("*linux-service*.summary.json"))
+            if service_candidates:
+                detected["linux_service_inventory_summary"] = service_candidates[0]
         if "linux_inventory" not in detected:
             inventory_candidates = sorted(linux_dir.glob("linux-inventory-*.json"))
             if inventory_candidates:
@@ -434,7 +441,7 @@ def load_optional_json(
 
 
 def normalize_client_source_file(key: str, data: dict[str, Any], source_file: Path) -> list[dict[str, Any]]:
-    if key in {"linux_security_summary", "linux_network_exposure_summary", "linux_log_audit_summary"}:
+    if key in {"linux_security_summary", "linux_network_exposure_summary", "linux_log_audit_summary", "linux_service_inventory_summary"}:
         return normalize_linux_security_findings(data, source_file, source_script_name=linux_source_script_for_key(key, data))
     if key == "host_windows_events_summary":
         rows = as_records(as_dict(data.get("InvestigationSummary")).get("Findings"))
@@ -454,6 +461,7 @@ def linux_source_script_for_key(key: str, data: dict[str, Any]) -> str:
         "linux_security_summary": "linux-security-audit.sh",
         "linux_network_exposure_summary": "linux-network-exposure-audit.sh",
         "linux_log_audit_summary": "linux-log-audit.sh",
+        "linux_service_inventory_summary": "linux-service-inventory-audit.sh",
     }.get(key, "linux-security-audit.sh")
 
 def normalize_source_rows(key: str, data: dict[str, Any], rows: list[dict[str, Any]], source_file: Path) -> list[dict[str, Any]]:

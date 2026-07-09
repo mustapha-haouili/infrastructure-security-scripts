@@ -29,6 +29,7 @@ reports/secureinfra-linux/
       linux-security-summary.json
       linux-network-exposure-summary.json
       linux-log-audit-summary.json
+      linux-service-inventory-summary.json
       linux-inventory.json
       linux-security-audit-<host>-<timestamp>.txt
       linux-hardening-plan-<host>-<timestamp>.log
@@ -102,4 +103,4 @@ python scripts/reporting/validate_schema.py \
 
 ## Local network and log coverage
 
-`Start-SecureInfraLinuxCollection.sh` also runs `linux-network-exposure-audit.sh` and `linux-log-audit.sh` by default. The network collector inventories local listening sockets, bind scope, service names, process names where available, and host firewall evidence. It does not run active network scans. The log collector packages counts and coverage metadata only, not raw authentication log lines.
+`Start-SecureInfraLinuxCollection.sh` also runs `linux-network-exposure-audit.sh`, `linux-log-audit.sh`, and `linux-service-inventory-audit.sh` by default. The network collector inventories local listening sockets, bind scope, service names, process names where available, and host firewall evidence. It does not run active network scans. The log collector packages counts and coverage metadata only, not raw authentication log lines. The service inventory collector records local service/startup metadata and does not change service state.

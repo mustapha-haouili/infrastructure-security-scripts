@@ -25,10 +25,13 @@ Public tests should cover:
 
 - collector launch behavior,
 - bundle discovery,
+- input bundle preflight validation,
 - JSON/CSV loading,
 - AD normalizers,
 - Windows normalizers,
 - backup readiness normalizer,
+- Linux collection launcher contract,
+- Linux security audit normalizer,
 - network exposure context,
 - risk rule behavior,
 - control mapping,
@@ -64,7 +67,8 @@ Use safe synthetic fixtures only. Fixtures should cover:
 - Windows network exposure,
 - Group Policy health,
 - backup readiness,
-- planned Linux/cloud examples.
+- Linux launcher bundle examples,
+- Linux audit examples and planned cloud/container examples.
 
 ## Quality gate expectation
 
@@ -87,6 +91,23 @@ For every change, provide:
 - `git diff --stat`,
 - no commit unless explicitly requested,
 - no push unless explicitly requested.
+
+## Input bundle validation
+
+Before running the analyzer on client ZIPs or expanded collection folders, use:
+
+```powershell
+python .\scripts\reporting\validate_bundle.py --input <bundle.zip-or-folder> --strict-safety
+```
+
+For a folder containing multiple returned customer bundles, use:
+
+```powershell
+python .\scripts\reporting\validate_bundle.py --input <bundle-folder> --expected-bundle-count <n> --strict-safety
+```
+
+The public quality gate includes `tests.test_validate_bundle` and a bundle
+validation smoke test so `validate_bundle.py` is not an orphan script.
 
 ## Normalized schema validation
 
@@ -125,10 +146,16 @@ Full public check:
 .\quality-gate.ps1
 ```
 
-The gate verifies key script integration contracts, runs public tests, generates
-a synthetic sample `normalized-report.json`, validates it with
+The gate verifies key script integration contracts, runs public tests, runs an
+input bundle validation smoke test, generates a synthetic sample
+`normalized-report.json`, validates it with
 `scripts\reporting\validate_schema.py --strict-safety`, and checks git status
 for generated or customer-like artifacts that should not be committed.
 
 If a new production script is added, the quality gate or tests must prove that
 it is either called automatically or documented as manual-only.
+
+
+## Linux coverage checks
+
+Linux tests must cover the launcher, `linux-security-audit.sh`, `linux-network-exposure-audit.sh`, `linux-log-audit.sh`, `linux-service-inventory-audit.sh`, `linux-service-inventory-audit.sh`, bundle validation, and client-bundle normalization for all Linux summary JSON files.

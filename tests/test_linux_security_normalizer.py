@@ -122,6 +122,133 @@ class LinuxSecurityNormalizerTests(unittest.TestCase):
             self.assertIn("Linux Patch Management", categories)
             self.assertIn("Linux Filesystem Permissions", categories)
 
+    def test_client_bundle_normalizes_linux_network_and_log_summaries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle_dir = Path(tmp) / "secureinfra-linux-bundle-linux-app01-20260709-120000"
+            linux_dir = bundle_dir / "linux"
+            linux_dir.mkdir(parents=True)
+            (bundle_dir / "client-info.json").write_text(json.dumps({"ComputerName": "linux-app01"}), encoding="utf-8")
+            (bundle_dir / "collection-summary.json").write_text(
+                json.dumps({"GeneratedAtUtc": "2026-07-09T12:00:00Z", "ScopeResolved": ["Linux", "Network", "Logging"]}),
+                encoding="utf-8",
+            )
+            (linux_dir / "linux-network-exposure-summary.json").write_text(
+                json.dumps(
+                    {
+                        "host": "linux-app01",
+                        "generated_at_utc": "2026-07-09T12:00:00Z",
+                        "source_script": "linux-network-exposure-audit.sh",
+                        "collector_type": "linux-network-exposure",
+                        "root_context": True,
+                        "quick_mode": False,
+                        "finding_counts": {"high": 1, "info": 1},
+                        "findings": [
+                            {
+                                "id": "LINUX-NETWORK-TCP-6379-ABC12345",
+                                "severity": "high",
+                                "title": "Linux listening service review for TCP 6379 / Redis",
+                                "recommendation": "Validate owner and allowed source networks.",
+                                "evidence": "TCP 6379 / Redis; bind scope: all interfaces; local address: 0.0.0.0; process: redis. This is local bind evidence, not proof of internet reachability.",
+                                "affected_object": "TCP 6379 / Redis",
+                                "protocol": "TCP",
+                                "port": 6379,
+                                "service_name": "Redis",
+                                "bind_scope": "all interfaces",
+                                "local_address": "0.0.0.0",
+                                "process_name": "redis-server",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (linux_dir / "linux-log-audit-summary.json").write_text(
+                json.dumps(
+                    {
+                        "host": "linux-app01",
+                        "generated_at_utc": "2026-07-09T12:00:00Z",
+                        "source_script": "linux-log-audit.sh",
+                        "collector_type": "linux-log-audit",
+                        "root_context": True,
+                        "quick_mode": False,
+                        "finding_counts": {"info": 1},
+                        "findings": [
+                            {
+                                "id": "LINUX-LOG-WAZUH-COVERAGE-001",
+                                "severity": "info",
+                                "title": "Wazuh or OSSEC local agent was not detected",
+                                "recommendation": "Validate central telemetry coverage.",
+                                "evidence": "No Wazuh local agent detected.",
+                                "affected_object": "linux-app01: Wazuh/OSSEC telemetry coverage",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            normalized = normalize_client_bundle(bundle_dir)
+            validate_normalized_report(normalized)
+
+            self.assertEqual(normalized["summary"]["scope_finding_counts"]["Linux"], 2)
+            source_scripts = {finding["source_script"] for finding in normalized["findings"]}
+            self.assertIn("linux-network-exposure-audit.sh", source_scripts)
+            self.assertIn("linux-log-audit.sh", source_scripts)
+            network = next(item for item in normalized["findings"] if item["source_script"] == "linux-network-exposure-audit.sh")
+            self.assertEqual(network["finding_id"], "LINUX-NETWORK-TCP-6379-ABC12345")
+            self.assertEqual(network["category"], "Linux Network Security")
+            self.assertEqual(network["evidence"]["port"], 6379)
+
+
+    def test_client_bundle_normalizes_linux_service_inventory_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle_dir = Path(tmp) / "secureinfra-linux-bundle-linux-app01-20260709-120000"
+            linux_dir = bundle_dir / "linux"
+            linux_dir.mkdir(parents=True)
+            (bundle_dir / "client-info.json").write_text(json.dumps({"ComputerName": "linux-app01"}), encoding="utf-8")
+            (bundle_dir / "collection-summary.json").write_text(
+                json.dumps({"GeneratedAtUtc": "2026-07-09T12:00:00Z", "ScopeResolved": ["Linux", "Services"]}),
+                encoding="utf-8",
+            )
+            (linux_dir / "linux-service-inventory-summary.json").write_text(
+                json.dumps(
+                    {
+                        "host": "linux-app01",
+                        "generated_at_utc": "2026-07-09T12:00:00Z",
+                        "source_script": "linux-service-inventory-audit.sh",
+                        "collector_type": "linux-service-inventory",
+                        "root_context": True,
+                        "quick_mode": False,
+                        "finding_counts": {"medium": 1},
+                        "findings": [
+                            {
+                                "id": "LINUX-SERVICE-CUSTOM-ROOT-001",
+                                "severity": "medium",
+                                "title": "Enabled root service executes from a custom application path",
+                                "recommendation": "Validate service owner and least privilege.",
+                                "evidence": "custom-app.service -> /opt/custom-app/bin/server",
+                                "affected_object": "linux-app01: root service execution paths",
+                                "unit": "custom-app.service",
+                                "active_state": "active",
+                                "enabled_state": "enabled",
+                                "fragment_path": "/etc/systemd/system/custom-app.service",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            normalized = normalize_client_bundle(bundle_dir)
+            validate_normalized_report(normalized)
+
+            self.assertEqual(normalized["summary"]["scope_finding_counts"]["Linux"], 1)
+            finding = normalized["findings"][0]
+            self.assertEqual(finding["finding_id"], "LINUX-SERVICE-CUSTOM-ROOT-001")
+            self.assertEqual(finding["category"], "Linux Service Inventory")
+            self.assertEqual(finding["source_script"], "linux-service-inventory-audit.sh")
+            self.assertEqual(finding["evidence"]["unit"], "custom-app.service")
+
     def test_validate_bundle_accepts_linux_only_evidence_zip(self):
         with tempfile.TemporaryDirectory() as tmp:
             archive_path = Path(tmp) / "secureinfra-linux-evidence.zip"

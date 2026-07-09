@@ -89,6 +89,8 @@ def linux_source_script_name(data: dict[str, Any], source_file: Path) -> str:
         return "linux-network-exposure-audit.sh"
     if "log" in name:
         return "linux-log-audit.sh"
+    if "service" in name:
+        return "linux-service-inventory-audit.sh"
     return LINUX_SECURITY_SOURCE_SCRIPT
 
 
@@ -141,6 +143,10 @@ def normalize_linux_security_finding(
         "process_name",
         "user",
         "package_name",
+        "unit",
+        "active_state",
+        "enabled_state",
+        "fragment_path",
     ]:
         value = first_value(row, [structured_key, structured_key.title().replace("_", "")], "")
         if value not in (None, ""):
@@ -222,6 +228,8 @@ def category_for_linux_control(source_id: str) -> str:
         "PACKAGE": "Linux Patch Management",
         "FILESYSTEM": "Linux Filesystem Permissions",
         "KERNEL": "Linux Kernel Hardening",
+        "SERVICE": "Linux Service Inventory",
+        "PERSISTENCE": "Linux Service Inventory",
     }.get(family, "Linux Host Security")
 
 
@@ -238,6 +246,8 @@ def object_type_for_linux_control(source_id: str) -> str:
         "PACKAGE": "Linux package management evidence",
         "FILESYSTEM": "Linux filesystem permission evidence",
         "KERNEL": "Linux kernel security setting",
+        "SERVICE": "Linux service inventory evidence",
+        "PERSISTENCE": "Linux startup persistence evidence",
     }.get(family, "Linux host security control")
 
 
@@ -267,6 +277,10 @@ def affected_object_for(row: dict[str, Any], host_name: str, source_id: str) -> 
         return f"{host_name}: listening service"
     if family == "LOG":
         return f"{host_name}: logging and audit coverage"
+    if family == "SERVICE":
+        return str(first_value(row, ["affected_object", "AffectedObject"], f"{host_name}: service inventory"))
+    if family == "PERSISTENCE":
+        return str(first_value(row, ["affected_object", "AffectedObject"], f"{host_name}: startup persistence"))
     if family == "PACKAGE":
         return f"{host_name}: package management"
     if family == "FILESYSTEM":
@@ -300,6 +314,8 @@ def business_impact_for_linux_control(source_id: str) -> str:
         return "Linux listening service evidence helps the customer validate exposed administration, database, file-sharing, and application services."
     if family == "LOG":
         return "Incomplete Linux logging or audit coverage can reduce investigation and accountability capability."
+    if family in {"SERVICE", "PERSISTENCE"}:
+        return "Linux service and startup inventory helps the customer validate persistence, service ownership, and operational exposure."
     if family == "PACKAGE":
         return "Linux patch management evidence helps the customer prioritize maintenance windows and vulnerability reduction."
     if family == "FILESYSTEM":
@@ -325,6 +341,8 @@ def technical_impact_for_linux_control(source_id: str, evidence_text: str) -> st
         return f"The Linux audit reported logging or audit coverage evidence: {evidence_text}"
     if family == "PACKAGE":
         return f"The Linux audit reported package management evidence: {evidence_text}"
+    if family in {"SERVICE", "PERSISTENCE"}:
+        return f"The Linux audit reported service or startup inventory evidence: {evidence_text}"
     if family == "FILESYSTEM":
         return f"The Linux audit reported filesystem permission evidence: {evidence_text}"
     return evidence_text

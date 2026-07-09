@@ -9,6 +9,7 @@ RUN_BACKUP=1
 RUN_HARDENING_PLAN=1
 RUN_NETWORK=1
 RUN_LOG_AUDIT=1
+RUN_SERVICE_INVENTORY=1
 EXPECTED_BACKUP_PATHS=()
 COLLECTOR_TIMEOUT_SECONDS=180
 
@@ -30,6 +31,7 @@ Options:
   --skip-hardening-plan            Do not generate the dry-run hardening plan log.
   --skip-network                   Do not run linux-network-exposure-audit.sh.
   --skip-log-audit                 Do not run linux-log-audit.sh.
+  --skip-service-inventory         Do not run linux-service-inventory-audit.sh.
   --skip-archive                   Leave the bundle directory only; do not create ZIP.
   --collector-timeout-seconds N     Per-collector timeout. Default: 180. Use 0 to disable.
   -q, --quiet                      Reduce console output.
@@ -82,6 +84,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-log-audit)
             RUN_LOG_AUDIT=0
+            shift
+            ;;
+        --skip-service-inventory)
+            RUN_SERVICE_INVENTORY=0
             shift
             ;;
         --skip-archive)
@@ -256,6 +262,7 @@ JSON
     "LinuxSecuritySummary": "linux/linux-security-summary.json",
     "LinuxNetworkExposureSummary": "linux/linux-network-exposure-summary.json",
     "LinuxLogAuditSummary": "linux/linux-log-audit-summary.json",
+    "LinuxServiceInventorySummary": "linux/linux-service-inventory-summary.json",
     "LinuxInventory": "linux/linux-inventory.json",
     "BackupReadiness": "backup/backup-readiness.json"
   },
@@ -312,6 +319,16 @@ if [[ "$RUN_NETWORK" -eq 1 ]]; then
     run_collector "linux-network-exposure-audit" "linux/linux-network-exposure-summary.json" "${NETWORK_ARGS[@]}"
 else
     record_status "linux-network-exposure-audit" "skipped" "linux/linux-network-exposure-summary.json"
+fi
+
+SERVICE_INVENTORY_ARGS=(bash "$SCRIPT_DIR/linux-service-inventory-audit.sh" --output-dir "$LINUX_DIR" --summary-json "$LINUX_DIR/linux-service-inventory-summary.json")
+if [[ "$QUICK_MODE" -eq 1 ]]; then
+    SERVICE_INVENTORY_ARGS+=(--quick)
+fi
+if [[ "$RUN_SERVICE_INVENTORY" -eq 1 ]]; then
+    run_collector "linux-service-inventory-audit" "linux/linux-service-inventory-summary.json" "${SERVICE_INVENTORY_ARGS[@]}"
+else
+    record_status "linux-service-inventory-audit" "skipped" "linux/linux-service-inventory-summary.json"
 fi
 
 LOG_AUDIT_ARGS=(bash "$SCRIPT_DIR/linux-log-audit.sh" --output-dir "$LINUX_DIR" --summary-json "$LINUX_DIR/linux-log-audit-summary.json")

@@ -17,9 +17,28 @@ Supported evidence families include:
 - Windows network exposure,
 - Group Policy health,
 - backup/recovery readiness,
-- Linux host audit scripts,
+- Linux host audit scripts; `linux/linux-security-summary.json`, `linux/linux-network-exposure-summary.json`, `linux/linux-log-audit-summary.json`, `linux/linux-service-inventory-summary.json`, and generated `*.summary.json` variants are normalized when present,
 - DevSecOps helper scripts where supported,
 - monitoring helper scripts where supported.
+
+For detailed bundle layout rules, see `COLLECTION_BUNDLE_CONTRACT.md`.
+
+## Input bundle validation
+
+Use `scripts\reporting\validate_bundle.py` to preflight ZIP archives or
+expanded collection folders before analyzer import:
+
+```powershell
+python .\scripts\reporting\validate_bundle.py --input <bundle.zip-or-folder> --strict-safety
+python .\scripts\reporting\validate_bundle.py --input <multi-bundle-folder> --expected-bundle-count <n> --strict-safety
+```
+
+The validator checks archive readability, path traversal/absolute path safety,
+allowed file extensions, conservative size limits, recognizable SecureInfra
+bundle structure, basic JSON readability, and optional strict filename/path
+safety. It recognizes supported evidence folders such as `linux/` for Linux
+security audit summaries, `backup/` for Linux/Windows backup readiness, and
+planned `docker/` and `kubernetes/` folders. It does not execute bundle content.
 
 ## Output contract
 
