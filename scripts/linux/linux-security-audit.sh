@@ -217,9 +217,8 @@ linux_service_severity() {
 is_all_interface_address() {
     local address="$1"
     case "$address" in
-        "0.0.0.0"|"*"|"::"|"[::]"|":::"|"[::]") return 0 ;;
+        "0.0.0.0"|"*"|"::"|"[::]"|":::") return 0 ;;
     esac
-    [[ "$address" == "[::]" ]] && return 0
     return 1
 }
 

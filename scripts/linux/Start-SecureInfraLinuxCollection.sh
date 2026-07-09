@@ -203,7 +203,11 @@ run_collector() {
 
 copy_latest_inventory_to_canonical() {
     local latest=""
-    latest="$(ls -t "$LINUX_DIR"/linux-inventory-*.json 2>/dev/null | head -n 1 || true)"
+    latest="$(
+        find "$LINUX_DIR" -maxdepth 1 -type f -name 'linux-inventory-*.json' -printf '%T@ %p\n' 2>/dev/null \
+            | sort -nr \
+            | awk 'NR == 1 { sub(/^[^ ]+ /, ""); print; exit }'
+    )"
     if [[ -n "$latest" && -f "$latest" ]]; then
         cp "$latest" "$LINUX_DIR/linux-inventory.json"
     fi
