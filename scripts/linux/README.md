@@ -1,78 +1,98 @@
-# Linux Scripts
+# SecureInfra Linux Collectors
 
-These scripts support Linux audit, hardening, and inventory collection.
+This directory contains Linux read-only collectors and the Linux platform launcher.
 
-Run audit scripts with `sudo` for complete evidence. Hardening scripts require
-root only when `--apply` is used.
+## Recommended launcher
 
-Full cross-platform reference: [../../docs/script-reference.md](../../docs/script-reference.md)
-
-## `linux-security-audit.sh`
-
-Collects host security posture information, writes a readable report, and writes
-a JSON summary.
-
-Options:
-
-| Option | Description |
-|---|---|
-| `-o DIR`, `--output-dir DIR` | Directory for the text report. |
-| `--quick` | Skip slower filesystem permission checks. |
-| `--summary-json FILE` | JSON summary path. |
-| `-h`, `--help` | Show built-in help. |
-
-Examples:
+Use the launcher instead of running each collector manually:
 
 ```bash
-bash scripts/linux/linux-security-audit.sh
-sudo bash scripts/linux/linux-security-audit.sh --output-dir reports/linux
-bash scripts/linux/linux-security-audit.sh --quick
-bash scripts/linux/linux-security-audit.sh --summary-json reports/linux-summary.json
-bash scripts/linux/linux-security-audit.sh --quick --output-dir reports --summary-json reports/linux-summary.json
+bash scripts/linux/Start-SecureInfraLinuxCollection.sh --quick
 ```
 
-## `linux-hardening-baseline.sh`
+The launcher runs the available Linux collectors, writes a standard bundle layout, and creates a ZIP archive that can be copied to:
 
-Runs in dry-run mode by default and applies selected baseline controls only with
-`--apply`.
-
-Options:
-
-| Option | Description |
-|---|---|
-| `--apply` | Apply hardening changes. |
-| `--backup-dir DIR` | Backup directory used during apply mode. |
-| `--report-dir DIR` | Directory for the hardening log. |
-| `--no-ssh` | Skip SSH daemon baseline changes. |
-| `--disable-ssh-password` | Set `PasswordAuthentication no` in sshd config. |
-| `-h`, `--help` | Show built-in help. |
-
-Examples:
-
-```bash
-bash scripts/linux/linux-hardening-baseline.sh
-bash scripts/linux/linux-hardening-baseline.sh --report-dir reports/linux-hardening
-sudo bash scripts/linux/linux-hardening-baseline.sh --apply
-sudo bash scripts/linux/linux-hardening-baseline.sh --apply --backup-dir /root/baseline-backups --report-dir /var/log/security-baseline
-bash scripts/linux/linux-hardening-baseline.sh --no-ssh
-sudo bash scripts/linux/linux-hardening-baseline.sh --apply --disable-ssh-password
+```text
+downstream-reporting-workspace/customer-projects/<project>/03-input-bundles
 ```
 
-## `collect-linux-inventory.sh`
+Typical output:
 
-Exports host inventory in JSON format. It does not change the system.
+```text
+reports/secureinfra-linux/
+  secureinfra-linux-bundle-<host>-<timestamp>/
+    client-info.json
+    collection-summary.json
+    manifest.json
+    bundle-manifest.json
+    linux/
+      linux-security-summary.json
+      linux-inventory.json
+      linux-security-audit-<host>-<timestamp>.txt
+      linux-hardening-plan-<host>-<timestamp>.log
+    backup/
+      backup-readiness.json
+      backup-readiness-findings.csv
+    logs/
+  secureinfra-linux-bundle-<host>-<timestamp>.zip
+```
 
-Options:
+## Scope
 
-| Option | Description |
-|---|---|
-| `-o DIR`, `--output-dir DIR` | Directory for inventory JSON. |
-| `-h`, `--help` | Show built-in help. |
+The launcher is read-only. It does not apply remediation. `linux-hardening-baseline.sh` is called in its default dry-run mode only.
 
-Examples:
+Linux evidence currently covers:
+
+- local identity and UID 0 evidence;
+- sudoers file permission evidence;
+- SSH daemon configuration evidence;
+- firewall coverage evidence;
+- sysctl/kernel hardening evidence;
+- listening TCP service evidence for common risky services;
+- authentication log and auditd coverage evidence;
+- package update/patch evidence from local metadata where safe;
+- filesystem permission checks for sensitive paths;
+- inventory metadata;
+- backup readiness metadata.
+
+## Useful commands
+
+Quick collection:
 
 ```bash
-bash scripts/linux/collect-linux-inventory.sh
-bash scripts/linux/collect-linux-inventory.sh -o /var/tmp/inventory
-bash scripts/linux/collect-linux-inventory.sh --output-dir reports
+bash scripts/linux/Start-SecureInfraLinuxCollection.sh --quick
+```
+
+Full collection with expected backup path metadata:
+
+```bash
+bash scripts/linux/Start-SecureInfraLinuxCollection.sh \
+  --expected-backup-path /mnt/backups
+```
+
+Directory-only collection without ZIP:
+
+```bash
+bash scripts/linux/Start-SecureInfraLinuxCollection.sh --quick --skip-archive
+```
+
+Validate the generated ZIP from the public repo root:
+
+```bash
+python scripts/reporting/validate_bundle.py \
+  --input reports/secureinfra-linux/<bundle>.zip \
+  --strict-safety
+```
+
+Analyze the generated ZIP:
+
+```bash
+python SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py \
+  --input reports/secureinfra-linux/<bundle>.zip \
+  --type client-bundle \
+  --output reports/secureinfra-linux-output
+
+python scripts/reporting/validate_schema.py \
+  --input reports/secureinfra-linux-output \
+  --strict-safety
 ```

@@ -26,6 +26,8 @@ class PublicQualityGateContractTests(unittest.TestCase):
 
         self.assertIn("test_validate_schema", content)
         self.assertIn("test_validate_bundle", content)
+        self.assertIn("test_linux_security_normalizer", content)
+        self.assertIn("test_linux_collection_launcher", content)
         self.assertIn("test_client_collection_launcher", content)
         self.assertIn("test_secureinfra_backup_readiness", content)
         self.assertIn('"discover", "-s", "tests", "-p", "test_*.py"', content)
@@ -35,6 +37,8 @@ class PublicQualityGateContractTests(unittest.TestCase):
 
         self.assertIn("validate_bundle.py", content)
         self.assertIn("Invoke-SampleBundleValidationSmokeTest", content)
+        self.assertIn("linux-security-summary.json", content)
+        self.assertIn("bundle-manifest.json", content)
         self.assertIn("--expected-bundle-count", content)
         self.assertIn("--strict-safety", content)
 
@@ -44,6 +48,8 @@ class PublicQualityGateContractTests(unittest.TestCase):
         self.assertIn("Any new script added to this repository must have an explicit caller", content)
         self.assertIn("Require-TextMarker", content)
         self.assertIn("CODEX_WORKFLOW.md", content)
+        self.assertIn("Start-SecureInfraLinuxCollection.sh", content)
+        self.assertIn("COLLECTION_BUNDLE_CONTRACT.md", content)
 
     def test_quality_gate_avoids_powershell_variable_colon_parser_error(self):
         content = self.read_gate()

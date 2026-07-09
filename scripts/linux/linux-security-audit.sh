@@ -172,6 +172,202 @@ collect_sysctl_finding() {
     fi
 }
 
+
+known_linux_service_name() {
+    case "$1" in
+        21) echo "FTP" ;;
+        22) echo "SSH" ;;
+        23) echo "Telnet" ;;
+        25) echo "SMTP" ;;
+        53) echo "DNS" ;;
+        111) echo "RPC bind" ;;
+        139) echo "NetBIOS" ;;
+        445) echo "SMB" ;;
+        2049) echo "NFS" ;;
+        3306) echo "MySQL" ;;
+        5432) echo "PostgreSQL" ;;
+        6379) echo "Redis" ;;
+        9200) echo "Elasticsearch HTTP" ;;
+        9300) echo "Elasticsearch transport" ;;
+        11211) echo "Memcached" ;;
+        27017) echo "MongoDB" ;;
+        3389) echo "RDP/xrdp" ;;
+        5900) echo "VNC" ;;
+        *) echo "" ;;
+    esac
+}
+
+linux_service_severity() {
+    local port="$1"
+    local bind_scope="$2"
+    case "$port" in
+        23|6379|9200|9300|11211|27017)
+            [[ "$bind_scope" == "all interfaces" ]] && echo "high" || echo "medium"
+            ;;
+        21|111|139|445|2049|3306|5432|3389|5900)
+            [[ "$bind_scope" == "all interfaces" ]] && echo "medium" || echo "low"
+            ;;
+        22)
+            [[ "$bind_scope" == "all interfaces" ]] && echo "low" || echo "info"
+            ;;
+        *) echo "info" ;;
+    esac
+}
+
+is_all_interface_address() {
+    local address="$1"
+    case "$address" in
+        "0.0.0.0"|"*"|"::"|"[::]"|":::"|"[::]") return 0 ;;
+    esac
+    [[ "$address" == "[::]" ]] && return 0
+    return 1
+}
+
+collect_listening_socket_findings() {
+    local socket_file
+    local socket
+    local local_address
+    local port
+    local bind_scope
+    local service_name
+    local severity
+    local emitted_ports=""
+
+    socket_file="$(mktemp)"
+    if have_cmd ss; then
+        ss -H -ltn 2>/dev/null | awk '{print $4}' > "$socket_file" || true
+    elif have_cmd netstat; then
+        netstat -ltn 2>/dev/null | awk 'NR>2 {print $4}' > "$socket_file" || true
+    else
+        rm -f "$socket_file"
+        add_finding \
+            "LINUX-NETWORK-COVERAGE-001" \
+            "info" \
+            "Listening socket inventory command was not available" \
+            "Install ss or netstat, or provide equivalent listener evidence for review." \
+            "Neither ss nor netstat was available in the audit context"
+        return
+    fi
+
+    while IFS= read -r socket; do
+        [[ -z "$socket" ]] && continue
+        port="${socket##*:}"
+        [[ "$port" =~ ^[0-9]+$ ]] || continue
+        service_name="$(known_linux_service_name "$port")"
+        [[ -n "$service_name" ]] || continue
+        if [[ " $emitted_ports " == *" $port "* ]]; then
+            continue
+        fi
+        emitted_ports="$emitted_ports $port"
+        local_address="${socket%:*}"
+        local_address="${local_address#[}"
+        local_address="${local_address%]}"
+        bind_scope="specific local address"
+        if is_all_interface_address "$local_address"; then
+            bind_scope="all interfaces"
+        fi
+        severity="$(linux_service_severity "$port" "$bind_scope")"
+        add_finding \
+            "LINUX-NETWORK-PORT-${port}" \
+            "$severity" \
+            "Linux host is listening on TCP ${port} / ${service_name}" \
+            "Validate the business need, allowed source networks, firewall policy, and service owner before changing the listener." \
+            "TCP ${port} / ${service_name}; bind scope: ${bind_scope}; local listener: ${socket}. This is bind evidence, not proof of internet reachability."
+    done < "$socket_file"
+    rm -f "$socket_file"
+}
+
+collect_log_coverage_findings() {
+    local auth_log_found=0
+    if [[ -r /var/log/auth.log || -r /var/log/secure ]]; then
+        auth_log_found=1
+    elif have_cmd journalctl && journalctl -n 1 >/dev/null 2>&1; then
+        auth_log_found=1
+    fi
+
+    if [[ "$auth_log_found" -eq 0 ]]; then
+        add_finding \
+            "LINUX-LOG-COVERAGE-001" \
+            "info" \
+            "Authentication log evidence was not available" \
+            "Confirm whether authentication logs are forwarded, retained locally, or available through the customer logging platform." \
+            "No readable /var/log/auth.log, /var/log/secure, or journalctl evidence was available."
+    fi
+
+    if have_cmd systemctl; then
+        if ! systemctl is-active auditd >/dev/null 2>&1; then
+            add_finding \
+                "LINUX-LOG-AUDITD-001" \
+                "medium" \
+                "Linux audit service is not active or could not be verified" \
+                "Validate whether auditd or an equivalent audit control is required for this host and enable or document compensating controls as appropriate." \
+                "systemctl is-active auditd did not return active."
+        fi
+    elif ! have_cmd auditctl; then
+        add_finding \
+            "LINUX-LOG-AUDITD-002" \
+            "info" \
+            "Linux audit tooling was not available" \
+            "Confirm whether auditd, auditctl, or an equivalent EDR/logging control is used on this host." \
+            "Neither systemctl auditd status nor auditctl was available in the audit context."
+    fi
+}
+
+collect_package_update_findings() {
+    local updates
+    local update_count
+    if have_cmd apt; then
+        updates="$(apt list --upgradable 2>/dev/null | awk 'NR>1 {count++} END {print count + 0}')"
+        update_count="${updates:-0}"
+        if [[ "$update_count" =~ ^[0-9]+$ && "$update_count" -gt 0 ]]; then
+            add_finding \
+                "LINUX-PACKAGE-UPDATES-001" \
+                "medium" \
+                "Linux package updates are available in local package metadata" \
+                "Review pending package updates with the system owner and apply through the approved patch process." \
+                "apt local metadata reports ${update_count} upgradable package(s). The audit did not refresh repositories."
+        fi
+    elif have_cmd dnf || have_cmd yum || have_cmd zypper || have_cmd apk; then
+        add_finding \
+            "LINUX-PACKAGE-COVERAGE-001" \
+            "info" \
+            "Package manager was detected but update status was not evaluated" \
+            "Run the approved distribution-specific patch status command or provide vulnerability management evidence." \
+            "A package manager was detected, but this read-only audit did not run commands that may contact repositories."
+    else
+        add_finding \
+            "LINUX-PACKAGE-COVERAGE-002" \
+            "info" \
+            "Linux package manager was not detected" \
+            "Confirm how this host receives package updates and provide patch management evidence if applicable." \
+            "No supported package manager command was found in PATH."
+    fi
+}
+
+collect_filesystem_permission_findings() {
+    local writable_etc
+    local writable_sensitive_dirs
+    writable_etc="$(find /etc -xdev -type f -perm -0002 -print 2>/dev/null | sed -n '1,10p' | paste -sd ',' - || true)"
+    if [[ -n "$writable_etc" ]]; then
+        add_finding \
+            "LINUX-FILESYSTEM-001" \
+            "high" \
+            "World-writable files exist under /etc" \
+            "Remove world-writable permissions from system configuration files after validating ownership and application requirements." \
+            "World-writable /etc files: ${writable_etc}"
+    fi
+
+    writable_sensitive_dirs="$(find /usr/local/bin /usr/local/sbin /opt -xdev -type d -perm -0002 ! -perm -1000 -print 2>/dev/null | sed -n '1,10p' | paste -sd ',' - || true)"
+    if [[ -n "$writable_sensitive_dirs" ]]; then
+        add_finding \
+            "LINUX-FILESYSTEM-002" \
+            "medium" \
+            "World-writable sensitive directories without sticky bit were found" \
+            "Review directory ownership and permissions before changing them through approved change control." \
+            "Directories: ${writable_sensitive_dirs}"
+    fi
+}
+
 collect_findings() {
     local uid_zero_accounts
     local uid_zero_count
@@ -293,6 +489,13 @@ collect_findings() {
     collect_sysctl_finding "net.ipv4.conf.default.accept_redirects" "0" "LINUX-KERNEL-003" "medium" "Default IPv4 ICMP redirects are accepted" "Disable default ICMP redirect acceptance through sysctl."
     collect_sysctl_finding "net.ipv6.conf.all.accept_redirects" "0" "LINUX-KERNEL-004" "medium" "IPv6 ICMP redirects are accepted" "Disable IPv6 redirect acceptance through sysctl."
     collect_sysctl_finding "kernel.randomize_va_space" "2" "LINUX-KERNEL-005" "medium" "Full ASLR is not enabled" "Set kernel.randomize_va_space to 2."
+
+    collect_listening_socket_findings
+    collect_log_coverage_findings
+    collect_package_update_findings
+    if [[ "$QUICK_MODE" -eq 0 ]]; then
+        collect_filesystem_permission_findings
+    fi
 }
 
 write_findings_summary() {

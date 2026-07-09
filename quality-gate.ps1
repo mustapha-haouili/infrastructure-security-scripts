@@ -97,6 +97,8 @@ function Test-PublicIntegrationContracts {
     Require-File "scripts\reporting\validate_bundle.py"
     Require-File "scripts\windows\Start-SecureInfraClientCollection.ps1"
     Require-File "scripts\windows\Start-WindowsSecurity.ps1"
+    Require-File "scripts\linux\Start-SecureInfraLinuxCollection.sh"
+    Require-File "COLLECTION_BUNDLE_CONTRACT.md"
     Require-Directory "tests"
     Require-Directory "SecureInfra_AI\schemas"
     Require-Directory "SecureInfra_AI\examples\sample-input"
@@ -135,6 +137,8 @@ function Invoke-PublicTests {
             "-m", "unittest", "-v",
             "tests.test_validate_schema",
             "tests.test_validate_bundle",
+            "tests.test_linux_security_normalizer",
+            "tests.test_linux_collection_launcher",
             "tests.test_client_collection_launcher",
             "tests.test_secureinfra_windows_normalizers.SecureInfraWindowsNormalizerTests.test_windows_samples_pass_schema_validation",
             "tests.test_secureinfra_backup_readiness.SecureInfraBackupReadinessTests.test_normalized_output_schema_compatibility",
@@ -206,8 +210,11 @@ function Invoke-SampleBundleValidationSmokeTest {
         Set-Content -LiteralPath (Join-Path $BundlePath "client-info.json") -Encoding UTF8 -Value '{"ComputerName":"QG-SRV01","UserDomain":"example"}'
         Set-Content -LiteralPath (Join-Path $BundlePath "collection-summary.json") -Encoding UTF8 -Value '{"CollectionId":"secureinfra-client-QG-SRV01-20260709-120000","GeneratedAtUtc":"2026-07-09T12:00:00Z","SafetyMode":"Audit and dry-run only. No remediation is applied.","ScopeResolved":["Host"]}'
         Set-Content -LiteralPath (Join-Path $BundlePath "manifest.json") -Encoding UTF8 -Value '{"SchemaVersion":"1.0","CollectionId":"secureinfra-client-QG-SRV01-20260709-120000","GeneratedAtUtc":"2026-07-09T12:00:00Z","ScopeResolved":["Host"]}'
+        Set-Content -LiteralPath (Join-Path $BundlePath "bundle-manifest.json") -Encoding UTF8 -Value '{"SchemaVersion":"1.0","CollectionId":"secureinfra-client-QG-SRV01-20260709-120000","GeneratedAtUtc":"2026-07-09T12:00:00Z","ScopeResolved":["Host"]}'
         Set-Content -LiteralPath (Join-Path $BundlePath "host\windows-security-audit.json") -Encoding UTF8 -Value '{"ReportMetadata":{"ComputerName":"QG-SRV01","ScriptName":"Invoke-WindowsSecurityAudit.ps1"},"Summary":{"FindingCount":0},"Findings":[]}'
+        New-Item -ItemType Directory -Path (Join-Path $BundlePath "linux") -Force | Out-Null
         Set-Content -LiteralPath (Join-Path $BundlePath "logs\windows-security-audit.log") -Encoding UTF8 -Value 'collector log'
+        Set-Content -LiteralPath (Join-Path $BundlePath "linux\linux-security-summary.json") -Encoding UTF8 -Value '{"host":"qg-linux01","generated_at_utc":"2026-07-09T12:00:00Z","root_context":false,"quick_mode":true,"finding_counts":{"info":1},"findings":[{"id":"LINUX-AUDIT-COVERAGE-001","severity":"info","title":"Audit was not run as root","recommendation":"Run with sudo for complete evidence.","evidence":"Current user: analyst"}]}'
 
         $BundleValidatorArgs = @(
             ".\scripts\reporting\validate_bundle.py",

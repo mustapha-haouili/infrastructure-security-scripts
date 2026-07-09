@@ -16,12 +16,14 @@ from secureinfra.loaders.json_loader import load_json_file
 from secureinfra.network_context.port_catalog import lookup_port_context
 from secureinfra.normalizers.ad_common import build_common_finding, normalize_source_severity, severity_counts, utc_now
 from secureinfra.normalizers.evidence_contract import normalize_report_evidence_contract
+from secureinfra.normalizers.linux_security import normalize_linux_security_findings
 
 
 CLIENT_FILE_DEFINITIONS: dict[str, dict[str, str]] = {
     "client_info": {"scope": "Client", "path": "client-info.json"},
     "collection_summary": {"scope": "Client", "path": "collection-summary.json"},
     "manifest": {"scope": "Client", "path": "manifest.json"},
+    "bundle_manifest": {"scope": "Client", "path": "bundle-manifest.json"},
     "host_windows_security_audit": {"scope": "Host", "path": "host/windows-security-audit.json"},
     "host_windows_events_summary": {"scope": "Host", "path": "host/windows-events/summary.json"},
     "host_windows_remediation_plan": {"scope": "Host", "path": "host/windows-remediation-plan.json"},
@@ -35,6 +37,8 @@ CLIENT_FILE_DEFINITIONS: dict[str, dict[str, str]] = {
     "workstation_windows_local_admins": {"scope": "Workstation", "path": "workstation/windows-local-admins.json"},
     "workstation_windows_rdp_exposure": {"scope": "Workstation", "path": "workstation/windows-rdp-exposure.json"},
     "backup_backup_readiness": {"scope": "Backup", "path": "backup/backup-readiness.json"},
+    "linux_security_summary": {"scope": "Linux", "path": "linux/linux-security-summary.json"},
+    "linux_inventory": {"scope": "Linux", "path": "linux/linux-inventory.json"},
 }
 FINDING_SOURCE_KEYS = {
     "host_windows_security_audit",
@@ -48,8 +52,9 @@ FINDING_SOURCE_KEYS = {
     "workstation_windows_local_admins",
     "workstation_windows_rdp_exposure",
     "backup_backup_readiness",
+    "linux_security_summary",
 }
-SUPPORTED_SCOPES = ["AD", "Host", "Server", "Workstation", "Network", "Backup"]
+SUPPORTED_SCOPES = ["AD", "Host", "Server", "Workstation", "Network", "Backup", "Linux"]
 DISPLAY_NAME_BY_KEY = {
     "host_windows_security_audit": "Windows security audit",
     "host_windows_events_summary": "Windows event security summary",
@@ -64,6 +69,8 @@ DISPLAY_NAME_BY_KEY = {
     "workstation_windows_local_admins": "Workstation local administrators",
     "workstation_windows_rdp_exposure": "Workstation RDP exposure",
     "backup_backup_readiness": "Backup readiness audit",
+    "linux_security_summary": "Linux security audit summary",
+    "linux_inventory": "Linux host inventory",
 }
 PREFIX_BY_KEY = {
     "host_windows_security_audit": "HOST-WIN",
@@ -77,6 +84,7 @@ PREFIX_BY_KEY = {
     "workstation_windows_local_admins": "WORKSTATION-LADMIN",
     "workstation_windows_rdp_exposure": "WORKSTATION-RDP",
     "backup_backup_readiness": "BACKUP-READINESS",
+    "linux_security_summary": "LINUX-SECURITY",
 }
 OBJECT_TYPE_BY_KEY = {
     "host_windows_security_audit": "Windows host security control",
@@ -90,6 +98,7 @@ OBJECT_TYPE_BY_KEY = {
     "workstation_windows_local_admins": "Windows local administrator principal",
     "workstation_windows_rdp_exposure": "Windows RDP exposure",
     "backup_backup_readiness": "Backup readiness evidence",
+    "linux_security_summary": "Linux host security control",
 }
 CATEGORY_BY_KEY = {
     "host_windows_security_audit": "Host Security Baseline",
@@ -103,6 +112,7 @@ CATEGORY_BY_KEY = {
     "workstation_windows_local_admins": "Workstation Local Administration",
     "workstation_windows_rdp_exposure": "Workstation Remote Access",
     "backup_backup_readiness": "Backup Readiness",
+    "linux_security_summary": "Linux Host Security",
 }
 
 # Client bundles are report-only evidence packages. Keep limits conservative
@@ -111,8 +121,8 @@ CATEGORY_BY_KEY = {
 MAX_ZIP_ENTRIES = 512
 MAX_ZIP_MEMBER_SIZE_BYTES = 25 * 1024 * 1024
 ALLOWED_ZIP_EXTENSIONS = {".json", ".csv", ".md", ".txt", ".log"}
-ALLOWED_ZIP_ROOT_FILES = {"client-info.json", "collection-summary.json", "manifest.json"}
-ALLOWED_ZIP_TOP_LEVEL_DIRS = {"ad-shared", "host", "server", "workstation", "network", "backup", "logs"}
+ALLOWED_ZIP_ROOT_FILES = {"client-info.json", "collection-summary.json", "manifest.json", "bundle-manifest.json"}
+ALLOWED_ZIP_TOP_LEVEL_DIRS = {"ad-shared", "host", "server", "workstation", "network", "backup", "linux", "devsecops", "docker", "kubernetes", "logs"}
 ALL_INTERFACES_BIND_SCOPE_EXPLANATION = (
     "Listening on all interfaces means the service binds to all local interfaces. "
     "Actual reachability depends on firewall rules, routing, segmentation, and allowed source networks."
@@ -235,6 +245,19 @@ def discover_client_bundle(input_dir: str | Path) -> dict[str, Path]:
     ad_shared_dir = bundle_dir / "ad-shared"
     if ad_shared_dir.is_dir():
         detected["ad_shared"] = ad_shared_dir
+
+    linux_dir = bundle_dir / "linux"
+    if linux_dir.is_dir():
+        if "linux_security_summary" not in detected:
+            summary_candidates = sorted(
+                linux_dir.glob("linux-security-audit-*.summary.json")
+            ) + sorted(linux_dir.glob("*linux-security*.summary.json"))
+            if summary_candidates:
+                detected["linux_security_summary"] = summary_candidates[0]
+        if "linux_inventory" not in detected:
+            inventory_candidates = sorted(linux_dir.glob("linux-inventory-*.json"))
+            if inventory_candidates:
+                detected["linux_inventory"] = inventory_candidates[0]
     return detected
 
 
@@ -242,7 +265,7 @@ def missing_client_files(detected_files: dict[str, Path]) -> list[str]:
     missing = [
         definition["path"]
         for key, definition in CLIENT_FILE_DEFINITIONS.items()
-        if key not in detected_files and definition["scope"] in SUPPORTED_SCOPES + ["Client"] and definition["scope"] != "Backup"
+        if key not in detected_files and key != "bundle_manifest" and definition["scope"] in SUPPORTED_SCOPES + ["Client"] and definition["scope"] not in {"Backup", "Linux"}
     ]
     if "ad_shared" not in detected_files:
         missing.append("ad-shared/")
@@ -275,6 +298,9 @@ def normalize_prepared_client_bundle(bundle_dir: Path, source_label: str) -> dic
         detected_paths, "collection_summary", loaded_files, loaded_summaries, failed_files, bundle_dir, source_label
     )
     manifest = load_optional_json(detected_paths, "manifest", loaded_files, loaded_summaries, failed_files, bundle_dir, source_label)
+    bundle_manifest = load_optional_json(detected_paths, "bundle_manifest", loaded_files, loaded_summaries, failed_files, bundle_dir, source_label)
+    if manifest is None and bundle_manifest is not None:
+        manifest = bundle_manifest
 
     if "ad_shared" in detected_paths:
         try:
@@ -308,7 +334,7 @@ def normalize_prepared_client_bundle(bundle_dir: Path, source_label: str) -> dic
         scope_counts[scope] += len(source_findings)
         normalized_source_counts[key] = len(source_findings)
 
-    for metadata_key in ("host_windows_remediation_plan", "host_windows_hardening_preview"):
+    for metadata_key in ("host_windows_remediation_plan", "host_windows_hardening_preview", "linux_inventory"):
         load_optional_json(detected_paths, metadata_key, loaded_files, loaded_summaries, failed_files, bundle_dir, source_label)
 
     generated_at = collection_generated_at(collection_summary, manifest)
@@ -394,6 +420,8 @@ def load_optional_json(
 
 
 def normalize_client_source_file(key: str, data: dict[str, Any], source_file: Path) -> list[dict[str, Any]]:
+    if key == "linux_security_summary":
+        return normalize_linux_security_findings(data, source_file)
     if key == "host_windows_events_summary":
         rows = as_records(as_dict(data.get("InvestigationSummary")).get("Findings"))
     elif key == "server_rdp_profile_cache_cleanup":

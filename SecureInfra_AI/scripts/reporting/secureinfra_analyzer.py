@@ -31,6 +31,7 @@ from secureinfra.normalizers.ad_stale_computers import normalize_stale_computers
 from secureinfra.normalizers.backup_readiness import normalize_backup_readiness
 from secureinfra.normalizers.evidence_contract import normalize_report_evidence_contract
 from secureinfra.normalizers.gpo_health import normalize_gpo_health
+from secureinfra.normalizers.linux_security import normalize_linux_security_audit
 from secureinfra.normalizers.windows_host import normalize_windows_host_audit
 from secureinfra.normalizers.windows_network import normalize_windows_network_exposure
 from secureinfra.normalizers.windows_server import normalize_windows_server_audit
@@ -49,6 +50,7 @@ NORMALIZER_BY_TYPE = {
     "ad-stale-computers": normalize_stale_computers,
     "backup-readiness": normalize_backup_readiness,
     "gpo-health": normalize_gpo_health,
+    "linux-security-audit": normalize_linux_security_audit,
     "windows-host-audit": normalize_windows_host_audit,
     "windows-server-audit": normalize_windows_server_audit,
     "windows-workstation-audit": normalize_windows_workstation_audit,
@@ -86,6 +88,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
   %(prog)s --input reports/windows-workstation-security.json --type windows-workstation-audit --output reports/output
   %(prog)s --input reports/windows-network-exposure.json --type windows-network-exposure --output reports/output
   %(prog)s --input reports/backup-readiness.json --type backup-readiness --output reports/output
+  %(prog)s --input reports/linux/linux-security-summary.json --type linux-security-audit --output reports/output
   %(prog)s --input report.json --type ad-inactive-users --language en --format markdown
 """,
     )

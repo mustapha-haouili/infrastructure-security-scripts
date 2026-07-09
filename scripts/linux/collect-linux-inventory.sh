@@ -80,16 +80,35 @@ list_ip_addresses() {
 }
 
 list_mounts_json() {
-    df -P -T 2>/dev/null | awk 'NR>1 {print $1"|"$2"|"$3"|"$4"|"$5"|"$6"|"$7}' | while IFS='|' read -r fs type blocks used avail pct mount; do
-        printf '{"filesystem":%s,"type":%s,"blocks":%s,"used":%s,"available":%s,"use_percent":%s,"mount":%s}\n' \
-            "$(printf '%s' "$fs" | json_escape)" \
-            "$(printf '%s' "$type" | json_escape)" \
-            "${blocks:-0}" \
-            "${used:-0}" \
-            "${avail:-0}" \
-            "$(printf '%s' "$pct" | json_escape)" \
-            "$(printf '%s' "$mount" | json_escape)"
-    done | paste -sd ',' -
+    python3 - <<'PYJSON'
+import json
+import subprocess
+rows = []
+try:
+    output = subprocess.check_output(["df", "-P", "-T"], text=True, stderr=subprocess.DEVNULL, timeout=10)
+except Exception:
+    output = ""
+for line in output.splitlines()[1:]:
+    parts = line.split(None, 6)
+    if len(parts) != 7:
+        continue
+    fs, fstype, blocks, used, avail, pct, mount = parts
+    def as_int(value):
+        try:
+            return int(value)
+        except Exception:
+            return 0
+    rows.append({
+        "filesystem": fs,
+        "type": fstype,
+        "blocks": as_int(blocks),
+        "used": as_int(used),
+        "available": as_int(avail),
+        "use_percent": pct,
+        "mount": mount,
+    })
+print(json.dumps(rows, separators=(",", ":"))[1:-1])
+PYJSON
 }
 
 cat > "$OUTPUT_FILE" <<JSON

@@ -42,6 +42,7 @@ class LinuxSecurityAuditReportTests(unittest.TestCase):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 check=False,
+                timeout=90,
             )
 
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

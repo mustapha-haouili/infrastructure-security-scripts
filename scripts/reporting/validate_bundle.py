@@ -62,6 +62,7 @@ DANGEROUS_EXTENSIONS = {
     ".zip",
 }
 DANGEROUS_PATH_SEGMENTS = {"private-prompts", "private_prompts", "secrets", "credentials"}
+RECOGNIZED_EVIDENCE_TOP_LEVEL_DIRS = {"linux", "devsecops", "docker", "kubernetes"}
 
 
 @dataclass
@@ -308,8 +309,12 @@ def validate_bundle_shape(content_paths: Iterable[tuple[str, bool]], label: str,
     has_root_marker = bool(file_paths & ALLOWED_ZIP_ROOT_FILES)
     has_known_report = bool(file_paths & recognized_files)
     has_ad_shared = any(path == "ad-shared" or path.startswith("ad-shared/") for path in file_paths | dir_paths)
+    has_known_evidence_dir = any(
+        path.split("/", 1)[0] in RECOGNIZED_EVIDENCE_TOP_LEVEL_DIRS
+        for path in file_paths | dir_paths
+    )
 
-    if not (has_root_marker or has_known_report or has_ad_shared):
+    if not (has_root_marker or has_known_report or has_ad_shared or has_known_evidence_dir):
         result.add_error(f"{label}: archive does not contain recognized SecureInfra client collection files")
 
 
