@@ -567,17 +567,31 @@ def service_command_executable_path(command_line: str) -> str:
 
 
 def server_security_source_id(source_id: Any, row: dict[str, Any], affected_object: str, evidence: dict[str, Any]) -> str:
+    explicit_source_id = first_value(row, ["Id", "FindingId", "ControlId"], "")
+    if explicit_source_id:
+        return str(explicit_source_id)
+
     finding_type = str(first_value(row, ["FindingType"], "") or source_id or "").strip()
-    if finding_type.lower() not in {"servicerunsascustomaccount", "unquotedservicepath", "servicepathneedsvalidation"}:
+    if not finding_type:
         return str(source_id or "")
 
-    service_name = str(first_value(row, ["Name", "ServiceName"], "") or affected_object or "").strip()
-    if not service_name:
-        return str(source_id or "")
-    digest = stable_row_digest(finding_type, service_name, evidence.get("path_name"), evidence.get("evidence"))
-    type_token = sanitize_id(finding_type)[:20]
-    service_token = sanitize_id(service_name)[:16]
-    return f"{type_token}-{service_token}-{digest}"
+    object_name = str(first_value(row, ["Name", "ServiceName", "ShareName", "TaskName"], "") or affected_object or "").strip()
+    if not object_name:
+        object_name = "object"
+
+    digest = stable_row_digest(
+        finding_type,
+        object_name,
+        first_value(row, ["AccountName", "StartName", "UserId"], ""),
+        first_value(row, ["AccessRight", "AccessControlType"], ""),
+        evidence.get("path_name"),
+        evidence.get("evidence"),
+    )
+    type_token = sanitize_id(finding_type)[:24]
+    object_token = sanitize_id(object_name)[:16]
+    if object_token:
+        return f"{type_token}-{object_token}-{digest}"
+    return f"{type_token}-{digest}"
 
 
 def stable_row_digest(*values: Any) -> str:

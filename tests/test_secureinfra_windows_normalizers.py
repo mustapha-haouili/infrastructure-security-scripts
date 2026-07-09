@@ -386,6 +386,49 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
         self.assertTrue(all("UNQUOTEDSERVICEPATH" in finding["finding_id"] for finding in unquoted))
         self.assertTrue(all(finding["safe_to_auto_remediate"] is False for finding in report["findings"]))
 
+    def test_windows_server_broad_smb_share_access_ids_are_unique(self):
+        data = {
+            "ToolName": "Get-WindowsServerSecurityInventory",
+            "ReportType": "windows-server-security-inventory",
+            "GeneratedAtUtc": "2026-06-15T09:00:00Z",
+            "ComputerName": "DEMO-SERVER",
+            "Summary": {"FindingCount": 3},
+            "Findings": [
+                {
+                    "FindingType": "BroadSmbShareAccess",
+                    "Severity": "High",
+                    "Name": "Projects",
+                    "Title": "SMB share grants broad access",
+                    "Evidence": "Projects grants Change to Everyone.",
+                    "Recommendation": "Validate business need and narrow share permissions.",
+                },
+                {
+                    "FindingType": "BroadSmbShareAccess",
+                    "Severity": "Medium",
+                    "Name": "Projects",
+                    "Title": "SMB share grants broad access",
+                    "Evidence": "Projects grants Read to Authenticated Users.",
+                    "Recommendation": "Validate business need and narrow share permissions.",
+                },
+                {
+                    "FindingType": "BroadSmbShareAccess",
+                    "Severity": "Medium",
+                    "Name": "Finance",
+                    "Title": "SMB share grants broad access",
+                    "Evidence": "Finance grants Change to Domain Users.",
+                    "Recommendation": "Validate business need and narrow share permissions.",
+                },
+            ],
+        }
+
+        report = normalize_windows_server_audit(data, "windows-server-security.json")
+
+        finding_ids = [finding["finding_id"] for finding in report["findings"]]
+        self.assertEqual(len(finding_ids), 3)
+        self.assertEqual(len(finding_ids), len(set(finding_ids)))
+        self.assertTrue(all(finding_id.startswith("SERVER-SECURITY-BROADSMBSHAREACCESS-") for finding_id in finding_ids))
+        validate_normalized_report(report)
+
     def test_windows_server_uncertain_service_path_is_not_high_unquoted_service_path(self):
         data = {
             "ToolName": "Get-WindowsServerSecurityInventory",

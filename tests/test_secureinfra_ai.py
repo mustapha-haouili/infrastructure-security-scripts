@@ -1002,6 +1002,51 @@ class SecureInfraAITests(unittest.TestCase):
             self.assertIn("server_windows_server_security", normalized["metadata"]["loaded_files"])
             self.assertIn("workstation_windows_workstation_security", normalized["metadata"]["loaded_files"])
 
+    def test_multi_bundle_keeps_server_security_finding_ids_unique(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fleet_dir = root / "fleet-input"
+            fleet_dir.mkdir()
+            bundle_dir = self.create_client_bundle(fleet_dir, machine_name="DEMO-SERVER")
+            self.add_expanded_scope_reports(bundle_dir, machine_name="DEMO-SERVER")
+            server_report_path = bundle_dir / "server" / "windows-server-security.json"
+            server_report = json.loads(server_report_path.read_text(encoding="utf-8"))
+            server_report["Findings"].append(
+                {
+                    "FindingType": "BroadSmbShareAccess",
+                    "Severity": "Medium",
+                    "Name": "Projects",
+                    "Title": "SMB share grants broad access",
+                    "Evidence": "Projects grants Read to Authenticated Users.",
+                    "Recommendation": "Validate business need and narrow share permissions.",
+                }
+            )
+            server_report["Summary"]["FindingCount"] = len(server_report["Findings"])
+            server_report_path.write_text(json.dumps(server_report), encoding="utf-8")
+            output_dir = root / "output"
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = secureinfra_analyzer.main(
+                    [
+                        "--input",
+                        str(fleet_dir),
+                        "--type",
+                        "multi-bundle",
+                        "--output",
+                        str(output_dir),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            normalized = json.loads((output_dir / "normalized-report.json").read_text(encoding="utf-8"))
+            finding_ids = [item["finding_id"] for item in normalized["findings"]]
+            self.assertEqual(len(finding_ids), len(set(finding_ids)))
+            self.assertTrue(
+                any("BROADSMBSHAREACCESS-PROJECTS" in finding_id for finding_id in finding_ids),
+                finding_ids,
+            )
+            validate_normalized_report(normalized)
+
     def test_multi_bundle_directory_input_combines_many_client_bundles(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
