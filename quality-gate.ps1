@@ -98,6 +98,7 @@ function Test-PublicIntegrationContracts {
     Require-File "scripts\windows\Start-SecureInfraClientCollection.ps1"
     Require-File "scripts\windows\Start-WindowsSecurity.ps1"
     Require-File "scripts\linux\Start-SecureInfraLinuxCollection.sh"
+    Require-File "scripts\linux\linux-service-inventory-audit.sh"
     Require-File "COLLECTION_BUNDLE_CONTRACT.md"
     Require-Directory "tests"
     Require-Directory "SecureInfra_AI\schemas"
@@ -127,6 +128,11 @@ function Test-PublicIntegrationContracts {
         -RelativePath "scripts\windows\Start-SecureInfraClientCollection.ps1" `
         -Needle "Backup" `
         -Label "client collection launcher backup scope"
+
+    Require-TextMarker `
+        -RelativePath "scripts\linux\Start-SecureInfraLinuxCollection.sh" `
+        -Needle "linux-service-inventory-audit.sh" `
+        -Label "Linux service inventory launcher integration"
 
     Write-Host "Public integration contracts look present."
 }
