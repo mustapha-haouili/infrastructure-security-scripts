@@ -526,6 +526,10 @@ def normalize_source_rows(key: str, data: dict[str, Any], rows: list[dict[str, A
             evidence.update(rdp_exposure_context_evidence(row, data, evidence))
         if key in {"server_windows_local_admins", "workstation_windows_local_admins"}:
             evidence.update(local_admin_context_evidence(row, data, evidence))
+        if key == "server_windows_server_security":
+            evidence.update(server_security_context_evidence(row, data, evidence))
+        if key == "workstation_windows_workstation_security":
+            evidence.update(workstation_security_context_evidence(row, data, evidence))
         if key == "host_windows_security_audit":
             evidence.update(aggregate_host_network_context_evidence(row, evidence))
         evidence.update(
@@ -548,6 +552,8 @@ def normalize_source_rows(key: str, data: dict[str, Any], rows: list[dict[str, A
             source_id = rdp_exposure_source_id(source_id, row, evidence)
         if key == "server_windows_server_security":
             source_id = server_security_source_id(source_id, row, affected_object, evidence)
+        if key == "workstation_windows_workstation_security":
+            source_id = workstation_security_source_id(source_id, row, affected_object, evidence)
         findings.append(
             build_common_finding(
                 finding_id=build_finding_id(PREFIX_BY_KEY[key], source_id, index),
@@ -761,6 +767,24 @@ def rdp_exposure_source_id(source_id: Any, row: dict[str, Any], evidence: dict[s
         if port is not None:
             return f"{finding_type}-TCP-{port}"
     return finding_type
+
+
+def workstation_security_source_id(source_id: Any, row: dict[str, Any], affected_object: str, evidence: dict[str, Any]) -> str:
+    explicit_source_id = first_value(row, ["Id", "FindingId", "ControlId"], "")
+    if explicit_source_id:
+        return str(explicit_source_id)
+
+    finding_type = str(first_value(row, ["FindingType"], "") or source_id or "WorkstationSecurityFinding")
+    object_name = str(first_value(row, ["Name", "MountPoint", "ProfileName"], "") or affected_object or "object")
+    digest = stable_row_digest(
+        finding_type,
+        object_name,
+        evidence.get("mount_point"),
+        evidence.get("firewall_profile"),
+        evidence.get("policy_name"),
+    )
+    object_token = sanitize_id(object_name)[:18] or "OBJECT"
+    return f"{sanitize_id(finding_type)[:28]}-{object_token}-{digest}"
 
 
 def normalize_port_value(value: Any) -> int | None:
@@ -1052,6 +1076,275 @@ def rdp_exposure_summary(
         scope_text = f" with bind scope {bind_scope_value}" if bind_scope_value else ""
         return f"RDP is listening on TCP {port}{scope_text}. This is local listener evidence only and does not prove internet exposure."
     return f"Remote Desktop configuration requires review. RDP enabled={enabled}; NLA required={nla}; TCP port={port}; listeners={listener_count}."
+
+
+def server_security_context_evidence(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+    finding_type = str(first_value(row, ["FindingType"], "") or evidence.get("finding_type") or "").strip()
+    finding_type_lower = finding_type.lower()
+    if finding_type_lower in {"servicerunsascustomaccount", "unquotedservicepath", "servicepathneedsvalidation"}:
+        return server_service_context(row, data, evidence, finding_type)
+    if finding_type_lower == "scheduledtaskrunshighest":
+        return server_scheduled_task_context(row, data, evidence)
+    if finding_type_lower == "broadsmbshareaccess":
+        return server_smb_share_context(row, data, evidence)
+    return {}
+
+
+def server_service_context(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any], finding_type: str) -> dict[str, Any]:
+    service_name = str(first_value(row, ["ServiceName", "Name"], "") or "").strip()
+    service = matching_service(data, service_name)
+    display_name = str(first_value(row, ["DisplayName", "ServiceDisplayName"], "") or service.get("DisplayName") or "").strip()
+    start_name = str(first_value(row, ["StartName", "AccountName"], "") or service.get("StartName") or "").strip()
+    start_mode = str(first_value(row, ["StartMode"], "") or service.get("StartMode") or "").strip()
+    state = str(first_value(row, ["State", "ServiceState"], "") or service.get("State") or "").strip()
+    path_name = str(first_value(row, ["PathName", "ImagePath", "ServicePath", "CommandLine"], "") or service.get("PathName") or "").strip()
+    executable_path = str(first_value(row, ["ExecutablePath"], "") or evidence.get("executable_path") or "").strip()
+    summary = server_service_summary(finding_type, service_name, start_name, start_mode, state)
+    return {
+        "service_name": service_name,
+        "service_display_name": display_name,
+        "service_start_name": start_name,
+        "service_start_mode": start_mode,
+        "service_state": state,
+        "service_path": path_name,
+        "executable_path": executable_path,
+        "summary": summary,
+        "customer_question": "Who owns this Windows service, what application depends on it, and is the service account/path configuration approved?",
+        "safe_next_step": "Validate service owner, dependency, credential custody, and approved change window before changing the service account or ImagePath.",
+        "risk_explanation": "Windows service configuration can affect application availability and privilege boundaries. Service account and executable path findings require owner review before remediation.",
+    }
+
+
+def matching_service(data: dict[str, Any], service_name: str) -> dict[str, Any]:
+    if not service_name:
+        return {}
+    service_lower = service_name.lower()
+    for service in as_records(data.get("Services")):
+        name = str(service.get("Name") or "").lower()
+        display = str(service.get("DisplayName") or "").lower()
+        if service_lower in {name, display}:
+            return service
+    return {}
+
+
+def server_service_summary(finding_type: str, service_name: str, start_name: str, start_mode: str, state: str) -> str:
+    service_text = service_name or "A Windows service"
+    if finding_type == "ServiceRunsAsCustomAccount":
+        return f"{service_text} runs as {start_name or 'a custom or domain account'} and requires owner, dependency, and credential review."
+    if finding_type == "UnquotedServicePath":
+        return f"{service_text} has an unquoted executable path finding that requires validation before any service configuration change."
+    if finding_type == "ServicePathNeedsValidation":
+        return f"{service_text} has service path evidence that could not be safely classified and requires manual validation."
+    state_text = f" State={state}; StartMode={start_mode}." if state or start_mode else ""
+    return f"{service_text} configuration requires owner review.{state_text}"
+
+
+def server_scheduled_task_context(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+    task_label = str(first_value(row, ["TaskName", "Name"], "") or "").strip()
+    task = matching_scheduled_task(data, task_label)
+    task_name = str(task.get("TaskName") or task_label.split("\\")[-1] or task_label).strip()
+    task_path = str(task.get("TaskPath") or "").strip()
+    user_id = str(first_value(row, ["UserId", "TaskUser"], "") or task.get("UserId") or "").strip()
+    run_level = str(first_value(row, ["RunLevel"], "") or task.get("RunLevel") or "").strip()
+    state = str(first_value(row, ["State"], "") or task.get("State") or "").strip()
+    full_name = f"{task_path}{task_name}" if task_path else task_label or task_name
+    return {
+        "task_name": task_name,
+        "task_path": task_path,
+        "task_full_name": full_name,
+        "task_user_id": user_id,
+        "task_run_level": run_level,
+        "task_state": state,
+        "summary": f"Scheduled task {full_name or 'Unknown'} runs with highest privileges and requires owner and action-path review.",
+        "customer_question": "Who owns this scheduled task, what action path does it run, and why are highest privileges required?",
+        "safe_next_step": "Validate task owner, action path, trigger, and required privileges before changing or disabling the task.",
+        "risk_explanation": "Scheduled tasks running with elevated privileges can be legitimate maintenance automation or persistence risk and must be reviewed in context.",
+    }
+
+
+def matching_scheduled_task(data: dict[str, Any], task_label: str) -> dict[str, Any]:
+    if not task_label:
+        return {}
+    label_lower = task_label.lower()
+    for task in as_records(data.get("ScheduledTasks")):
+        name = str(task.get("TaskName") or "")
+        path = str(task.get("TaskPath") or "")
+        full = f"{path}{name}".lower()
+        if label_lower in {name.lower(), full} or label_lower.endswith(name.lower()):
+            return task
+    return {}
+
+
+def server_smb_share_context(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+    share_name = str(first_value(row, ["ShareName", "Name"], "") or "").strip()
+    share = matching_smb_share(data, share_name)
+    access = matching_smb_share_access(data, share_name, row)
+    account = str(first_value(row, ["AccountName", "Principal"], "") or access.get("AccountName") or "").strip()
+    access_right = str(first_value(row, ["AccessRight"], "") or access.get("AccessRight") or "").strip()
+    access_type = str(first_value(row, ["AccessControlType"], "") or access.get("AccessControlType") or "").strip()
+    share_path = str(share.get("Path") or "").strip()
+    share_state = str(share.get("ShareState") or "").strip()
+    share_type = str(share.get("ShareType") or "").strip()
+    return {
+        "share_name": share_name,
+        "share_path": share_path,
+        "share_state": share_state,
+        "share_type": share_type,
+        "share_special": share.get("Special") if "Special" in share else "",
+        "access_account": account,
+        "access_right": access_right,
+        "access_control_type": access_type,
+        "summary": f"SMB share {share_name or 'Unknown'} grants {access_right or 'broad'} access to {account or 'a broad principal'} and requires owner validation.",
+        "customer_question": "Who owns this share, what data classification applies, and which groups should have access?",
+        "safe_next_step": "Validate share owner, business purpose, data sensitivity, and approved group membership before changing SMB share permissions.",
+        "risk_explanation": "Broad SMB share permissions can expose business data or administrative files to more users than intended. Access changes require owner validation and change control.",
+    }
+
+
+def matching_smb_share(data: dict[str, Any], share_name: str) -> dict[str, Any]:
+    if not share_name:
+        return {}
+    share_lower = share_name.lower()
+    for share in as_records(data.get("SmbShares")):
+        if str(share.get("Name") or "").lower() == share_lower:
+            return share
+    return {}
+
+
+def matching_smb_share_access(data: dict[str, Any], share_name: str, row: dict[str, Any]) -> dict[str, Any]:
+    share_lower = share_name.lower()
+    account = str(first_value(row, ["AccountName", "Principal"], "") or "").lower()
+    for access in as_records(data.get("SmbShareAccess")):
+        if share_lower and str(access.get("ShareName") or "").lower() != share_lower:
+            continue
+        if account and str(access.get("AccountName") or "").lower() != account:
+            continue
+        return access
+    return {}
+
+
+def workstation_security_context_evidence(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+    finding_type = str(first_value(row, ["FindingType"], "") or evidence.get("finding_type") or "").strip()
+    finding_type_lower = finding_type.lower()
+    if finding_type_lower.startswith("defender"):
+        return workstation_defender_context(row, data)
+    if finding_type_lower == "bitlockervolumenotprotected":
+        return workstation_bitlocker_context(row, data)
+    if finding_type_lower == "firewallprofiledisabled":
+        return workstation_firewall_context(row, data)
+    if finding_type_lower == "remoteassistanceenabled":
+        return workstation_policy_context(
+            row,
+            data,
+            policy_name="Remote Assistance",
+            policy_key="RemoteAssistance",
+            summary="Remote Assistance is enabled and requires support-process validation.",
+            customer_question="Is Remote Assistance approved for this endpoint population and restricted by support process?",
+        )
+    if finding_type_lower == "llmnrnotdisabledbypolicy":
+        return workstation_policy_context(
+            row,
+            data,
+            policy_name="LLMNR",
+            policy_key="LlmnrPolicy",
+            summary="LLMNR is not disabled by policy and requires name-resolution dependency validation.",
+            customer_question="Is LLMNR still required for any legacy name-resolution dependency?",
+        )
+    if finding_type_lower == "powershellscriptblockloggingnotenabled":
+        return workstation_policy_context(
+            row,
+            data,
+            policy_name="PowerShell Script Block Logging",
+            policy_key="PowerShellLogging",
+            summary="PowerShell Script Block Logging is not enabled by policy and requires logging coverage validation.",
+            customer_question="Is PowerShell activity centrally logged with enough detail for investigation and detection?",
+        )
+    return {}
+
+
+def workstation_defender_context(row: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    defender = as_dict(data.get("DefenderStatus"))
+    return {
+        "defender_am_service_enabled": defender.get("AMServiceEnabled"),
+        "defender_antivirus_enabled": defender.get("AntivirusEnabled"),
+        "defender_realtime_protection_enabled": defender.get("RealTimeProtectionEnabled"),
+        "defender_behavior_monitor_enabled": defender.get("BehaviorMonitorEnabled"),
+        "summary": "Microsoft Defender protection state requires validation against the approved endpoint protection standard.",
+        "customer_question": "Which endpoint protection platform is approved for this workstation and is real-time protection centrally enforced?",
+        "safe_next_step": "Validate endpoint protection policy and management ownership before changing Defender or equivalent controls.",
+        "risk_explanation": "Endpoint protection findings can indicate missing preventive controls or an approved third-party replacement that must be documented.",
+    }
+
+
+def workstation_bitlocker_context(row: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    mount_point = str(first_value(row, ["MountPoint", "Name"], "") or "").strip()
+    volume = matching_bitlocker_volume(data, mount_point)
+    protection_status = str(first_value(row, ["ProtectionStatus"], "") or volume.get("ProtectionStatus") or "").strip()
+    volume_status = str(first_value(row, ["VolumeStatus"], "") or volume.get("VolumeStatus") or "").strip()
+    encryption_method = str(first_value(row, ["EncryptionMethod"], "") or volume.get("EncryptionMethod") or "").strip()
+    return {
+        "mount_point": mount_point,
+        "volume_type": volume.get("VolumeType", ""),
+        "protection_status": protection_status,
+        "volume_status": volume_status,
+        "encryption_method": encryption_method,
+        "lock_status": volume.get("LockStatus", ""),
+        "summary": f"Fixed volume {mount_point or 'Unknown'} is not fully protected by BitLocker and requires endpoint encryption policy validation.",
+        "customer_question": "Should this fixed volume be encrypted under the customer endpoint encryption policy?",
+        "safe_next_step": "Validate recovery-key custody, endpoint management policy, and user impact before enabling or changing BitLocker.",
+        "risk_explanation": "Unprotected fixed volumes can expose data if a device is lost, stolen, or accessed offline.",
+    }
+
+
+def matching_bitlocker_volume(data: dict[str, Any], mount_point: str) -> dict[str, Any]:
+    mount_lower = mount_point.lower()
+    for volume in as_records(data.get("BitLockerVolumes")):
+        if str(volume.get("MountPoint") or "").lower() == mount_lower:
+            return volume
+    return {}
+
+
+def workstation_firewall_context(row: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    profile_name = str(first_value(row, ["ProfileName", "Name"], "") or "").strip()
+    profile = matching_firewall_profile(data, profile_name)
+    return {
+        "firewall_profile": profile_name,
+        "firewall_enabled": profile.get("Enabled", ""),
+        "default_inbound_action": profile.get("DefaultInboundAction", ""),
+        "default_outbound_action": profile.get("DefaultOutboundAction", ""),
+        "summary": f"Windows Firewall {profile_name or 'profile'} profile is disabled and requires endpoint policy validation.",
+        "customer_question": "Which firewall profile should be enforced on this endpoint and what management policy controls it?",
+        "safe_next_step": "Validate endpoint firewall policy, network profile classification, and required allow rules before enabling or changing the profile.",
+        "risk_explanation": "Disabled host firewall profiles can allow broader local network exposure than intended, depending on network profile and allow rules.",
+    }
+
+
+def matching_firewall_profile(data: dict[str, Any], profile_name: str) -> dict[str, Any]:
+    profile_lower = profile_name.lower()
+    for profile in as_records(data.get("FirewallProfiles")):
+        if str(profile.get("Name") or "").lower() == profile_lower:
+            return profile
+    return {}
+
+
+def workstation_policy_context(
+    row: dict[str, Any],
+    data: dict[str, Any],
+    *,
+    policy_name: str,
+    policy_key: str,
+    summary: str,
+    customer_question: str,
+) -> dict[str, Any]:
+    policy = as_dict(data.get(policy_key))
+    return {
+        "policy_name": policy_name,
+        "policy_values": policy,
+        "summary": summary,
+        "customer_question": customer_question,
+        "safe_next_step": "Validate current endpoint management policy and dependency impact before changing this setting.",
+        "risk_explanation": "Endpoint policy findings should be remediated through approved policy management rather than one-off local changes.",
+    }
 
 
 def network_port_context_evidence(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:

@@ -298,6 +298,232 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
         self.assertIn("does not prove internet exposure", rdp_listening["evidence"]["summary"])
         self.assertFalse(rdp_listening["safe_to_auto_remediate"])
 
+    def test_windows_server_inventory_findings_include_service_task_and_share_context(self):
+        data = {
+            "ToolName": "Get-WindowsServerSecurityInventory",
+            "ReportType": "windows-server-security-inventory",
+            "GeneratedAtUtc": "2026-06-15T09:00:00Z",
+            "ComputerName": "LAB-SRV01",
+            "Summary": {"FindingCount": 4},
+            "Services": [
+                {
+                    "Name": "LegacyAppSvc",
+                    "DisplayName": "Legacy Application Service",
+                    "State": "Running",
+                    "StartMode": "Auto",
+                    "StartName": r"EXAMPLE\svc-legacy-app",
+                    "PathName": r"C:\Program Files\Legacy App\legacy.exe -service",
+                }
+            ],
+            "ScheduledTasks": [
+                {
+                    "TaskName": "LegacyAdminTask",
+                    "TaskPath": "\\Legacy\\",
+                    "State": "Ready",
+                    "UserId": r"EXAMPLE\svc-task",
+                    "RunLevel": "Highest",
+                }
+            ],
+            "SmbShares": [
+                {
+                    "Name": "Projects",
+                    "Path": r"D:\Shares\Projects",
+                    "Description": "Project share",
+                    "ShareState": "Online",
+                    "ShareType": "FileSystemDirectory",
+                    "Special": False,
+                }
+            ],
+            "SmbShareAccess": [
+                {
+                    "ShareName": "Projects",
+                    "AccountName": "Everyone",
+                    "AccessControlType": "Allow",
+                    "AccessRight": "Change",
+                }
+            ],
+            "Findings": [
+                {
+                    "FindingType": "ServiceRunsAsCustomAccount",
+                    "Severity": "High",
+                    "Name": "LegacyAppSvc",
+                    "Title": "Service runs as a custom or domain account",
+                    "Evidence": r"LegacyAppSvc starts as EXAMPLE\svc-legacy-app.",
+                    "Recommendation": "Confirm owner and credential rotation.",
+                },
+                {
+                    "FindingType": "UnquotedServicePath",
+                    "Severity": "High",
+                    "Name": "LegacyAppSvc",
+                    "Title": "Service path is unquoted and contains spaces",
+                    "Evidence": r"LegacyAppSvc PathName=C:\Program Files\Legacy App\legacy.exe -service.",
+                    "Recommendation": "Validate and quote if required.",
+                },
+                {
+                    "FindingType": "ScheduledTaskRunsHighest",
+                    "Severity": "Medium",
+                    "Name": r"\Legacy\LegacyAdminTask",
+                    "Title": "Scheduled task runs with highest privileges",
+                    "Evidence": r"\Legacy\LegacyAdminTask runs as EXAMPLE\svc-task.",
+                    "Recommendation": "Confirm task owner and privilege requirement.",
+                },
+                {
+                    "FindingType": "BroadSmbShareAccess",
+                    "Severity": "High",
+                    "Name": "Projects",
+                    "Title": "SMB share grants broad access",
+                    "Evidence": "Projects grants Change to Everyone.",
+                    "Recommendation": "Validate business need and narrow share permissions.",
+                },
+            ],
+        }
+
+        findings = normalize_client_source_file("server_windows_server_security", data, Path("windows-server-security.json"))
+        by_type = {finding["evidence"]["finding_type"]: finding for finding in findings}
+
+        service = by_type["ServiceRunsAsCustomAccount"]
+        self.assertEqual(service["evidence"]["service_name"], "LegacyAppSvc")
+        self.assertEqual(service["evidence"]["service_display_name"], "Legacy Application Service")
+        self.assertEqual(service["evidence"]["service_start_name"], r"EXAMPLE\svc-legacy-app")
+        self.assertEqual(service["evidence"]["service_state"], "Running")
+        self.assertIn("Who owns this Windows service", service["evidence"]["customer_question"])
+        self.assertFalse(service["safe_to_auto_remediate"])
+
+        unquoted = by_type["UnquotedServicePath"]
+        self.assertEqual(unquoted["evidence"]["service_start_mode"], "Auto")
+        self.assertIn("unquoted executable path", unquoted["evidence"]["summary"])
+        self.assertIn("approved change window", unquoted["evidence"]["safe_next_step"])
+
+        task = by_type["ScheduledTaskRunsHighest"]
+        self.assertEqual(task["evidence"]["task_name"], "LegacyAdminTask")
+        self.assertEqual(task["evidence"]["task_path"], "\\Legacy\\")
+        self.assertEqual(task["evidence"]["task_run_level"], "Highest")
+        self.assertIn("action path", task["evidence"]["customer_question"])
+
+        share = by_type["BroadSmbShareAccess"]
+        self.assertEqual(share["evidence"]["share_name"], "Projects")
+        self.assertEqual(share["evidence"]["access_account"], "Everyone")
+        self.assertEqual(share["evidence"]["access_right"], "Change")
+        self.assertEqual(share["evidence"]["share_state"], "Online")
+        self.assertIn("Who owns this share", share["evidence"]["customer_question"])
+        self.assertEqual(len({finding["finding_id"] for finding in findings}), len(findings))
+
+    def test_windows_workstation_inventory_findings_have_stable_object_ids_and_context(self):
+        data = {
+            "ToolName": "Get-WindowsWorkstationSecurityInventory",
+            "ReportType": "windows-workstation-security-inventory",
+            "GeneratedAtUtc": "2026-06-15T09:00:00Z",
+            "ComputerName": "LAB-WS01",
+            "Summary": {"FindingCount": 6},
+            "DefenderStatus": {
+                "AMServiceEnabled": True,
+                "AntivirusEnabled": True,
+                "RealTimeProtectionEnabled": False,
+                "BehaviorMonitorEnabled": True,
+            },
+            "BitLockerVolumes": [
+                {
+                    "MountPoint": "C:",
+                    "VolumeType": "OperatingSystem",
+                    "ProtectionStatus": "Off",
+                    "VolumeStatus": "FullyDecrypted",
+                    "EncryptionMethod": "None",
+                    "LockStatus": "Unlocked",
+                },
+                {
+                    "MountPoint": "D:",
+                    "VolumeType": "FixedData",
+                    "ProtectionStatus": "Off",
+                    "VolumeStatus": "FullyDecrypted",
+                    "EncryptionMethod": "None",
+                    "LockStatus": "Unlocked",
+                },
+            ],
+            "FirewallProfiles": [
+                {"Name": "Domain", "Enabled": False, "DefaultInboundAction": "Block", "DefaultOutboundAction": "Allow"},
+                {"Name": "Public", "Enabled": False, "DefaultInboundAction": "Block", "DefaultOutboundAction": "Allow"},
+            ],
+            "RemoteAssistance": {"fAllowToGetHelp": 1},
+            "LlmnrPolicy": {"EnableMulticast": 1},
+            "PowerShellLogging": {"EnableScriptBlockLogging": 0},
+            "Findings": [
+                {
+                    "FindingType": "DefenderRealTimeProtectionDisabled",
+                    "Severity": "High",
+                    "Name": "Defender",
+                    "Title": "Defender real-time protection is disabled",
+                    "Evidence": "RealTimeProtectionEnabled=False.",
+                    "Recommendation": "Re-enable real-time protection unless an exception exists.",
+                },
+                {
+                    "FindingType": "BitLockerVolumeNotProtected",
+                    "Severity": "High",
+                    "Name": "C:",
+                    "Title": "Fixed volume is not fully protected by BitLocker",
+                    "Evidence": "C: ProtectionStatus=Off.",
+                    "Recommendation": "Confirm encryption policy.",
+                },
+                {
+                    "FindingType": "BitLockerVolumeNotProtected",
+                    "Severity": "High",
+                    "Name": "D:",
+                    "Title": "Fixed volume is not fully protected by BitLocker",
+                    "Evidence": "D: ProtectionStatus=Off.",
+                    "Recommendation": "Confirm encryption policy.",
+                },
+                {
+                    "FindingType": "FirewallProfileDisabled",
+                    "Severity": "Medium",
+                    "Name": "Domain",
+                    "Title": "Windows Firewall profile is disabled",
+                    "Evidence": "Domain profile Enabled=False.",
+                    "Recommendation": "Enable the firewall profile after validation.",
+                },
+                {
+                    "FindingType": "FirewallProfileDisabled",
+                    "Severity": "High",
+                    "Name": "Public",
+                    "Title": "Windows Firewall profile is disabled",
+                    "Evidence": "Public profile Enabled=False.",
+                    "Recommendation": "Enable the firewall profile after validation.",
+                },
+                {
+                    "FindingType": "PowerShellScriptBlockLoggingNotEnabled",
+                    "Severity": "Medium",
+                    "Name": "PowerShell",
+                    "Title": "PowerShell Script Block Logging is not enabled by policy",
+                    "Evidence": "EnableScriptBlockLogging=0.",
+                    "Recommendation": "Enable Script Block Logging through approved endpoint policy.",
+                },
+            ],
+        }
+
+        findings = normalize_client_source_file("workstation_windows_workstation_security", data, Path("windows-workstation-security.json"))
+        finding_ids = [finding["finding_id"] for finding in findings]
+        self.assertEqual(len(finding_ids), len(set(finding_ids)))
+        self.assertTrue(all(finding_id.startswith("WORKSTATION-SECURITY-") for finding_id in finding_ids))
+
+        by_object = {finding["affected_object"]: finding for finding in findings}
+        defender = by_object["Defender"]
+        self.assertEqual(defender["evidence"]["defender_realtime_protection_enabled"], False)
+        self.assertIn("endpoint protection", defender["evidence"]["customer_question"])
+
+        bitlocker_c = by_object["C:"]
+        self.assertEqual(bitlocker_c["evidence"]["mount_point"], "C:")
+        self.assertEqual(bitlocker_c["evidence"]["volume_type"], "OperatingSystem")
+        self.assertEqual(bitlocker_c["evidence"]["protection_status"], "Off")
+        self.assertIn("recovery-key custody", bitlocker_c["evidence"]["safe_next_step"])
+
+        public_firewall = by_object["Public"]
+        self.assertEqual(public_firewall["evidence"]["firewall_profile"], "Public")
+        self.assertEqual(public_firewall["evidence"]["default_inbound_action"], "Block")
+        self.assertIn("Which firewall profile", public_firewall["evidence"]["customer_question"])
+
+        powershell = by_object["PowerShell"]
+        self.assertEqual(powershell["evidence"]["policy_name"], "PowerShell Script Block Logging")
+        self.assertIn("centrally logged", powershell["evidence"]["customer_question"])
+        self.assertFalse(powershell["safe_to_auto_remediate"])
+
     def test_windows_network_listener_findings_include_port_context(self):
         data = {
             "ToolName": "Get-WindowsNetworkExposureAudit",
