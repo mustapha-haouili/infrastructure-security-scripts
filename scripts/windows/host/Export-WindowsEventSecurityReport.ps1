@@ -195,14 +195,21 @@ function New-NameCountSummary {
 
 function New-InvestigationFinding {
     param(
+        [string]$FindingId = "",
         [string]$Severity,
         [string]$Title,
         [string]$WhyItMatters,
         [string]$Recommendation,
-        [string]$Evidence
+        [string]$Evidence,
+        [int[]]$EventIds = @(),
+        [string]$EventCategory = ""
     )
 
     [pscustomobject][ordered]@{
+        FindingId      = $FindingId
+        FindingType    = "WindowsEventSecurityIndicator"
+        EventCategory  = $EventCategory
+        EventIds       = @($EventIds)
         Severity       = $Severity
         Title          = $Title
         WhyItMatters   = $WhyItMatters
@@ -229,40 +236,40 @@ function New-InvestigationSummary {
 
     if ($failedLogons.Count -gt 0) {
         $topSources = @(New-NameCountSummary -Records $failedLogons -PropertyName "IpAddress" -First 5 | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join "; "
-        $findings.Add((New-InvestigationFinding -Severity "High" -Title "Failed logons were detected" -WhyItMatters "Failed logons can indicate password spray, brute force, stale services, or user mistakes." -Recommendation "Review top source IPs and target users. Confirm whether activity is expected." -Evidence "Count=$($failedLogons.Count); TopSources=$topSources")) | Out-Null
+        $findings.Add((New-InvestigationFinding -FindingId "FAILED-LOGONS" -EventIds @(4625) -EventCategory "Authentication failure" -Severity "High" -Title "Failed logons were detected" -WhyItMatters "Failed logons can indicate password spray, brute force, stale services, or user mistakes." -Recommendation "Review top source IPs and target users. Confirm whether activity is expected." -Evidence "Count=$($failedLogons.Count); TopSources=$topSources")) | Out-Null
     }
 
     if ($accountChanges.Count -gt 0) {
-        $findings.Add((New-InvestigationFinding -Severity "High" -Title "Account lifecycle changes were detected" -WhyItMatters "New, enabled, disabled, or deleted accounts can be legitimate admin work or attacker persistence/cleanup." -Recommendation "Confirm every account change has a ticket, admin owner, and expected timestamp." -Evidence "Count=$($accountChanges.Count)")) | Out-Null
+        $findings.Add((New-InvestigationFinding -FindingId "ACCOUNT-LIFECYCLE-CHANGES" -EventIds @(4720, 4722, 4725, 4726) -EventCategory "Account lifecycle" -Severity "High" -Title "Account lifecycle changes were detected" -WhyItMatters "New, enabled, disabled, or deleted accounts can be legitimate admin work or attacker persistence/cleanup." -Recommendation "Confirm every account change has a ticket, admin owner, and expected timestamp." -Evidence "Count=$($accountChanges.Count)")) | Out-Null
     }
 
     if ($groupChanges.Count -gt 0) {
-        $findings.Add((New-InvestigationFinding -Severity "High" -Title "Security group membership changes were detected" -WhyItMatters "Security group changes can grant privileged or application access." -Recommendation "Review changed groups and confirm the requester/approver." -Evidence "Count=$($groupChanges.Count)")) | Out-Null
+        $findings.Add((New-InvestigationFinding -FindingId "SECURITY-GROUP-CHANGES" -EventIds @(4728, 4732, 4756) -EventCategory "Group membership" -Severity "High" -Title "Security group membership changes were detected" -WhyItMatters "Security group changes can grant privileged or application access." -Recommendation "Review changed groups and confirm the requester/approver." -Evidence "Count=$($groupChanges.Count)")) | Out-Null
     }
 
     if ($lockouts.Count -gt 0) {
-        $findings.Add((New-InvestigationFinding -Severity "Medium" -Title "Account lockouts were detected" -WhyItMatters "Lockouts can indicate password attacks or broken services using old credentials." -Recommendation "Review locked accounts and source machines." -Evidence "Count=$($lockouts.Count)")) | Out-Null
+        $findings.Add((New-InvestigationFinding -FindingId "ACCOUNT-LOCKOUTS" -EventIds @(4740) -EventCategory "Account lockout" -Severity "Medium" -Title "Account lockouts were detected" -WhyItMatters "Lockouts can indicate password attacks or broken services using old credentials." -Recommendation "Review locked accounts and source machines." -Evidence "Count=$($lockouts.Count)")) | Out-Null
     }
 
     if ($serviceInstalls.Count -gt 0) {
         $services = @($serviceInstalls | Select-Object -First 10 | ForEach-Object { "$($_.ServiceName) [$($_.ServiceFileName)]" }) -join "; "
-        $findings.Add((New-InvestigationFinding -Severity "High" -Title "Services were installed" -WhyItMatters "New services can be normal software installation or attacker persistence." -Recommendation "Verify service name, file path, signature, vendor, and change ticket." -Evidence "Count=$($serviceInstalls.Count); Services=$services")) | Out-Null
+        $findings.Add((New-InvestigationFinding -FindingId "SERVICE-INSTALLATIONS" -EventIds @(7045) -EventCategory "Service installation" -Severity "High" -Title "Services were installed" -WhyItMatters "New services can be normal software installation or attacker persistence." -Recommendation "Verify service name, file path, signature, vendor, and change ticket." -Evidence "Count=$($serviceInstalls.Count); Services=$services")) | Out-Null
     }
 
     if ($rdpLogons.Count -gt 0) {
         $sources = @(New-NameCountSummary -Records $rdpLogons -PropertyName "IpAddress" -First 10 | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join "; "
-        $findings.Add((New-InvestigationFinding -Severity "High" -Title "RDP logons were detected" -WhyItMatters "RDP logons should be expected, authorized, and restricted to trusted sources." -Recommendation "Review source IPs, users, and timestamps for unexpected access." -Evidence "Count=$($rdpLogons.Count); Sources=$sources")) | Out-Null
+        $findings.Add((New-InvestigationFinding -FindingId "RDP-LOGONS" -EventIds @(4624) -EventCategory "Remote interactive logon" -Severity "High" -Title "RDP logons were detected" -WhyItMatters "RDP logons should be expected, authorized, and restricted to trusted sources." -Recommendation "Review source IPs, users, and timestamps for unexpected access." -Evidence "Count=$($rdpLogons.Count); Sources=$sources")) | Out-Null
     }
 
     if ($suspiciousExplicitProcesses.Count -gt 0) {
         $processes = @(New-NameCountSummary -Records $suspiciousExplicitProcesses -PropertyName "ProcessName" -First 10 | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join "; "
-        $findings.Add((New-InvestigationFinding -Severity "High" -Title "Explicit credentials used by suspicious process names" -WhyItMatters "Credential use from command/scripting tools is more suspicious than normal application authentication." -Recommendation "Review command history, process lineage, and whether the admin expected this activity." -Evidence "Count=$($suspiciousExplicitProcesses.Count); Processes=$processes")) | Out-Null
+        $findings.Add((New-InvestigationFinding -FindingId "SUSPICIOUS-EXPLICIT-CREDENTIALS" -EventIds @(4648) -EventCategory "Explicit credential use" -Severity "High" -Title "Explicit credentials used by suspicious process names" -WhyItMatters "Credential use from command/scripting tools is more suspicious than normal application authentication." -Recommendation "Review command history, process lineage, and whether the admin expected this activity." -Evidence "Count=$($suspiciousExplicitProcesses.Count); Processes=$processes")) | Out-Null
     }
 
     if ($explicitCredentials.Count -gt 0 -and $suspiciousExplicitProcesses.Count -eq 0) {
         $topProcesses = @(New-NameCountSummary -Records $explicitCredentials -PropertyName "ProcessName" -First 5 | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join "; "
         $topTargets = @(New-NameCountSummary -Records $explicitCredentials -PropertyName "TargetServer" -First 5 | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join "; "
-        $findings.Add((New-InvestigationFinding -Severity "Info" -Title "Explicit credential use was detected" -WhyItMatters "Explicit credential events are common for Outlook, scheduled tasks, run-as, and services, but should match expected applications." -Recommendation "Confirm top processes and target servers are expected." -Evidence "Count=$($explicitCredentials.Count); TopProcesses=$topProcesses; TopTargets=$topTargets")) | Out-Null
+        $findings.Add((New-InvestigationFinding -FindingId "EXPLICIT-CREDENTIAL-USE" -EventIds @(4648) -EventCategory "Explicit credential use" -Severity "Info" -Title "Explicit credential use was detected" -WhyItMatters "Explicit credential events are common for Outlook, scheduled tasks, run-as, and services, but should match expected applications." -Recommendation "Confirm top processes and target servers are expected." -Evidence "Count=$($explicitCredentials.Count); TopProcesses=$topProcesses; TopTargets=$topTargets")) | Out-Null
     }
 
     $criticalCount = @($findings.ToArray() | Where-Object { $_.Severity -eq "Critical" }).Count

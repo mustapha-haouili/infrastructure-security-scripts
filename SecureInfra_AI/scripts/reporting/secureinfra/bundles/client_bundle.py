@@ -444,13 +444,54 @@ def normalize_client_source_file(key: str, data: dict[str, Any], source_file: Pa
     if key in {"linux_security_summary", "linux_network_exposure_summary", "linux_log_audit_summary", "linux_service_inventory_summary"}:
         return normalize_linux_security_findings(data, source_file, source_script_name=linux_source_script_for_key(key, data))
     if key == "host_windows_events_summary":
-        rows = as_records(as_dict(data.get("InvestigationSummary")).get("Findings"))
+        rows = normalize_windows_event_summary_rows(as_records(as_dict(data.get("InvestigationSummary")).get("Findings")), data)
     elif key == "server_rdp_profile_cache_cleanup":
         return normalize_rdp_cache_cleanup(data, source_file, key)
     else:
         rows = as_records(data.get("Findings"))
     return normalize_source_rows(key, data, rows, source_file)
 
+
+WINDOWS_EVENT_FINDING_ID_BY_TITLE = {
+    "failed logons were detected": "FAILED-LOGONS",
+    "account lifecycle changes were detected": "ACCOUNT-LIFECYCLE-CHANGES",
+    "security group membership changes were detected": "SECURITY-GROUP-CHANGES",
+    "account lockouts were detected": "ACCOUNT-LOCKOUTS",
+    "services were installed": "SERVICE-INSTALLATIONS",
+    "rdp logons were detected": "RDP-LOGONS",
+    "explicit credentials used by suspicious process names": "SUSPICIOUS-EXPLICIT-CREDENTIALS",
+    "explicit credential use was detected": "EXPLICIT-CREDENTIAL-USE",
+}
+
+WINDOWS_EVENT_IDS_BY_FINDING_ID = {
+    "FAILED-LOGONS": [4625],
+    "ACCOUNT-LIFECYCLE-CHANGES": [4720, 4722, 4725, 4726],
+    "SECURITY-GROUP-CHANGES": [4728, 4732, 4756],
+    "ACCOUNT-LOCKOUTS": [4740],
+    "SERVICE-INSTALLATIONS": [7045],
+    "RDP-LOGONS": [4624],
+    "SUSPICIOUS-EXPLICIT-CREDENTIALS": [4648],
+    "EXPLICIT-CREDENTIAL-USE": [4648],
+}
+
+
+def normalize_windows_event_summary_rows(rows: list[dict[str, Any]], data: dict[str, Any]) -> list[dict[str, Any]]:
+    normalized = []
+    computer = computer_name(data)
+    for row in rows:
+        output = dict(row)
+        title = str(first_value(output, ["Title"], "") or "").strip()
+        event_finding_id = str(first_value(output, ["FindingId", "Id", "FindingType"], "") or "").strip()
+        if not event_finding_id:
+            event_finding_id = WINDOWS_EVENT_FINDING_ID_BY_TITLE.get(title.lower(), "")
+        if event_finding_id:
+            output.setdefault("FindingId", event_finding_id)
+            output.setdefault("FindingType", "WindowsEventSecurityIndicator")
+            output.setdefault("EventIds", WINDOWS_EVENT_IDS_BY_FINDING_ID.get(event_finding_id, []))
+        output.setdefault("AffectedObject", computer or title or "Windows event security summary")
+        output.setdefault("EventCategory", event_finding_id.replace("-", " ").title() if event_finding_id else "Windows Event Security")
+        normalized.append(output)
+    return normalized
 
 
 def linux_source_script_for_key(key: str, data: dict[str, Any]) -> str:

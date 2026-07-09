@@ -934,7 +934,11 @@ class SecureInfraAITests(unittest.TestCase):
             self.assertIn("host_windows_hardening_preview", normalized["metadata"]["loaded_files"])
             finding_ids = {item["finding_id"] for item in normalized["findings"]}
             self.assertIn("HOST-WIN-WIN-FW-001", finding_ids)
+            self.assertIn("HOST-EVENT-SERVICE-INSTALLATIONS", finding_ids)
             self.assertIn("SERVER-RDP-CACHE-0001", finding_ids)
+            event_finding = next(item for item in normalized["findings"] if item["finding_id"] == "HOST-EVENT-SERVICE-INSTALLATIONS")
+            self.assertEqual(event_finding["evidence"]["event_ids"], [7045])
+            self.assertEqual(event_finding["evidence"]["finding_type"], "WindowsEventSecurityIndicator")
             self.assert_evidence_contract(normalized)
             self.assert_no_internal_paths(normalized, bundle_dir)
 
