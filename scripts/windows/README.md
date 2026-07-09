@@ -53,7 +53,7 @@ AD baselines, and does not delete files. It creates:
 - `ad-shared/` with AD and GPO JSON files compatible with SecureInfra AI
 - `host/`, `server/`, `workstation/`, and `network/` folders for supported
   local Windows evidence
-- `backup/` when the explicit `Backup` scope is requested
+- `backup/` for Backup readiness evidence when `All` or explicit `Backup` scope is requested
 - a `.zip` archive next to the collection folder
 
 Selected scopes can be run with:
@@ -69,9 +69,9 @@ Collect only Group Policy evidence with:
 ```
 
 Current implemented scopes are `AD`, `GPO`, `Host`, `Server`, `Workstation`,
-`Network`, and explicit `Backup`. The broad `AD` scope still includes GPO
-health evidence for compatibility; use `GPO` when only Group Policy evidence is
-needed.
+`Network`, and `Backup`. The broad `All` scope includes Backup readiness. The
+broad `AD` scope still includes GPO health evidence for compatibility; use `GPO`
+when only Group Policy evidence is needed.
 
 Analyze the resulting folder or zip with SecureInfra AI:
 

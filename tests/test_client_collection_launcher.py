@@ -42,12 +42,12 @@ class ClientCollectionLauncherTests(unittest.TestCase):
         self.assertIn("Get-WindowsWorkstationSecurityInventory.ps1", collector)
         self.assertIn("Get-WindowsNetworkExposureAudit.ps1", collector)
         self.assertIn("Get-WindowsBackupReadinessAudit.ps1", collector)
-        self.assertIn("Backup is explicit and is not included in All", collector)
+        self.assertIn("The broad All scope includes Backup readiness", collector)
 
     def test_client_collection_scope_values_document_current_coverage(self):
         collector = self.read_text("scripts/windows/Start-SecureInfraClientCollection.ps1")
 
-        self.assertIn('$defaultAllScopes = @("AD", "Host", "Server", "Workstation", "Network")', collector)
+        self.assertIn('$defaultAllScopes = @("AD", "Host", "Server", "Workstation", "Network", "Backup")', collector)
         self.assertIn('@("AD", "GPO", "Host", "Server", "Workstation", "Network", "Backup")', collector)
         self.assertIn('SupportedToday     = @("AD", "GPO", "Host", "Server", "Workstation", "Network", "Backup")', collector)
         self.assertIn('NotYetImplemented  = @()', collector)

@@ -244,7 +244,7 @@ function Get-ToolCatalog {
         )
 
         New-ToolDefinition -Id "CLIENT-COLLECTION" -GroupId "Host" -Name "SecureInfra client collection bundle" -RelativePath "Start-SecureInfraClientCollection.ps1" -DefaultMode "Audit and dry run" -Description "Run supported safe checks and package one client evidence bundle for analysis." -IncludeInRunAll $false -Parameters @(
-            New-ParameterDefinition -Name "Scope" -Type "StringArray" -Default "All" -Description "Comma-separated scopes: All, AD, Host, Server, Workstation, Network, Backup. Backup is explicit and not included in All."
+            New-ParameterDefinition -Name "Scope" -Type "StringArray" -Default "All" -Description "Comma-separated scopes: All, AD, Host, Server, Workstation, Network, Backup. All includes Backup readiness."
             New-ParameterDefinition -Name "OutputDirectory" -Description "Collection output directory. Blank uses the script default."
             New-ParameterDefinition -Name "BaselineDirectory" -Description "Persistent baseline directory for repeated client runs."
             New-ParameterDefinition -Name "SearchBase" -Description "Optional AD OU or domain distinguished name to search."

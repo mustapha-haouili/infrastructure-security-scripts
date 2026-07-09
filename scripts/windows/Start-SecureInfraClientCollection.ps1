@@ -14,7 +14,8 @@ normalization, dashboard review, and final report generation.
 .PARAMETER Scope
 Collection scopes to run. Use All for the default supported local scopes.
 Current implemented scopes are AD, GPO, Host, Server, Workstation, Network, and
-Backup. Backup is explicit and is not included in All.
+Backup. The broad All scope includes Backup readiness so the default client
+collection produces complete infrastructure evidence.
 
 .PARAMETER OutputDirectory
 Directory for the collection folder. A zip archive is created next to this
@@ -144,7 +145,7 @@ function Add-SwitchArgument {
 }
 
 function Resolve-CollectionScopes {
-    $defaultAllScopes = @("AD", "Host", "Server", "Workstation", "Network")
+    $defaultAllScopes = @("AD", "Host", "Server", "Workstation", "Network", "Backup")
     $orderedScopes = @("AD", "GPO", "Host", "Server", "Workstation", "Network", "Backup")
     $requestedScopes = @(
         foreach ($item in @($Scope)) {

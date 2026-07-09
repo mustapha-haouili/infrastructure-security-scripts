@@ -106,6 +106,25 @@ Sample output preview from the fictional demo report:
 - No compliance certification claim
 - No cloud upload or AI provider requirement in the default local reporting workflow
 
+## Quality gate
+
+Before publishing changes or handing normalized output to another workflow, run
+the public quality gate from the repository root:
+
+```powershell
+.\quality-gate.ps1 -Fast
+```
+
+For release-level validation, run the full gate:
+
+```powershell
+.\quality-gate.ps1
+```
+
+The gate runs public tests, performs a synthetic analyzer smoke test, validates
+the generated `normalized-report.json` with strict safety checks, and checks git
+status for generated or customer-like artifacts that should not be committed.
+
 ## Release and integrity links
 
 - [CHANGELOG.md](CHANGELOG.md)
@@ -269,11 +288,10 @@ Collect backup readiness explicitly:
 ```
 
 The current collector supports AD, GPO, Windows host, server, workstation,
-local network exposure, and explicit backup readiness evidence. The broad `AD`
-scope still includes GPO health evidence for compatibility, while `GPO` can be
-requested alone when only Group Policy evidence is needed. `Backup` is not
-included in the broad `All` scope; request it directly when backup evidence is
-in scope.
+local network exposure, and backup readiness evidence. The broad `All` scope includes Backup readiness so the default client bundle is
+complete. The broad `AD` scope still includes GPO health evidence for
+compatibility, while `GPO` can be requested alone when only Group Policy
+evidence is needed.
 
 Analyze the full client collection folder or zip:
 

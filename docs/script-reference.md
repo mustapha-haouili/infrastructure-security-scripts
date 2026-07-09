@@ -102,14 +102,14 @@ Outputs:
 - `ad-shared/` for AD and GPO evidence compatible with SecureInfra AI
 - `host/`, `server/`, `workstation/`, and `network/` folders for supported
   local Windows evidence
-- `backup/` folder when the explicit `Backup` scope is requested
+- `backup/` folder for Backup readiness evidence when `All` or explicit `Backup` scope is requested
 - Zip archive next to the collection folder unless `-SkipArchive` is used
 
 Parameters:
 
 | Parameter | Type | Default | Description |
 |---|---:|---|---|
-| `-Scope` | string array | `All` | Scopes to collect. Supported values: `All`, `AD`, `GPO`, `Host`, `Server`, `Workstation`, `Network`, `Backup`. The broad `AD` scope still includes GPO health evidence for compatibility. `GPO` can be requested alone for Group Policy evidence only. `Backup` is explicit and is not included in `All`. |
+| `-Scope` | string array | `All` | Scopes to collect. Supported values: `All`, `AD`, `GPO`, `Host`, `Server`, `Workstation`, `Network`, `Backup`. The broad `AD` scope still includes GPO health evidence for compatibility. `GPO` can be requested alone for Group Policy evidence only. The broad `All` scope includes Backup readiness. |
 | `-OutputDirectory` | string | `.\reports\secureinfra-client-collection-COMPUTER-TIMESTAMP` | Collection output directory. |
 | `-BaselineDirectory` | string | `.\reports\secureinfra-client-baselines` | Persistent local baseline directory used by the privileged group audit. |
 | `-PrivilegedGroupBaselinePath` | string | empty | Optional explicit privileged group baseline path. |
@@ -123,10 +123,10 @@ Parameters:
 | `-GpoStaleDays` | int | `365` | GPO stale threshold. |
 | `-EventDays` | int | `7` | Windows event history window. |
 | `-RdpCacheMinimumAgeDays` | int | `14` | Minimum age threshold for RDP cache dry-run reporting. |
-| `-ExpectedBackupPaths` | string array | empty | Optional expected backup paths to check by metadata only when `Backup` scope is requested. |
-| `-ExpectedBackupSoftware` | string array | empty | Optional expected backup software names to match against visible service names when `Backup` scope is requested. |
-| `-BackupWarningAgeDays` | int | `14` | Stale backup evidence warning threshold for `Backup` scope. |
-| `-BackupCriticalAgeDays` | int | `30` | Critical stale backup evidence context threshold for `Backup` scope. |
+| `-ExpectedBackupPaths` | string array | empty | Optional expected backup paths to check by metadata only when Backup readiness runs through `All` or explicit `Backup` scope. |
+| `-ExpectedBackupSoftware` | string array | empty | Optional expected backup software names to match against visible service names when Backup readiness runs through `All` or explicit `Backup` scope. |
+| `-BackupWarningAgeDays` | int | `14` | Stale backup evidence warning threshold for Backup readiness. |
+| `-BackupCriticalAgeDays` | int | `30` | Critical stale backup evidence context threshold for Backup readiness. |
 | `-IncludeDisabled` | switch | off | Include disabled AD users/computers/accounts where supported. |
 | `-IncludeHotfixes` | switch | off | Include installed hotfix evidence in the host audit. |
 | `-SkipArchive` | switch | off | Do not create the zip archive. |
@@ -165,8 +165,9 @@ Safety notes:
 - The collector does not pass `-UpdateBaseline` to the privileged group audit.
 - The `AD` scope still collects GPO health evidence into `ad-shared/`; the
   explicit `GPO` scope runs only `gpo/Get-ADGPOHealthReport.ps1`.
-- The `Backup` scope is explicit and is not run as part of `All`; it checks
-  metadata only and does not read backup contents or run restores.
+- Backup readiness is collected by the broad `All` scope and can also be
+  requested directly with `-Scope Backup`; it checks metadata only and does not
+  read backup contents or run restores.
 - If an AD module, GPO module, or permission is missing, that task is recorded
   as failed and the collector continues unless `-StopOnError` is used.
 

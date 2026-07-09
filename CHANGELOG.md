@@ -25,6 +25,9 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 - Restored `GPO` as an explicit `Start-SecureInfraClientCollection.ps1`
   scope so existing `-Scope GPO` commands remain valid. The broad `AD` scope
   continues to collect GPO health evidence for compatibility.
+- Included Backup readiness in the broad `All` client collection scope so
+  default bundles include backup/recovery evidence while keeping `-Scope Backup`
+  available for targeted collection.
 
 ## [1.3.0-beta.1] - 2026-07-01
 
