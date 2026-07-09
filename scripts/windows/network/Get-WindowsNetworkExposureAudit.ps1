@@ -4,7 +4,7 @@ Audits local Windows network exposure evidence.
 
 .DESCRIPTION
 Collects local network adapter, IP, DNS, default route, firewall profile,
-network profile, and listening TCP port evidence. The script writes JSON, CSV,
+network profile, inbound firewall allow rule, and listening TCP/UDP port evidence. The script writes JSON, CSV,
 and Markdown reports and does not change firewall, adapter, route, service, or
 network configuration.
 
@@ -202,6 +202,77 @@ function Test-WildcardListener {
     return $text -in @("0.0.0.0", "::", "::0", "*")
 }
 
+function Get-SensitiveWindowsPorts {
+    return @(135, 139, 445, 3389, 5985, 5986)
+}
+
+function Get-MatchingSensitivePorts {
+    param([AllowNull()][object]$LocalPort)
+    $text = "$LocalPort".Trim()
+    $sensitivePorts = @(Get-SensitiveWindowsPorts)
+    if ([string]::IsNullOrWhiteSpace($text) -or $text -in @("Any", "RPC", "RPC-EPMap", "RPC Dynamic Ports")) {
+        return @()
+    }
+
+    $matches = New-Object System.Collections.Generic.List[int]
+    foreach ($token in ($text -split "[,;\s]+")) {
+        if ([string]::IsNullOrWhiteSpace($token)) { continue }
+        if ($token -match "^(\d{1,5})-(\d{1,5})$") {
+            $low = [int]$Matches[1]
+            $high = [int]$Matches[2]
+            foreach ($port in $sensitivePorts) {
+                if ($port -ge $low -and $port -le $high) { $matches.Add([int]$port) | Out-Null }
+            }
+            continue
+        }
+        $parsed = 0
+        if ([int]::TryParse($token, [ref]$parsed) -and $sensitivePorts -contains $parsed) {
+            $matches.Add([int]$parsed) | Out-Null
+        }
+    }
+    return @($matches.ToArray() | Sort-Object -Unique)
+}
+
+function Get-InboundAllowFirewallRuleInventory {
+    $rules = @(Invoke-Safe -ScriptBlock {
+            Get-NetFirewallRule -Direction Inbound -Action Allow -Enabled True -ErrorAction Stop
+        } -Default @())
+
+    $rows = New-Object System.Collections.Generic.List[object]
+    foreach ($rule in $rules) {
+        $portFilters = @(Invoke-Safe -ScriptBlock { Get-NetFirewallPortFilter -AssociatedNetFirewallRule $rule -ErrorAction Stop } -Default @())
+        if ($portFilters.Count -eq 0) { $portFilters = @([pscustomobject]@{ Protocol = "Any"; LocalPort = "Any"; RemotePort = "Any" }) }
+        $addressFilters = @(Invoke-Safe -ScriptBlock { Get-NetFirewallAddressFilter -AssociatedNetFirewallRule $rule -ErrorAction Stop } -Default @())
+        $applicationFilters = @(Invoke-Safe -ScriptBlock { Get-NetFirewallApplicationFilter -AssociatedNetFirewallRule $rule -ErrorAction Stop } -Default @())
+        $serviceFilters = @(Invoke-Safe -ScriptBlock { Get-NetFirewallServiceFilter -AssociatedNetFirewallRule $rule -ErrorAction Stop } -Default @())
+
+        $remoteAddresses = (($addressFilters | ForEach-Object { ConvertTo-TextList -Value $_.RemoteAddress }) -join ",")
+        $localAddresses = (($addressFilters | ForEach-Object { ConvertTo-TextList -Value $_.LocalAddress }) -join ",")
+        $programs = (($applicationFilters | ForEach-Object { "$($_.Program)" } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ",")
+        $services = (($serviceFilters | ForEach-Object { "$($_.Service)" } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ",")
+
+        foreach ($filter in $portFilters) {
+            $rows.Add([pscustomobject][ordered]@{
+                    Name            = "$($rule.Name)"
+                    DisplayName     = "$($rule.DisplayName)"
+                    Group           = "$($rule.Group)"
+                    Enabled         = "$($rule.Enabled)"
+                    Direction       = "$($rule.Direction)"
+                    Action          = "$($rule.Action)"
+                    Profiles        = "$($rule.Profile)"
+                    Protocol        = "$($filter.Protocol)"
+                    LocalPorts      = "$($filter.LocalPort)"
+                    RemotePorts     = "$($filter.RemotePort)"
+                    LocalAddresses  = $localAddresses
+                    RemoteAddresses = $remoteAddresses
+                    Program         = $programs
+                    ServiceName     = $services
+                }) | Out-Null
+        }
+    }
+    return @($rows.ToArray())
+}
+
 function Write-CsvReport {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -240,6 +311,8 @@ function Write-MarkdownReport {
     Add-MarkdownLine -Lines $lines -Text "- Listening UDP ports: $($Report.Summary.ListeningUdpPortCount)"
     Add-MarkdownLine -Lines $lines -Text "- Risky listeners: $($Report.Summary.RiskyListenerCount)"
     Add-MarkdownLine -Lines $lines -Text "- Listeners mapped to Windows services: $($Report.Summary.ServiceMappedListenerCount)"
+    Add-MarkdownLine -Lines $lines -Text "- Inbound allow firewall rules: $($Report.Summary.InboundAllowFirewallRuleCount)"
+    Add-MarkdownLine -Lines $lines -Text "- Sensitive inbound firewall rules: $($Report.Summary.SensitiveFirewallRuleCount)"
     Add-MarkdownLine -Lines $lines -Text "- Disabled firewall profiles: $($Report.Summary.DisabledFirewallProfileCount)"
     Add-MarkdownLine -Lines $lines -Text "- Public network profiles: $($Report.Summary.PublicNetworkProfileCount)"
     Add-MarkdownLine -Lines $lines -Text "- Finding count: $($Report.Summary.FindingCount)"
@@ -347,6 +420,8 @@ $networkProfiles = @(Invoke-Safe -ScriptBlock {
         }
     } -Default @())
 
+$inboundAllowFirewallRules = @(Get-InboundAllowFirewallRuleInventory)
+
 $processLookup = Get-ProcessLookup
 $serviceLookup = Get-ServiceLookupByProcessId
 
@@ -413,6 +488,32 @@ foreach ($profile in $networkProfiles) {
     }
 }
 
+foreach ($rule in $inboundAllowFirewallRules) {
+    $protocolText = "$($rule.Protocol)".ToUpperInvariant()
+    $matchingPorts = @(Get-MatchingSensitivePorts -LocalPort $rule.LocalPorts)
+    foreach ($port in $matchingPorts) {
+        $protocolForFinding = if ($protocolText -in @("TCP", "UDP")) { $protocolText } else { "TCP" }
+        $severity = Get-ListenerSeverity -Port $port -Protocol $protocolForFinding
+        $findings.Add((New-NetworkFinding `
+            -FindingType "FirewallAllowsSensitivePort" `
+            -Severity $severity `
+            -Title "Inbound firewall allow rule permits sensitive Windows port" `
+            -Evidence "Firewall rule '$($rule.DisplayName)' allows inbound $protocolForFinding $port on profile $($rule.Profiles) with remote addresses $($rule.RemoteAddresses)." `
+            -Recommendation "Validate rule owner, profile scope, remote address restrictions, service dependency, and change approval." `
+            -Protocol $protocolForFinding `
+            -LocalPort $port `
+            -LocalAddress $rule.LocalAddresses `
+            -ServiceName $rule.ServiceName)) | Out-Null
+        $findings[$findings.Count - 1] | Add-Member -NotePropertyName RuleName -NotePropertyValue $rule.Name -Force
+        $findings[$findings.Count - 1] | Add-Member -NotePropertyName RuleDisplayName -NotePropertyValue $rule.DisplayName -Force
+        $findings[$findings.Count - 1] | Add-Member -NotePropertyName Profile -NotePropertyValue $rule.Profiles -Force
+        $findings[$findings.Count - 1] | Add-Member -NotePropertyName LocalPorts -NotePropertyValue $rule.LocalPorts -Force
+        $findings[$findings.Count - 1] | Add-Member -NotePropertyName RemoteAddresses -NotePropertyValue $rule.RemoteAddresses -Force
+        $findings[$findings.Count - 1] | Add-Member -NotePropertyName LocalAddresses -NotePropertyValue $rule.LocalAddresses -Force
+        $findings[$findings.Count - 1] | Add-Member -NotePropertyName Program -NotePropertyValue $rule.Program -Force
+    }
+}
+
 $riskyListeners = @()
 foreach ($listener in @($listeningTcpPorts + $listeningUdpPorts)) {
     $severity = Get-ListenerSeverity -Port $listener.LocalPort -Protocol $listener.Protocol
@@ -465,6 +566,8 @@ $report = [pscustomobject][ordered]@{
         ListeningUdpPortCount        = $listeningUdpPorts.Count
         RiskyListenerCount           = @($riskyListeners).Count
         ServiceMappedListenerCount   = @(@($listeningTcpPorts + $listeningUdpPorts) | Where-Object { -not [string]::IsNullOrWhiteSpace($_.ServiceName) }).Count
+        InboundAllowFirewallRuleCount = $inboundAllowFirewallRules.Count
+        SensitiveFirewallRuleCount   = @($findings | Where-Object { $_.FindingType -eq "FirewallAllowsSensitivePort" }).Count
         FindingCount                 = $findings.Count
         SeverityCounts               = $severityCounts
     }
@@ -474,6 +577,7 @@ $report = [pscustomobject][ordered]@{
     DefaultRoutes        = @($defaultRoutes)
     FirewallProfiles     = @($firewallProfiles)
     NetworkProfiles      = @($networkProfiles)
+    InboundAllowFirewallRules = @($inboundAllowFirewallRules)
     ListeningTcpPorts    = @($listeningTcpPorts)
     ListeningUdpPorts    = @($listeningUdpPorts)
     Findings             = @($findings.ToArray())

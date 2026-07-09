@@ -522,6 +522,7 @@ def normalize_source_rows(key: str, data: dict[str, Any], rows: list[dict[str, A
         evidence = compact_evidence(row)
         if key == "network_windows_network_exposure":
             evidence.update(network_port_context_evidence(row, data, evidence))
+            evidence.update(network_firewall_rule_context_evidence(row, data, evidence))
         if key in {"server_windows_rdp_exposure", "workstation_windows_rdp_exposure"}:
             evidence.update(rdp_exposure_context_evidence(row, data, evidence))
         if key in {"server_windows_local_admins", "workstation_windows_local_admins"}:
@@ -546,6 +547,9 @@ def normalize_source_rows(key: str, data: dict[str, Any], rows: list[dict[str, A
                     continue
                 seen_listener_keys.add(listener_key)
                 source_id = network_listener_source_id(source_id, evidence)
+            firewall_source_id = network_firewall_rule_source_id(source_id, evidence)
+            if firewall_source_id:
+                source_id = firewall_source_id
         if key in {"server_windows_local_admins", "workstation_windows_local_admins"}:
             source_id = local_admin_source_id(source_id, row, affected_object, evidence)
         if key in {"server_windows_rdp_exposure", "workstation_windows_rdp_exposure"}:
@@ -737,6 +741,19 @@ def network_listener_source_id(source_id: Any, evidence: dict[str, Any]) -> str:
     finding_type = str(evidence.get("finding_type") or source_id or "RiskyListeningPort")
     protocol = str(evidence.get("protocol") or "TCP").upper()
     return f"{finding_type}-{protocol}-{port}"
+
+
+def network_firewall_rule_source_id(source_id: Any, evidence: dict[str, Any]) -> str:
+    finding_type = str(evidence.get("finding_type") or "").strip()
+    if finding_type.lower() != "firewallallowssensitiveport":
+        return ""
+    port = normalize_port_value(evidence.get("port"))
+    protocol = str(evidence.get("protocol") or "TCP").upper()
+    if port is None:
+        return str(source_id or "")
+    rule_name = str(evidence.get("firewall_rule_name") or evidence.get("firewall_rule_display_name") or "rule")
+    digest = stable_row_digest(finding_type, protocol, port, rule_name, evidence.get("remote_addresses"), evidence.get("firewall_profile"))
+    return f"FW-SENSITIVE-{protocol}-{port}-{sanitize_id(rule_name)[:12] or 'RULE'}-{digest}"
 
 
 def local_admin_source_id(source_id: Any, row: dict[str, Any], affected_object: str, evidence: dict[str, Any]) -> str:
@@ -1414,6 +1431,114 @@ def network_port_context_evidence(row: dict[str, Any], data: dict[str, Any], evi
     if bind_scope_explanation:
         context_evidence["bind_scope_explanation"] = bind_scope_explanation
     return context_evidence
+
+
+def network_firewall_rule_context_evidence(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+    finding_type = str(first_value(row, ["FindingType"], "") or evidence.get("finding_type") or "")
+    if finding_type.lower() != "firewallallowssensitiveport":
+        return {}
+
+    protocol = listener_protocol(row)
+    port = listener_port(row)
+    if port is None:
+        return {}
+
+    rule_name = str(first_value(row, ["RuleName", "Name"], "") or "").strip()
+    rule_display_name = str(first_value(row, ["RuleDisplayName", "DisplayName", "Title"], "") or "").strip()
+    matching_rule = matching_firewall_allow_rule(data, rule_name, rule_display_name, protocol, port)
+    protocol = str(first_value(row, ["Protocol"], "") or matching_rule.get("Protocol") or protocol or "TCP").upper()
+    context = lookup_port_context(protocol, port)
+    remote_addresses = first_value(row, ["RemoteAddresses", "RemoteAddress"], "") or matching_rule.get("RemoteAddresses") or matching_rule.get("RemoteAddress") or ""
+    local_addresses = first_value(row, ["LocalAddresses", "LocalAddress"], "") or matching_rule.get("LocalAddresses") or matching_rule.get("LocalAddress") or ""
+    firewall_profile = str(first_value(row, ["Profile", "Profiles"], "") or matching_rule.get("Profiles") or matching_rule.get("Profile") or "").strip()
+    program = str(first_value(row, ["Program", "ApplicationPath"], "") or matching_rule.get("Program") or matching_rule.get("ApplicationPath") or "").strip()
+    service_name = str(first_value(row, ["ServiceName", "Service"], "") or matching_rule.get("ServiceName") or matching_rule.get("Service") or "").strip()
+    rule_action = str(first_value(row, ["Action"], "") or matching_rule.get("Action") or "Allow").strip()
+    rule_enabled = first_value(row, ["Enabled"], matching_rule.get("Enabled", True))
+    return {
+        "protocol": protocol,
+        "port": port,
+        "firewall_rule_name": rule_name or str(matching_rule.get("Name") or ""),
+        "firewall_rule_display_name": rule_display_name or str(matching_rule.get("DisplayName") or ""),
+        "firewall_profile": firewall_profile,
+        "firewall_direction": "Inbound",
+        "firewall_action": rule_action,
+        "firewall_enabled": rule_enabled,
+        "local_ports": str(first_value(row, ["LocalPorts", "LocalPort"], "") or matching_rule.get("LocalPorts") or matching_rule.get("LocalPort") or port),
+        "local_addresses": local_addresses,
+        "remote_addresses": remote_addresses,
+        "program": windows_basename(program),
+        "service_name": service_name,
+        "common_service": context["common_service"],
+        "common_name": context["common_name"],
+        "exposure_type": context["exposure_type"],
+        "risk_explanation": (
+            f"An enabled inbound firewall allow rule permits {protocol} {port} ({context['common_name']}). "
+            "This is firewall policy evidence only; actual reachability still depends on network routing, profile matching, and allowed source networks."
+        ),
+        "customer_question": "Which business service owns this firewall allow rule, which profiles and source networks should use it, and is it still required?",
+        "safe_next_step": "Validate rule owner, profile scope, remote address restrictions, service dependency, and change approval before disabling or narrowing the rule.",
+        "summary": firewall_rule_summary(protocol, port, context, rule_display_name or rule_name, firewall_profile, remote_addresses),
+    }
+
+
+def matching_firewall_allow_rule(data: dict[str, Any], rule_name: str, rule_display_name: str, protocol: str, port: int) -> dict[str, Any]:
+    name_lower = str(rule_name or "").lower()
+    display_lower = str(rule_display_name or "").lower()
+    for rule in as_records(data.get("InboundAllowFirewallRules")) + as_records(data.get("FirewallRules")):
+        if name_lower and str(rule.get("Name") or "").lower() == name_lower:
+            return rule
+        if display_lower and str(rule.get("DisplayName") or "").lower() == display_lower:
+            return rule
+        if str(rule.get("Protocol") or "").upper() not in {"", protocol.upper(), "ANY"}:
+            continue
+        ports_text = str(rule.get("LocalPorts") or rule.get("LocalPort") or "")
+        if port in firewall_rule_matching_ports(ports_text, [port]):
+            return rule
+    return {}
+
+
+def firewall_rule_matching_ports(local_ports: Any, sensitive_ports: list[int]) -> list[int]:
+    text = str(local_ports or "").strip()
+    if not text or text.lower() in {"any", "rpc", "rpc-epmap", "rpc dynamic ports"}:
+        return []
+    matches: list[int] = []
+    for token in re.split(r"[,;\s]+", text):
+        token = token.strip()
+        if not token:
+            continue
+        range_match = re.match(r"^(\d{1,5})-(\d{1,5})$", token)
+        if range_match:
+            low, high = int(range_match.group(1)), int(range_match.group(2))
+            for port in sensitive_ports:
+                if low <= port <= high:
+                    matches.append(port)
+            continue
+        if token.isdigit():
+            port = int(token)
+            if port in sensitive_ports:
+                matches.append(port)
+    return sorted(set(matches))
+
+
+def windows_basename(path_value: Any) -> str:
+    text = str(path_value or "").strip().strip('"')
+    if not text:
+        return ""
+    try:
+        return PureWindowsPath(text).name or text
+    except Exception:
+        return text.split("\\")[-1]
+
+
+def firewall_rule_summary(protocol: str, port: int, context: dict[str, str], rule_name: str, profile: str, remote_addresses: Any) -> str:
+    rule_text = f" '{rule_name}'" if rule_name else ""
+    profile_text = f" on profile {profile}" if profile else ""
+    remote_text = f" with remote address scope {remote_addresses}" if remote_addresses else ""
+    return (
+        f"Inbound firewall allow rule{rule_text} permits {protocol.upper()} {port} ({context['common_name']})"
+        f"{profile_text}{remote_text}. Validate owner, profile scope, and allowed sources before changing it."
+    )
 
 
 def listener_protocol(row: dict[str, Any]) -> str:

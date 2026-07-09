@@ -734,6 +734,66 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
         self.assertFalse(dns["safe_to_auto_remediate"])
         validate_normalized_report(report)
 
+    def test_windows_network_sensitive_firewall_rule_context_is_normalized(self):
+        data = {
+            "ToolName": "Get-WindowsNetworkExposureAudit",
+            "ReportType": "windows-network-exposure",
+            "GeneratedAtUtc": "2026-06-15T09:00:00Z",
+            "ComputerName": "LAB-SRV01",
+            "Summary": {"FindingCount": 1, "SensitiveFirewallRuleCount": 1},
+            "InboundAllowFirewallRules": [
+                {
+                    "Name": "WINRM-HTTP-In",
+                    "DisplayName": "Windows Remote Management (HTTP-In)",
+                    "Enabled": "True",
+                    "Direction": "Inbound",
+                    "Action": "Allow",
+                    "Profiles": "Domain,Private",
+                    "Protocol": "TCP",
+                    "LocalPorts": "5985",
+                    "RemoteAddresses": "10.10.0.0/16",
+                    "Program": r"C:\Windows\System32\svchost.exe",
+                    "ServiceName": "WinRM",
+                }
+            ],
+            "Findings": [
+                {
+                    "FindingType": "FirewallAllowsSensitivePort",
+                    "Severity": "High",
+                    "Title": "Inbound firewall allow rule permits sensitive Windows port",
+                    "RuleName": "WINRM-HTTP-In",
+                    "RuleDisplayName": "Windows Remote Management (HTTP-In)",
+                    "Profile": "Domain,Private",
+                    "Protocol": "TCP",
+                    "LocalPort": 5985,
+                    "LocalPorts": "5985",
+                    "RemoteAddresses": "10.10.0.0/16",
+                    "Program": r"C:\Windows\System32\svchost.exe",
+                    "ServiceName": "WinRM",
+                    "Evidence": "Firewall rule 'Windows Remote Management (HTTP-In)' allows inbound TCP 5985.",
+                    "Recommendation": "Validate rule owner, profile scope, remote address restrictions, service dependency, and change approval.",
+                }
+            ],
+        }
+
+        report = normalize_windows_network_exposure(data, "windows-network-exposure.json")
+        finding = report["findings"][0]
+        evidence = finding["evidence"]
+
+        self.assertTrue(finding["finding_id"].startswith("NETWORK-EXPOSURE-FW-SENSITIVE-TCP-5985-WINRM-HTTP-"))
+        self.assertEqual(evidence["finding_type"], "FirewallAllowsSensitivePort")
+        self.assertEqual(evidence["protocol"], "TCP")
+        self.assertEqual(evidence["port"], 5985)
+        self.assertEqual(evidence["common_name"], "WinRM over HTTP")
+        self.assertEqual(evidence["firewall_rule_name"], "WINRM-HTTP-In")
+        self.assertEqual(evidence["firewall_profile"], "Domain,Private")
+        self.assertEqual(evidence["remote_addresses"], "10.10.0.0/16")
+        self.assertEqual(evidence["program"], "svchost.exe")
+        self.assertIn("firewall policy evidence only", evidence["risk_explanation"])
+        self.assertNotIn("internet exposure", evidence["risk_explanation"].lower())
+        self.assertFalse(finding["safe_to_auto_remediate"])
+        validate_normalized_report(report)
+
     def test_windows_network_listener_findings_deduplicate_broad_ipv4_ipv6_endpoints(self):
         data = {
             "ToolName": "Get-WindowsNetworkExposureAudit",
