@@ -1051,6 +1051,98 @@ class SecureInfraAITests(unittest.TestCase):
             )
             validate_normalized_report(normalized)
 
+
+    def test_multi_bundle_keeps_duplicate_linux_control_ids_unique_for_same_host(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fleet_dir = root / "fleet-input"
+            bundle_dir = fleet_dir / "secureinfra-linux-bundle-LAB-LINUX-01-20260619-120000"
+            linux_dir = bundle_dir / "linux"
+            linux_dir.mkdir(parents=True)
+            (bundle_dir / "client-info.json").write_text(
+                json.dumps(
+                    {
+                        "ComputerName": "LAB-LINUX-01",
+                        "OsCaption": "Linux",
+                        "CollectionHostUtc": "2026-06-19T12:00:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (bundle_dir / "collection-summary.json").write_text(
+                json.dumps(
+                    {
+                        "CollectionId": "secureinfra-linux-LAB-LINUX-01-20260619-120000",
+                        "GeneratedAtUtc": "2026-06-19T12:00:00Z",
+                        "ScopeResolved": ["Linux"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (bundle_dir / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "SchemaVersion": "1.0",
+                        "CollectionId": "secureinfra-linux-LAB-LINUX-01-20260619-120000",
+                        "GeneratedAtUtc": "2026-06-19T12:00:00Z",
+                        "ScopeResolved": ["Linux"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (linux_dir / "linux-log-audit-summary.json").write_text(
+                json.dumps(
+                    {
+                        "host": "LAB-LINUX-01",
+                        "generated_at_utc": "2026-06-19T12:00:00Z",
+                        "source_script": "linux-log-audit.sh",
+                        "findings": [
+                            {
+                                "id": "LINUX-LOG-AUDITD-001",
+                                "severity": "Medium",
+                                "title": "auditd service is not active",
+                                "affected_object": "LAB-LINUX-01: auditd service",
+                                "evidence": "auditd active state was inactive.",
+                                "recommendation": "Review auditd service coverage with the system owner.",
+                            },
+                            {
+                                "id": "LINUX-LOG-AUDITD-001",
+                                "severity": "Medium",
+                                "title": "auditd rules were not available",
+                                "affected_object": "LAB-LINUX-01: auditd rules",
+                                "evidence": "auditctl rule evidence was unavailable.",
+                                "recommendation": "Review audit rule collection and auditd configuration.",
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            output_dir = root / "output"
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = secureinfra_analyzer.main(
+                    [
+                        "--input",
+                        str(fleet_dir),
+                        "--type",
+                        "multi-bundle",
+                        "--output",
+                        str(output_dir),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            normalized = json.loads((output_dir / "normalized-report.json").read_text(encoding="utf-8"))
+            finding_ids = [item["finding_id"] for item in normalized["findings"]]
+            self.assertEqual(len(finding_ids), len(set(finding_ids)))
+            self.assertIn("FLEET-LAB-LINUX-01-LINUX-LOG-AUDITD-001", finding_ids)
+            self.assertTrue(
+                any(item.startswith("FLEET-LAB-LINUX-01-LINUX-LOG-AUDITD-001-") for item in finding_ids),
+                finding_ids,
+            )
+            validate_normalized_report(normalized)
+
     def test_multi_bundle_directory_input_combines_many_client_bundles(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

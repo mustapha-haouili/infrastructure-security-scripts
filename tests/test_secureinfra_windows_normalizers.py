@@ -867,6 +867,21 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
         self.assertIn("customer_question: Who requires RDP access", rdp["evidence"]["details"])
         self.assertFalse(rdp["safe_to_auto_remediate"])
 
+    def test_windows_public_network_profile_finding_uses_profile_context(self):
+        data = load_json_file(WINDOWS_SAMPLE_ROOT / "sample-windows-network-exposure.json")
+        report = normalize_windows_network_exposure(data, WINDOWS_SAMPLE_ROOT / "sample-windows-network-exposure.json")
+        profile = next(finding for finding in report["findings"] if finding["evidence"].get("finding_type") == "PublicNetworkProfileActive")
+
+        self.assertEqual(profile["affected_object"], "Ethernet0 / Public network profile / Lab Guest Network")
+        self.assertEqual(profile["evidence"]["network_configuration_finding"], "network_profile_classification")
+        self.assertEqual(profile["evidence"]["interface_alias"], "Ethernet0")
+        self.assertEqual(profile["evidence"]["network_category"], "Public")
+        self.assertEqual(profile["evidence"]["network_profile_name"], "Lab Guest Network")
+        self.assertIn("classified as Public", profile["evidence"]["summary"])
+        self.assertIn("network category", profile["evidence"]["safe_next_step"])
+        self.assertNotIn("port", profile["evidence"]["customer_question"].lower())
+        self.assertFalse(profile["safe_to_auto_remediate"])
+
     def test_windows_server_unquoted_service_path_suppresses_service_host_noise(self):
         def unquoted_row(name: str, path_name: str) -> dict:
             return {

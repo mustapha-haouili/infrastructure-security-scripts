@@ -523,6 +523,7 @@ def normalize_source_rows(key: str, data: dict[str, Any], rows: list[dict[str, A
         if key == "network_windows_network_exposure":
             evidence.update(network_port_context_evidence(row, data, evidence))
             evidence.update(network_firewall_rule_context_evidence(row, data, evidence))
+            evidence.update(network_profile_context_evidence(row, data, evidence))
         if key in {"server_windows_rdp_exposure", "workstation_windows_rdp_exposure"}:
             evidence.update(rdp_exposure_context_evidence(row, data, evidence))
         if key in {"server_windows_local_admins", "workstation_windows_local_admins"}:
@@ -1893,6 +1894,58 @@ def network_firewall_rule_context_evidence(row: dict[str, Any], data: dict[str, 
     }
 
 
+def network_profile_context_evidence(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+    finding_type = str(first_value(row, ["FindingType"], "") or evidence.get("finding_type") or "")
+    if finding_type.lower() != "publicnetworkprofileactive":
+        return {}
+
+    interface_alias = str(first_value(row, ["InterfaceAlias", "Interface", "Name"], "") or "").strip()
+    profile = matching_network_profile(data, interface_alias, row)
+    interface_alias = interface_alias or str(profile.get("InterfaceAlias") or "").strip()
+    profile_name = str(first_value(row, ["ProfileName", "NetworkName"], "") or profile.get("Name") or "").strip()
+    category = str(first_value(row, ["NetworkCategory", "Category"], "") or profile.get("NetworkCategory") or "Public").strip()
+    ipv4_connectivity = str(profile.get("IPv4Connectivity") or "").strip()
+    ipv6_connectivity = str(profile.get("IPv6Connectivity") or "").strip()
+    object_label = display_network_profile_object(interface_alias, category, profile_name)
+    return {
+        "network_configuration_finding": "network_profile_classification",
+        "network_profile_name": profile_name,
+        "interface_alias": interface_alias,
+        "network_category": category,
+        "ipv4_connectivity": ipv4_connectivity,
+        "ipv6_connectivity": ipv6_connectivity,
+        "summary": (
+            f"{object_label} is classified as {category or 'Public'} and requires validation against the expected network location and firewall policy."
+        ),
+        "customer_question": "Is this interface intentionally classified as Public, and do the firewall profile rules match the approved network location?",
+        "safe_next_step": "Validate the expected network category, adapter location, and firewall profile scope before changing the network profile or firewall rules.",
+        "risk_explanation": "A Public network profile can be appropriate on untrusted networks, but on corporate or server networks it may indicate network-location misclassification or a firewall-profile mismatch that needs owner validation.",
+    }
+
+
+def matching_network_profile(data: dict[str, Any], interface_alias: str, row: dict[str, Any]) -> dict[str, Any]:
+    interface_lower = interface_alias.lower()
+    evidence_text = combined_row_text(row).lower()
+    for profile in as_records(data.get("NetworkProfiles")):
+        profile_interface = str(profile.get("InterfaceAlias") or "").strip()
+        if interface_lower and profile_interface.lower() == interface_lower:
+            return profile
+        if profile_interface and profile_interface.lower() in evidence_text:
+            return profile
+    return {}
+
+
+def display_network_profile_object(interface_alias: str, category: str, profile_name: str = "") -> str:
+    parts = []
+    if interface_alias:
+        parts.append(interface_alias)
+    if category:
+        parts.append(f"{category} network profile")
+    if profile_name:
+        parts.append(profile_name)
+    return " / ".join(parts) or "Windows network profile"
+
+
 def matching_firewall_allow_rule(data: dict[str, Any], rule_name: str, rule_display_name: str, protocol: str, port: int) -> dict[str, Any]:
     name_lower = str(rule_name or "").lower()
     display_lower = str(rule_display_name or "").lower()
@@ -2311,6 +2364,11 @@ def risk_factors(row: dict[str, Any]) -> list[str]:
 
 
 def affected_object_for(row: dict[str, Any], data: dict[str, Any], key: str, index: int) -> str:
+    if key == "network_windows_network_exposure":
+        network_object = network_exposure_affected_object(row, data)
+        if network_object:
+            return network_object
+
     value = first_value(
         row,
         [
@@ -2332,6 +2390,26 @@ def affected_object_for(row: dict[str, Any], data: dict[str, Any], key: str, ind
         return str(value)
     computer = computer_name(data)
     return computer or f"{key}-{index}"
+
+
+def network_exposure_affected_object(row: dict[str, Any], data: dict[str, Any]) -> str:
+    finding_type = str(first_value(row, ["FindingType"], "") or "").strip().lower()
+    if finding_type == "publicnetworkprofileactive":
+        interface_alias = str(first_value(row, ["InterfaceAlias", "Interface", "Name"], "") or "").strip()
+        profile = matching_network_profile(data, interface_alias, row)
+        interface_alias = interface_alias or str(profile.get("InterfaceAlias") or "").strip()
+        profile_name = str(first_value(row, ["ProfileName", "NetworkName"], "") or profile.get("Name") or "").strip()
+        category = str(first_value(row, ["NetworkCategory", "Category"], "") or profile.get("NetworkCategory") or "Public").strip()
+        return display_network_profile_object(interface_alias, category, profile_name)
+    if finding_type == "firewallprofiledisabled":
+        profile_name = str(first_value(row, ["ProfileName", "Name"], "") or "").strip()
+        if not profile_name:
+            match = re.search(r"\b(domain|private|public)\s+profile\b", combined_row_text(row), flags=re.IGNORECASE)
+            if match:
+                profile_name = match.group(1).title()
+        if profile_name:
+            return f"Windows Firewall {profile_name} profile"
+    return ""
 
 
 def source_timestamp(data: dict[str, Any]) -> str:

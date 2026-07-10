@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,7 @@ def normalize_multi_bundle(input_dir: str | Path) -> dict[str, Any]:
     scope_counts = {scope: 0 for scope in SUPPORTED_SCOPES}
     seen_machine_ids: dict[str, int] = {}
     seen_collection_keys: set[str] = set()
+    seen_fleet_finding_ids: set[str] = set()
 
     for bundle_index, bundle_input in enumerate(bundle_inputs, start=1):
         source_label = str(bundle_input)
@@ -54,7 +56,14 @@ def normalize_multi_bundle(input_dir: str | Path) -> dict[str, Any]:
         for finding_index, finding in enumerate(child_findings, start=1):
             if not isinstance(finding, dict):
                 continue
-            fleet_finding = fleet_scoped_finding(finding, machine_name, machine_id, source_label, finding_index)
+            fleet_finding = fleet_scoped_finding(
+                finding,
+                machine_name,
+                machine_id,
+                source_label,
+                finding_index,
+                seen_fleet_finding_ids,
+            )
             findings.append(fleet_finding)
 
         source_files.extend(str(item) for item in client_report.get("source_files", []) if item)
@@ -203,10 +212,17 @@ def fleet_scoped_finding(
     machine_id: str,
     bundle_input: str,
     finding_index: int,
+    seen_fleet_finding_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     fleet_finding = copy.deepcopy(finding)
     original_id = str(fleet_finding.get("finding_id") or f"finding-{finding_index}")
-    fleet_finding["finding_id"] = f"FLEET-{machine_id}-{sanitize_id(original_id) or finding_index:0>4}"
+    base_finding_id = f"FLEET-{machine_id}-{sanitize_id(original_id) or f'{finding_index:04d}'}"
+    fleet_finding["finding_id"] = unique_fleet_finding_id(
+        base_finding_id,
+        fleet_finding,
+        finding_index,
+        seen_fleet_finding_ids,
+    )
     evidence = fleet_finding.get("evidence")
     if not isinstance(evidence, dict):
         evidence = {}
@@ -217,6 +233,50 @@ def fleet_scoped_finding(
     evidence["bundle_input"] = bundle_input
     evidence["source_report_type"] = "client-bundle"
     return fleet_finding
+
+
+def unique_fleet_finding_id(
+    base_finding_id: str,
+    finding: dict[str, Any],
+    finding_index: int,
+    seen_fleet_finding_ids: set[str] | None,
+) -> str:
+    """Return a fleet finding ID that is unique within one multi-bundle report.
+
+    Host-scoped source IDs are usually unique, but Linux/log coverage and some
+    inventory collectors can legitimately emit the same control ID more than
+    once for the same host from different evidence files. Keep the readable base
+    ID for the first occurrence and add a short stable evidence fingerprint only
+    when a collision is observed.
+    """
+    if seen_fleet_finding_ids is None:
+        return base_finding_id
+    if base_finding_id not in seen_fleet_finding_ids:
+        seen_fleet_finding_ids.add(base_finding_id)
+        return base_finding_id
+
+    suffix = stable_finding_suffix(finding, finding_index)
+    candidate = f"{base_finding_id}-{suffix}"
+    counter = 2
+    while candidate in seen_fleet_finding_ids:
+        candidate = f"{base_finding_id}-{suffix}-{counter}"
+        counter += 1
+    seen_fleet_finding_ids.add(candidate)
+    return candidate
+
+
+def stable_finding_suffix(finding: dict[str, Any], finding_index: int) -> str:
+    evidence = as_dict(finding.get("evidence"))
+    parts = [
+        evidence.get("source_file"),
+        evidence.get("source_script"),
+        evidence.get("source_id"),
+        finding.get("affected_object"),
+        finding.get("title"),
+        finding_index,
+    ]
+    text = "|".join(str(part or "") for part in parts) or f"finding-{finding_index}"
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:8].upper()
 
 
 def machine_record(
