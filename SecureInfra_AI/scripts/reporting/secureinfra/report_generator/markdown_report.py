@@ -234,7 +234,7 @@ def list_strings(value: Any) -> list[str]:
 
 def render_executive_summary(report: dict[str, Any], language: str = "en") -> str:
     findings = sorted_findings(report.get("findings", []))
-    top_risks = [item for item in findings if item.get("severity") != "Hold"][:5]
+    top_risks = [item for item in findings if item.get("status") != "Hold" and item.get("remediation_priority") != "Hold"][:5]
     env = report.get("environment_summary", {})
     critical_high = severity_count(report, "Critical") + severity_count(report, "High")
     report_type = str(report.get("report_type") or bundle_metadata(report).get("report_type") or "")
@@ -706,7 +706,7 @@ def render_remediation_plan(report: dict[str, Any], language: str = "en") -> str
     planned = [item for item in findings if item.get("remediation_priority") == "Planned Remediation"]
     owner_review = [item for item in findings if item.get("requires_owner_review")]
     not_auto = [item for item in findings if not item.get("safe_to_auto_remediate")]
-    hold = [item for item in findings if item.get("severity") == "Hold" or item.get("remediation_priority") == "Hold"]
+    hold = [item for item in findings if item.get("status") == "Hold" or item.get("remediation_priority") == "Hold"]
 
     def action_lines(items: list[dict[str, Any]]) -> list[str]:
         if not items:

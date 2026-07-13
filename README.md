@@ -1,4 +1,4 @@
-﻿# Infrastructure Security Scripts
+# Infrastructure Security Scripts
 
 ![CI](https://github.com/mustapha-haouili/infrastructure-security-scripts/actions/workflows/static-checks.yml/badge.svg)
 ![Release](https://img.shields.io/github/v/release/mustapha-haouili/infrastructure-security-scripts?include_prereleases)
@@ -14,8 +14,7 @@ This repository is designed for defensive security operations, infrastructure ad
 
 It includes the SecureInfra_AI layer for deterministic, local, AI-ready analysis of infrastructure evidence. This layer can normalize security findings, generate JSON and Markdown reports, compare historical runs, analyze client bundles, review fleet evidence, and display reports in a local dashboard. The default reporting workflow is deterministic and local: it does not require an AI provider and does not upload evidence to a cloud service.
 
-Current version: `v1.3.0-beta.1`. See [CHANGELOG.md](CHANGELOG.md) and
-[v1.3.0-beta.1 release notes](docs/releases/v1.3.0-beta.1.md) for the current beta release baseline.
+Development status: beta. See [CHANGELOG.md](CHANGELOG.md) for release history and the current development baseline.
 
 ## Try it in 2 minutes
 
@@ -127,11 +126,9 @@ status for generated or customer-like artifacts that should not be committed.
 
 ## Release and integrity links
 
-- [CHANGELOG.md](CHANGELOG.md)
-- [v1.3.0-beta.1 release notes](docs/releases/v1.3.0-beta.1.md)
+- [Release history](CHANGELOG.md)
 - [Release integrity documentation](docs/release-integrity.md)
 - [Repository guardrails](AGENTS.md)
-- [Repository publishing notes](docs/repository-publishing.md)
 
 ## Feedback wanted
 
@@ -147,10 +144,9 @@ This repository is the public defensive infrastructure security engine. It is
 intended for audit-first checks, deterministic local reporting, safe evidence
 normalization, and defensive remediation workflows.
 
-Private commercial reporting, customer-specific workflows, pricing, branding,
-private prompts, and customer data belong outside this repository. Keep public
-examples fictional and follow the repository guardrails in
-[AGENTS.md](AGENTS.md).
+Customer-specific reporting, presentation, exception handling, pricing,
+branding, and customer data belong outside this repository. Keep public examples
+fictional and follow the repository guardrails in [AGENTS.md](AGENTS.md).
 
 ## Focus areas
 
@@ -178,8 +174,8 @@ examples fictional and follow the repository guardrails in
 infrastructure-security-scripts/
 |-- .github/workflows/          # CI checks for scripts
 |-- SecureInfra_AI/             # AI-ready deterministic analysis and reporting layer
-|-- docs/                       # Methodology, usage notes, service model, and script index
-|-- examples/                   # Example configuration, sample reports, and sample outputs
+|-- docs/                       # Methodology, usage, integrity, KPI, and script references
+|-- examples/                   # Fictional configuration and machine-readable sample outputs
 |-- schemas/                    # JSON schemas for findings, reports, and remediation plans
 |-- scripts/
 |   |-- windows/                # Windows audit and hardening scripts
@@ -434,7 +430,7 @@ attestation, or official control coverage.
 
 Use `--monthly-summary` with the SecureInfra AI analyzer to generate a
 deterministic monthly KPI summary from normalized reports. See
-[docs/service-model/monthly-security-review.md](docs/service-model/monthly-security-review.md)
+[docs/monthly-kpi-methodology.md](docs/monthly-kpi-methodology.md)
 for baseline and month-over-month examples.
 
 ### SecureInfra Dashboard
@@ -457,9 +453,8 @@ See [docs/script-index.md](docs/script-index.md) for a complete list of scripts 
 See [docs/script-reference.md](docs/script-reference.md) for every script argument, output file, safety mode, and copy-ready examples.
 See [SecureInfra_AI/README.md](SecureInfra_AI/README.md) for the AI-ready deterministic reporting layer.
 See [docs/methodology.md](docs/methodology.md) for the audit-first assessment workflow.
-See [docs/service-model/secureinfra-check-overview.md](docs/service-model/secureinfra-check-overview.md) for the infrastructure health check model.
-See [ROADMAP.md](ROADMAP.md) for planned toolkit improvements.
-See [docs/windows-roadmap.md](docs/windows-roadmap.md) for the Windows AD, GPO, server, and workstation expansion plan.
+See [docs/monthly-kpi-methodology.md](docs/monthly-kpi-methodology.md) for deterministic monthly trend reporting.
+See [ROADMAP.md](ROADMAP.md) for planned Windows, Linux, container, Kubernetes, and cloud work.
 
 Every script also has built-in help:
 

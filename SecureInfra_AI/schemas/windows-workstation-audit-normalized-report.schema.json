@@ -108,8 +108,7 @@
             "High",
             "Medium",
             "Low",
-            "Info",
-            "Hold"
+            "Info"
           ],
           "properties": {
             "Critical": {
@@ -125,9 +124,6 @@
               "type": "integer"
             },
             "Info": {
-              "type": "integer"
-            },
-            "Hold": {
               "type": "integer"
             }
           }

@@ -1,4 +1,4 @@
-﻿# Usage Notes
+# Usage Notes
 
 ## Running scripts safely
 
@@ -133,3 +133,22 @@ python3 scripts/devsecops/secret-scan.py . --format json --output reports/secret
 ```
 
 The scanner returns exit code `2` when findings are detected unless `--no-fail` is used.
+
+
+## Bundle and normalized report validation
+
+Validate a collection bundle before analysis:
+
+```bash
+python3 scripts/reporting/validate_bundle.py --input reports/example-bundle.zip
+```
+
+Validate analyzer output against the public contract:
+
+```bash
+python3 scripts/reporting/validate_schema.py \
+  --input reports/example-analysis/normalized-report.json \
+  --strict-safety
+```
+
+The strict safety check rejects local drive paths and internal workflow markers.

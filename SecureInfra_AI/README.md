@@ -8,6 +8,9 @@ audit outputs, applies deterministic risk rules, and generates Markdown reports.
 It prepares the project for future local or private AI support, but Phase 1 does
 not require an AI model.
 
+Technical severity is limited to `Critical`, `High`, `Medium`, `Low`, and `Info`.
+`Hold` is a separate workflow state and remediation priority, not a severity.
+
 ## Current Capabilities
 
 - Read JSON audit output files.
@@ -222,3 +225,11 @@ See [docs/ad-shared-bundle-analysis.md](docs/ad-shared-bundle-analysis.md) for
 AD bundle behavior, supported files, and safety notes. See
 [docs/multi-bundle-fleet-analysis.md](docs/multi-bundle-fleet-analysis.md) for
 many-host fleet analysis.
+
+
+## Related documentation
+
+- [Public architecture](../ARCHITECTURE.md)
+- [Data contract](../DATA_CONTRACT.md)
+- [Assessment methodology](../docs/methodology.md)
+- [Roadmap](../ROADMAP.md)

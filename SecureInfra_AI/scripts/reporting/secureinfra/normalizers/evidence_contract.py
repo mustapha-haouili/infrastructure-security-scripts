@@ -75,7 +75,7 @@ UNSAFE_KEY_SUFFIXES = (
     "_session_cookie",
     "_token",
 )
-UNSAFE_TEXT_MARKERS = ("downstream-reporting-workspace", "customer-projects")
+UNSAFE_TEXT_MARKERS = ("customer-projects", "private prompts")
 PATHISH_KEYS = {
     "archive_path",
     "bundle_directory",

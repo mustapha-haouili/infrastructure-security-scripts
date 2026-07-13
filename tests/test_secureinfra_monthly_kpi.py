@@ -60,7 +60,7 @@ def finding(
 
 
 def report(findings: list[dict], report_id: str = "secureinfra-ai-test-current", metadata: dict | None = None) -> dict:
-    counts = {severity: 0 for severity in ["Critical", "High", "Medium", "Low", "Info", "Hold"]}
+    counts = {severity: 0 for severity in ["Critical", "High", "Medium", "Low", "Info"]}
     for item in findings:
         counts[item["severity"]] += 1
     return {
@@ -105,6 +105,18 @@ class SecureInfraMonthlyKpiTests(unittest.TestCase):
         self.assertEqual(summary["resolved_findings"], [])
         self.assertEqual(summary["risk_reduction_score"], 0)
         self.assertTrue(any("No previous normalized report" in item for item in summary["limitations"]))
+
+    def test_hold_is_counted_as_workflow_state_not_severity(self):
+        held = finding("FIND-HOLD-001", "Info", "System-managed identity requires review")
+        held["status"] = "Hold"
+        held["remediation_priority"] = "Hold"
+        current = report([held])
+
+        summary = build_monthly_kpi_summary(current)
+
+        self.assertEqual(summary["info_count"], 1)
+        self.assertEqual(summary["hold_count"], 1)
+        self.assertNotIn("Hold", current["summary"]["severity_counts"])
 
     def test_comparison_tracks_new_persistent_resolved_and_score(self):
         previous = report(

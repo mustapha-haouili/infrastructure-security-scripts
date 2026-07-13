@@ -87,7 +87,7 @@ def normalize_user(user: dict[str, Any], index: int, source_script: str, timesta
 
 def severity_counts(findings: list[dict[str, Any]]) -> dict[str, int]:
     counts = Counter(str(item.get("severity") or "Info") for item in findings)
-    return {severity: counts.get(severity, 0) for severity in ["Critical", "High", "Medium", "Low", "Info", "Hold"]}
+    return {severity: counts.get(severity, 0) for severity in ["Critical", "High", "Medium", "Low", "Info"]}
 
 
 def normalize_ad_inactive_users(data: dict[str, Any], source_file: str | Path) -> dict[str, Any]:

@@ -2,30 +2,31 @@
 
 ## Purpose
 
-This document describes the architecture of the public SecureInfra defensive collector/analyzer repository.
+This document describes the architecture of the public defensive collector and
+analyzer repository.
 
 ## High-level architecture
 
 ```text
-Collectors / source scripts
+Collectors and source scripts
         |
         v
-Input bundles / JSON / CSV / Markdown evidence
+Local evidence files and collection bundles
         |
         v
-SecureInfra analyzer entrypoint
+Bundle validation and safe loaders
         |
         v
-Bundle discovery and safe loaders
+Public analyzer entrypoint
         |
         v
-Normalizers
+Normalizers and conservative risk rules
         |
         v
-Risk rules and public-safe context
+Technical correlations and broad control mappings
         |
         v
-Control mapping and technical correlations
+Schema validation and report generation
         |
         v
 normalized-report.json
@@ -35,75 +36,108 @@ normalized-report.json
 
 ### Collectors
 
-Collectors gather defensive evidence from systems and write local files. They should be read-only unless explicitly documented as dry-run/preview tools. They must not contain destructive remediation or exploitation behavior.
+Collectors gather authorized defensive evidence and write local files. They are
+read-only unless explicitly documented as dry-run or preview tools. Production
+collection must not include exploitation or destructive remediation behavior.
 
-Collector families include:
+Current collector families include:
 
-- Active Directory evidence collectors,
-- Windows host baseline collectors,
-- Windows server inventory collectors,
-- Windows workstation inventory collectors,
-- Windows network exposure collectors,
-- Group Policy health collectors,
-- backup readiness collectors,
-- Linux standalone audit scripts,
-- DevSecOps standalone audit scripts,
-- monitoring standalone helpers.
+- Active Directory and Group Policy evidence;
+- Windows host, server, workstation, network, and backup evidence;
+- Linux inventory, security, network, logging, service, and backup evidence;
+- standalone monitoring and DevSecOps helpers.
 
-### Collector orchestration
+### Platform launchers
 
-`Start-SecureInfraClientCollection.ps1` orchestrates client collection scopes and creates structured bundle output. Scope handling must remain explicit and predictable. The broad `All` scope includes Backup readiness so default client bundles contain backup/recovery evidence; explicit scopes such as `Backup` and `GPO` remain available for targeted collection.
+Tracked launchers orchestrate supported collectors and create predictable bundle
+layouts. Scope handling must remain explicit. Any collector that is not invoked
+by a launcher must be documented as manual-only.
+
+### Bundle validation and loaders
+
+Bundle validation rejects unsafe paths, unsupported file types, excessive file
+sizes or counts, malformed JSON, and unrecognized layouts. Loaders parse bundle
+content as data only and preserve missing or unknown values.
 
 ### Analyzer
 
-`SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py` is the public analyzer entrypoint. It discovers input type, loads bundle files, normalizes findings, attaches public-safe risk context and control mapping, and writes normalized reports.
+`SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py` is the primary public
+analyzer entrypoint. It discovers supported input types, loads evidence,
+normalizes findings, attaches public-safe technical context, validates the
+result, and writes normalized outputs.
 
-### Bundle helpers
+The analyzer pipeline is deterministic:
 
-Bundle helpers identify supported report bundles and consolidate source files. They should not embed customer-specific assumptions.
+```text
+validated input
+  -> report-type loader
+  -> normalizer
+  -> conservative risk classification
+  -> technical correlation and control mapping
+  -> optional history comparison and monthly KPI summary
+  -> JSON Schema validation
+  -> normalized-report.json and optional Markdown reports
+```
 
-### Loaders
-
-Loaders read JSON and CSV safely. They should preserve unknown/missing values and avoid inventing evidence.
+Language-generation interfaces are not part of the risk-decision path. Any
+future language assistance must remain evidence-grounded and human-reviewed.
 
 ### Normalizers
 
-Normalizers translate source evidence into a stable normalized finding contract. They are responsible for evidence-driven interpretation only.
+Normalizers translate source evidence into a stable finding contract. They must
+not:
 
-Normalizers must not:
+- infer missing evidence as false;
+- convert unknown numeric values to zero;
+- infer Internet exposure from listening state alone;
+- infer ports from control identifiers;
+- apply customer-specific exceptions or presentation rules;
+- generate unsupported business-impact claims.
 
-- infer missing evidence as false,
-- convert unknown numeric values to zero,
-- infer Internet exposure from listen state alone,
-- infer network ports from control IDs,
-- apply private customer approved exceptions,
-- generate final commercial report language.
+Technical severity uses `Critical`, `High`, `Medium`, `Low`, or `Info`. Workflow
+states such as `Hold` are represented separately and must not be stored as
+severity.
 
-### Risk rules
+### Risk rules and network context
 
-Risk rules classify technical risk conservatively. They should be deterministic and public-safe.
-
-### Network context
-
-Network context may map known ports to common service names, for example:
-
-- TCP 135: RPC Endpoint Mapper
-- TCP 139: NetBIOS Session Service
-- TCP 445: SMB / Server Message Block
-- TCP 3389: RDP
-- TCP 5985: WinRM over HTTP
-- TCP 5986: WinRM over HTTPS
-
-Network context must not claim Internet reachability unless explicit evidence exists.
+Risk rules are deterministic and conservative. Network context may map explicit
+ports to common service names, but reachability claims require firewall,
+routing, segmentation, allowed-source, or other explicit evidence.
 
 ### Correlation
 
-Public correlation can identify technical relationships across normalized findings. Customer-facing grouping and management-level consolidation belong in the private commercial repository.
+Public correlation may identify technical relationships across evidence sources.
+It must preserve source finding identifiers, source scripts, evidence, and
+technical severity. Correlation is a review aid and does not authorize
+remediation.
+
+### History and monthly summaries
+
+Optional history comparison matches stable finding identifiers and reports new,
+persistent, and resolved findings. Monthly KPI output is a deterministic trend
+aid, not a formal risk score or compliance result.
+
+### Schema validation
+
+Machine-readable JSON Schemas under `schemas/` and `SecureInfra_AI/schemas/`
+are the executable contract. `DATA_CONTRACT.md` explains the same contract for
+human reviewers. Validators must fail closed on unsupported severities,
+duplicate identifiers, malformed evidence, and unsafe path leakage.
 
 ### Control mapping
 
-Control mapping is broad and deterministic. It must not claim formal audit attestation, certification, or official compliance coverage.
+Control mappings are broad defensive references. They do not assert formal
+compliance, certification, or audit attestation.
 
 ## Output boundary
 
-The primary public output is `normalized-report.json`. Private commercial rendering starts after this boundary.
+The primary public output is `normalized-report.json`. Downstream tools may
+consume this normalized output, but customer-specific interpretation,
+exceptions, packaging, and delivery workflows are outside this repository.
+
+See also:
+
+- [DATA_CONTRACT.md](DATA_CONTRACT.md)
+- [COLLECTION_BUNDLE_CONTRACT.md](COLLECTION_BUNDLE_CONTRACT.md)
+- [docs/methodology.md](docs/methodology.md)
+- [AGENTS.md](AGENTS.md)

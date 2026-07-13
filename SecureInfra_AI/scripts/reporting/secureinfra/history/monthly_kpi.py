@@ -10,7 +10,7 @@ from typing import Any
 from secureinfra.risk_engine.rules import SEVERITY_RANK
 
 
-SEVERITIES = ["Critical", "High", "Medium", "Low", "Info", "Hold"]
+SEVERITIES = ["Critical", "High", "Medium", "Low", "Info"]
 TREND_WEIGHTS = {
     "Critical": {"resolved": 25, "new": -25, "persistent": -10},
     "High": {"resolved": 10, "new": -10, "persistent": -4},
@@ -37,6 +37,12 @@ def build_monthly_kpi_summary(
     current_findings = normalized_findings(current_report)
     previous_findings = normalized_findings(previous_report or {})
     severity_counts = Counter(normalize_severity(item.get("severity")) for item in current_findings)
+    hold_count = sum(
+        1
+        for item in current_findings
+        if text_value(item.get("status")).lower() == "hold"
+        or text_value(item.get("remediation_priority")).lower() == "hold"
+    )
 
     if previous_report:
         match_result = match_findings(current_findings, previous_findings)
@@ -70,7 +76,7 @@ def build_monthly_kpi_summary(
         "medium_count": severity_counts.get("Medium", 0),
         "low_count": severity_counts.get("Low", 0),
         "info_count": severity_counts.get("Info", 0),
-        "hold_count": severity_counts.get("Hold", 0),
+        "hold_count": hold_count,
         "new_findings": [finding_summary(item) for item in sorted_findings(new_findings)],
         "persistent_findings": [finding_summary(item) for item in sorted_findings(persistent_findings)],
         "resolved_findings": [finding_summary(item) for item in sorted_findings(resolved_findings)],

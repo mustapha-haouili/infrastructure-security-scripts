@@ -1,42 +1,59 @@
 # Public Repository Release Checklist
 
-Use this checklist before publishing, tagging, or sharing the public SecureInfra defensive repository.
+Use this checklist before publishing, tagging, creating a release archive, or
+sharing the public repository.
 
-## Boundary checks
+## Repository boundary
 
-- [ ] No customer data is present.
-- [ ] No customer projects are present.
-- [ ] No approved exceptions for real customers are present.
-- [ ] No private commercial report logic is present.
-- [ ] No private prompts are present.
-- [ ] No private paths are present.
-- [ ] No secrets, credentials, tokens, or passwords are present.
+- [ ] No customer data, real assessment evidence, or customer-like project
+      folders are present.
+- [ ] No local workstation paths, user profile paths, internal repository names,
+      internal host names, or organization names are present unintentionally.
+- [ ] No customer-specific reporting, exception, packaging, pricing, or delivery
+      workflow is present.
+- [ ] No non-public prompts, private templates, secrets, credentials, tokens,
+      passwords, keys, or `.env` files are present.
+- [ ] All public examples are fictional and synthetic.
 
-## Defensive scope checks
+## Leak scan
+
+- [ ] Scan text files for Windows drive paths and user-specific home paths.
+- [ ] Scan for generic customer-project, input-bundle, normalized-output, and
+      deliverable folder markers.
+- [ ] Scan scripts, tests, fixtures, comments, generated documentation, archives,
+      and release assets—not Markdown files only.
+- [ ] Keep exact organization-specific denylist terms in a private local hook or
+      private release gate rather than publishing them in this repository.
+- [ ] Review all scan hits manually; allow only intentional generic examples or
+      safety-test markers.
+
+## Defensive scope
 
 - [ ] Collectors are read-only or clearly documented as dry-run/preview.
-- [ ] No exploitation guidance is added.
-- [ ] No destructive remediation is added.
-- [ ] No automatic fix behavior is added.
+- [ ] No exploitation guidance, credential attacks, persistence, evasion, or
+      destructive remediation was added.
 - [ ] Network exposure claims are evidence-driven.
 - [ ] Unknown evidence remains unknown.
+- [ ] Any change-capable workflow requires explicit apply and approval controls.
 
-## Analyzer checks
+## Analyzer and contracts
 
 - [ ] `secureinfra_analyzer.py` runs against synthetic fixtures.
-- [ ] Bundle helpers load supported input formats.
-- [ ] Normalizers produce stable normalized findings.
+- [ ] Bundle helpers load supported formats safely.
+- [ ] Finding identifiers remain stable and unique.
+- [ ] Normalizers preserve evidence and source references.
 - [ ] Risk rules are deterministic and conservative.
-- [ ] Control mappings are broad and public-safe.
-- [ ] `normalized-report.json` matches the public contract.
+- [ ] `normalized-report.json` passes schema and strict-safety validation.
+- [ ] Workflow state is not represented as technical severity in new or changed
+      contracts.
 
-## Test command
+## Tests and quality gates
+
+- [ ] Python unit tests pass:
 
 ```powershell
 python -m unittest discover -s tests -p "test_*.py"
 ```
-
-## Quality gate
 
 - [ ] Fast quality gate passes during development:
 
@@ -50,21 +67,24 @@ python -m unittest discover -s tests -p "test_*.py"
 .\quality-gate.ps1
 ```
 
-- [ ] The quality gate generated a synthetic `normalized-report.json` and validated it with `--strict-safety`.
-- [ ] Any new production script has an automatic caller or documented manual-only reason.
+- [ ] `git diff --check` passes.
+- [ ] Any new production script has an explicit caller or documented manual-only
+      reason.
 
-## Release bundle checks
+## Release archive
 
-- [ ] Release bundle scripts run on the target platform.
-- [ ] Generated release bundle excludes private/customer data.
-- [ ] Release metadata is correct.
-- [ ] Executable permissions are correct for shell scripts where required.
+- [ ] Release scripts run on the target platform.
+- [ ] Archive contents were listed and reviewed before upload.
+- [ ] Generated release bundle excludes local reports, evidence, archives,
+      spreadsheets, and customer-like artifacts.
+- [ ] Release metadata and checksums are correct.
+- [ ] Shell script executable permissions are preserved where required.
+- [ ] Old release assets and source archives were reviewed for sensitive content.
 
 ## Git safety
 
-- [ ] `git status --short` reviewed.
-- [ ] `git diff --stat` reviewed.
-- [ ] Generated local reports are not staged.
-- [ ] Customer files are not staged.
+- [ ] `git status --short` and `git diff --stat` were reviewed.
+- [ ] Staged paths were reviewed explicitly.
 - [ ] `git add .` was not used.
-- [ ] No commit or push is performed unless explicitly requested.
+- [ ] No commit, tag, force-push, or release publication occurs without explicit
+      approval.

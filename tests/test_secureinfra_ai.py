@@ -76,7 +76,7 @@ class SecureInfraAITests(unittest.TestCase):
 
     def assert_no_internal_paths(self, normalized: dict, *blocked_paths: Path) -> None:
         serialized = json.dumps(normalized, sort_keys=True).lower()
-        for blocked in ["bundle_input", "downstream-reporting-workspace", "customer-projects", "c:\\", "d:\\"]:
+        for blocked in ["bundle_input", "customer-projects", "c:\\", "d:\\"]:
             self.assertNotIn(blocked, serialized)
         for blocked_path in blocked_paths:
             self.assertNotIn(str(blocked_path).lower(), serialized)
@@ -601,7 +601,7 @@ class SecureInfraAITests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(risk["severity"], "Hold")
+        self.assertEqual(risk["severity"], "Info")
         self.assertEqual(risk["remediation_priority"], "Hold")
         self.assertEqual(risk["status"], "Hold")
 

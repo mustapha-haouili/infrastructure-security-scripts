@@ -125,7 +125,6 @@ class LinuxCollectionLauncherContractTests(unittest.TestCase):
     def test_launcher_avoids_powershell_style_paths_or_private_terms(self):
         content = LAUNCHER.read_text(encoding="utf-8")
         self.assertNotRegex(content, re.compile(r"[A-Za-z]:\\"))
-        self.assertNotIn("downstream-reporting-workspace", content)
         self.assertNotIn("customer-projects", content)
 
 

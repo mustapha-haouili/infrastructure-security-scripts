@@ -1,71 +1,81 @@
 # Roadmap
 
-This roadmap describes the planned direction for the infrastructure security
-scripts toolkit. Versions are targets, not contractual commitments.
+This roadmap describes the planned direction of the public defensive toolkit.
+Items are priorities, not contractual commitments.
 
-## v1.1.0 - Active Directory and Group Policy Improvements
+## 1. Public repository hygiene and release safety
 
-- Expand Active Directory audit scripts for inactive users, stale computers,
-  service accounts, SPN exposure, privileged groups, and privileged identities.
-- Improve Group Policy health reporting with link inventory, stale policy
-  indicators, version mismatch checks, and administrator action guidance.
-- Add methodology, service model documentation, sample reports, and fictional
-  sample outputs.
-- Keep all public examples defensive, audit-first, and free of customer data.
+- Complete current-tree sanitization and remove internal handoff material,
+  local workstation paths, customer-specific workflow details, and stale
+  generated review artifacts.
+- Keep leak checks generic and public-safe while maintaining exact
+  organization-specific denylist checks outside the repository.
+- Validate release archives, tags, documentation, examples, and generated
+  assets before publication.
+- Prepare a reviewed history-rewrite plan for repositories that were already
+  published with sensitive content.
 
-## v1.2.0 - Report Standardization and JSON Schemas
+## 2. Windows and Linux end-to-end validation
 
-- Standardize finding and report structures across Windows, AD, GPO, Linux,
-  DevSecOps, and monitoring checks.
-- Add validation schemas for findings, audit summaries, and remediation plans.
-- Improve report generator support for multiple input formats.
-- Add historical comparison helpers for repeated assessments.
-- Expand SecureInfra AI normalizers beyond AD inactive user reports.
-- Add a client-side collection bundle workflow that packages supported safe
-  checks for reviewer-side analysis.
-- Add beta standalone SecureInfra AI analyzer types for Windows host, server,
-  workstation, and network exposure JSON reports.
-- Add broad deterministic control-reference metadata to normalized reports
-  without claiming compliance, certification, or audit attestation.
-- Add deterministic monthly KPI summaries from normalized reports for baseline
-  and month-over-month improvement review.
-- Add audit-only backup readiness collection and normalization for metadata-only
-  Windows and Linux backup evidence.
+- Run mixed Windows and Linux bundle analysis using synthetic fixtures.
+- Confirm stable finding identifiers, evidence preservation, schema validation,
+  network wording, and metadata-only handling of remediation previews.
+- Complete remaining safe Windows evidence gaps, including pending-reboot and
+  certificate-expiry visibility, only after the current collectors are fully
+  tested.
+- Design Entra/Microsoft Graph identity checks separately with explicit
+  permissions and authentication requirements; do not infer cloud controls from
+  on-premises evidence.
+- Keep generated examples synchronized with tested fixtures and schemas.
 
-## v1.3.0 - Windows Security Health Check Enhancements
+## 3. Normalized contract consistency
 
-- Expand Windows host audit coverage for local security policy, event logging,
-  remote access, Defender, services, and patch visibility.
-- Improve remediation planning and rollback documentation.
-- Add more sample host audit outputs and administrator review examples.
-- Add optional HTML report generation.
+- Separate technical severity from workflow and review state consistently.
+- Keep unknown evidence explicit instead of converting it to false or zero.
+- Strengthen bundle, schema, correlation, and leak validation.
+- Add missing standalone normalizers only where source evidence and schemas are
+  stable, including monitoring and secret-scan outputs.
+- Keep JSON Schemas as the machine-readable source of truth and reduce duplicated
+  documentation.
 
-## v1.4.0 - Linux Security Health Check Enhancements
+## 4. Reporting and local review
 
-- Expand Linux security audit coverage for SSH, services, packages, users,
-  sudoers, kernel posture, and filesystem permissions.
-- Improve JSON output consistency.
-- Add Linux remediation planning examples.
-- Add distro-specific notes where behavior differs.
+- Keep Markdown reports and the static dashboard local/offline and derived from
+  normalized evidence.
+- Improve historical comparison, monthly KPI summaries, and saved synthetic
+  demonstrations.
+- Add language support only after deterministic output and validation are
+  stable. Language assistance must remain evidence-grounded and human-reviewed.
 
-## v1.5.0 - HTML / Markdown Report Generator
+## 5. Container coverage
 
-- Generate customer-readable Markdown and HTML reports from JSON audit results.
-- Add report templates for executive summary, technical findings, and admin
-  remediation planning.
-- Add severity grouping, risk scoring, and optional comparison with a previous
-  assessment.
-- Keep PDF and branded portal workflows in the private commercial layer.
+Begin Docker work only after repository hygiene and the Windows/Linux completion
+gate are finished.
 
-## Future Ideas
+- Define a read-only collection bundle contract.
+- Add safe local inventory and configuration evidence.
+- Add deterministic normalizers, schemas, synthetic fixtures, and tests.
+- Avoid secret collection and avoid executing container-controlled content.
 
-- Entra ID and Microsoft Graph read-only privileged identity checks.
-- Evidence-based benchmark checks where controls can be validated safely without
-  claiming certification or audit attestation.
-- Wazuh/SIEM evidence mapping.
-- Expanded backup readiness checks for additional platforms and centralized
-  backup job-history evidence.
-- Dashboard-ready JSON exports and monthly trend visualizations.
-- Signed release artifacts.
-- Documentation examples for lab environments.
-- Private customer portal and branded report templates outside the public repo.
+## 6. Kubernetes coverage
+
+After Docker support is stable:
+
+- define authorized, read-only collection scopes;
+- collect configuration and RBAC evidence conservatively;
+- add normalization and schema coverage;
+- avoid active exploitation, credential collection, and unsupported reachability
+  claims.
+
+## 7. Cloud identity and resource coverage
+
+Later phases may add read-only evidence for cloud identity and selected cloud
+resources where permissions, data minimization, and evidence contracts are
+clear.
+
+## Ongoing priorities
+
+- Signed or verifiable release artifacts.
+- Evidence-based benchmark mappings without certification claims.
+- Offline dashboard and normalized JSON improvements.
+- Clear lab documentation and synthetic examples.

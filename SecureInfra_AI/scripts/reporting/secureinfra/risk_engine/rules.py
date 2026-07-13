@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 
-SEVERITY_ORDER = ["Critical", "High", "Medium", "Low", "Info", "Hold"]
+SEVERITY_ORDER = ["Critical", "High", "Medium", "Low", "Info"]
 SEVERITY_RANK = {name: index for index, name in enumerate(SEVERITY_ORDER)}
 
 
@@ -134,7 +134,6 @@ def remediation_priority_for(severity: str) -> str:
         "Medium": "Planned Remediation",
         "Low": "Monitor",
         "Info": "Monitor",
-        "Hold": "Hold",
     }.get(severity, "Monitor")
 
 
@@ -184,6 +183,7 @@ def classify_ad_inactive_user(user: dict[str, Any]) -> dict[str, Any]:
     password_never_expires = as_bool(user.get("PasswordNeverExpires"))
     built_in_admin = is_built_in_administrator(user)
     system_managed = is_system_managed(user)
+    workflow_status = "Hold" if system_managed else "Open"
 
     title = "Inactive account requires review"
     severity = "Low"
@@ -193,7 +193,7 @@ def classify_ad_inactive_user(user: dict[str, Any]) -> dict[str, Any]:
 
     if system_managed:
         title = "System-managed account on hold"
-        severity = "Hold"
+        severity = "Info"
         business_impact = "System-managed accounts can be required for platform health and should not be handled as normal cleanup."
         technical_impact = "The account has system-managed or Exchange HealthMailbox indicators."
         recommendation = "Keep on hold unless the product owner approves a specific action."
@@ -255,14 +255,14 @@ def classify_ad_inactive_user(user: dict[str, Any]) -> dict[str, Any]:
     return {
         "title": title,
         "severity": severity,
-        "remediation_priority": remediation_priority_for(severity),
+        "remediation_priority": "Hold" if workflow_status == "Hold" else remediation_priority_for(severity),
         "risk_factors": base_risk_factors(user),
         "business_impact": business_impact,
         "technical_impact": technical_impact,
         "recommendation": recommendation,
         "requires_owner_review": True,
-        "requires_change_approval": severity in {"Critical", "High", "Medium", "Hold"} or enabled,
+        "requires_change_approval": workflow_status == "Hold" or severity in {"Critical", "High", "Medium"} or enabled,
         "safe_to_auto_remediate": False,
         "not_safe_for_auto_remediation_reason": safety_reason(user, severity),
-        "status": "Hold" if severity == "Hold" else "Open",
+        "status": workflow_status,
     }

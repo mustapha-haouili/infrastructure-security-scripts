@@ -110,9 +110,9 @@ function Test-PublicIntegrationContracts {
         -Label "public testing strategy"
 
     Require-TextMarker `
-        -RelativePath "CODEX_WORKFLOW.md" `
-        -Needle "Any new script added to this repository must have an explicit caller or a documented manual-only reason" `
-        -Label "public Codex workflow"
+        -RelativePath "AGENTS.md" `
+        -Needle "Any new production script must have an explicit caller or a documented" `
+        -Label "repository script integration rule"
 
     Require-TextMarker `
         -RelativePath "scripts\reporting\validate_schema.py" `
@@ -267,7 +267,6 @@ function Test-GitSafety {
 
         $ForbiddenPatterns = @(
             "(^|/)customer-projects/",
-            "(^|/)downstream-reporting-workspace/",
             "(^|/)03-input-bundles/",
             "(^|/)04-normalized-reports/",
             "(^|/)professional-deliverables/",
@@ -281,6 +280,11 @@ function Test-GitSafety {
 
         $UnsafeLines = @()
         foreach ($Line in $StatusLines) {
+            # Deletion-only entries cannot introduce unsafe artifacts.
+            if ($Line -match '^( D|D ) ') {
+                continue
+            }
+
             foreach ($Pattern in $ForbiddenPatterns) {
                 if ($Line -match $Pattern) {
                     $UnsafeLines += $Line

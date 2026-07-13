@@ -3,8 +3,8 @@
 
 This command is intentionally dependency-free. It validates analyzer output
 against the local public JSON schemas and performs lightweight contract checks
-that are useful before a normalized report is imported by the private
-commercial reporting repository.
+that are useful before a normalized report is consumed by downstream
+tooling.
 """
 
 from __future__ import annotations
@@ -28,9 +28,8 @@ if str(SECUREINFRA_REPORTING_ROOT) not in sys.path:
 from secureinfra.validators.schema_validator import SchemaValidationError, validate_normalized_report
 
 
-ALLOWED_SEVERITIES = {"Critical", "High", "Medium", "Low", "Info", "Hold"}
+ALLOWED_SEVERITIES = {"Critical", "High", "Medium", "Low", "Info"}
 SAFETY_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("private commercial repository name", re.compile(r"downstream-reporting-workspace", re.IGNORECASE)),
     ("customer project folder name", re.compile(r"customer-projects", re.IGNORECASE)),
     ("input bundle implementation label", re.compile(r"bundle_input", re.IGNORECASE)),
     ("private input bundle folder", re.compile(r"03-input-bundles", re.IGNORECASE)),
@@ -71,7 +70,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--strict-safety",
         action="store_true",
         help=(
-            "Fail if private/commercial paths or private prompt markers appear anywhere in the report. "
+            "Fail if local/internal paths or non-public prompt markers appear anywhere in the report. "
             "Use this for release or handoff validation."
         ),
     )

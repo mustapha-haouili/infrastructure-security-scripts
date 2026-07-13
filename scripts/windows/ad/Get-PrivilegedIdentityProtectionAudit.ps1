@@ -251,7 +251,7 @@ function Get-DefaultGroupDefinitions {
         $definitions.Add((New-GroupDefinition -Key "SchemaAdmins" -DisplayName "Schema Admins" -Identity "$DomainSID-518" -ExpectedRisk "Critical")) | Out-Null
         $definitions.Add((New-GroupDefinition -Key "EnterpriseAdmins" -DisplayName "Enterprise Admins" -Identity "$DomainSID-519" -ExpectedRisk "Critical")) | Out-Null
         $definitions.Add((New-GroupDefinition -Key "GroupPolicyCreatorOwners" -DisplayName "Group Policy Creator Owners" -Identity "$DomainSID-520" -ExpectedRisk "High")) | Out-Null
-        $definitions.Add((New-GroupDefinition -Key "ProtectedUsers" -DisplayName "Protected Users" -Identity "$DomainSID-525" -ExpectedRisk "Informational" -ProtectionGroup)) | Out-Null
+        $definitions.Add((New-GroupDefinition -Key "ProtectedUsers" -DisplayName "Protected Users" -Identity "$DomainSID-525" -ExpectedRisk "Info" -ProtectionGroup)) | Out-Null
         $definitions.Add((New-GroupDefinition -Key "KeyAdmins" -DisplayName "Key Admins" -Identity "$DomainSID-526" -ExpectedRisk "High")) | Out-Null
         $definitions.Add((New-GroupDefinition -Key "EnterpriseKeyAdmins" -DisplayName "Enterprise Key Admins" -Identity "$DomainSID-527" -ExpectedRisk "High")) | Out-Null
     }

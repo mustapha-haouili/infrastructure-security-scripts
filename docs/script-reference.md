@@ -1,12 +1,11 @@
-﻿# Script Reference
+# Script Reference
 
 This page documents every operational script in the repository, including
 purpose, safety mode, parameters, outputs, and examples.
 
-Use [script-documentation-standard.md](script-documentation-standard.md) when
-adding or updating script documentation so purpose, requirements, permissions,
-safety notes, limitations, and next steps stay consistent across script
-families.
+Follow the documentation requirements in [CONTRIBUTING.md](../CONTRIBUTING.md)
+when adding or updating scripts so purpose, requirements, permissions, safety
+notes, limitations, and next steps stay consistent across script families.
 
 Use this workflow before production changes:
 

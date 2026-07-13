@@ -46,8 +46,7 @@
         "High",
         "Medium",
         "Low",
-        "Info",
-        "Hold"
+        "Info"
       ]
     },
     "affected_object": {

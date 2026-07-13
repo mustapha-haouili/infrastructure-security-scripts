@@ -2,27 +2,47 @@
 
 ## Scope
 
-This repository contains defensive scripts for system administration, auditing, hardening, monitoring, and DevSecOps checks.
+This repository contains defensive scripts for authorized system
+administration, auditing, hardening previews, monitoring, bundle validation, and
+normalized evidence analysis.
 
 Use the scripts only on systems and environments where you have authorization.
 
 ## Reporting security issues
 
-If you find a security issue in a script, open a private advisory or contact the maintainer with:
+Report script vulnerabilities, unsafe collection behavior, archive-validation
+bypasses, accidental secret collection, or repository information exposure
+through a private security advisory or another private maintainer channel.
 
-- Script name
-- Impact description
-- Steps to reproduce
-- Suggested fix, if available
+Include only the minimum information needed:
 
-Do not include real secrets, production credentials, private keys, or customer data in reports.
+- affected script or file;
+- impact;
+- safe reproduction steps;
+- suggested fix, when available.
+
+Do not include real secrets, credentials, private keys, tokens, customer data,
+raw customer evidence, or unnecessary personal information in a report.
+
+## Repository information exposure
+
+Treat an accidental commit of local workstation paths, internal repository
+identifiers, customer-specific workflows, customer data, non-public prompts, or
+release assets containing such information as a security and release-hygiene
+issue.
+
+Removing the text in a later commit does not remove it from Git history, tags,
+release assets, forks, caches, or downloaded source archives. Maintainers should
+sanitize the current tree, assess published artifacts, preserve a private backup,
+and use a reviewed history-rewrite procedure when necessary.
 
 ## Operational safety
 
 Before using scripts in production:
 
-1. Read the script.
-2. Run it in audit or dry-run mode.
-3. Test it in a lab or staging environment.
-4. Confirm rollback and backup procedures.
+1. Read the script and its documentation.
+2. Run in audit or dry-run mode.
+3. Test in a lab or staging environment.
+4. Confirm authorization, scope, rollback, and backup procedures.
 5. Run with least privilege where possible.
+6. Review generated evidence before sharing it.

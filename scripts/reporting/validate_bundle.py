@@ -94,7 +94,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         epilog="""Examples:
   %(prog)s --input reports/secureinfra-client-collection-HOST-20260709-120000.zip
   %(prog)s --input reports/secureinfra-client-collection-HOST-20260709-120000
-  %(prog)s --input customer-projects/CUST001/03-input-bundles --strict-safety
+  %(prog)s --input path/to/bundle-directory --strict-safety
 """,
     )
     parser.add_argument(

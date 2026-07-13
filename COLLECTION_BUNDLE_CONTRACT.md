@@ -2,7 +2,7 @@
 
 This repository is the public defensive collector and analyzer layer. Collection bundles are the handoff format between platform-specific read-only collectors and `secureinfra_analyzer.py`.
 
-A bundle is a ZIP archive or directory that contains evidence collected from one asset, host, domain, cluster, or platform scope. The private commercial repository can place multiple ZIP archives in `customer-projects/<project>/03-input-bundles`; the public analyzer processes them with `--type multi-bundle` and emits one `normalized-report.json`.
+A bundle is a ZIP archive or directory containing evidence collected from one asset, host, domain, cluster, or platform scope. The public analyzer can process one bundle or a directory of multiple bundles and emit `normalized-report.json`.
 
 ## Core principles
 
@@ -10,7 +10,7 @@ A bundle is a ZIP archive or directory that contains evidence collected from one
 - Bundles contain evidence and summaries, not remediation actions.
 - Missing evidence remains unknown; it must not be converted to false or zero.
 - Listening on all interfaces is bind-scope evidence only; it is not proof of internet exposure.
-- No customer secrets, private prompts, credentials, tokens, or internal commercial paths belong in a bundle.
+- No customer secrets, non-public prompts, credentials, tokens, local workstation paths, or internal workflow paths belong in a bundle.
 - Every collector script must be invoked by a platform launcher or explicitly documented as manual-only.
 
 ## Standard bundle layout
@@ -159,11 +159,11 @@ Until Docker and Kubernetes normalizers are added, these folders are allowed by 
 For commercial delivery, the private repository should run:
 
 ```text
-03-input-bundles
+<folder-containing-bundles>
 → validate_bundle.py
 → secureinfra_analyzer.py --type multi-bundle
 → validate_schema.py
-→ private commercial reporting pipeline
+→ customer-specific reporting pipeline
 ```
 
 For public-only testing:

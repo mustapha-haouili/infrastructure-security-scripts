@@ -98,8 +98,7 @@
               "High",
               "Medium",
               "Low",
-              "Info",
-              "Hold"
+              "Info"
             ]
           },
           "finding_ids": {
@@ -235,8 +234,7 @@
                   "High",
                   "Medium",
                   "Low",
-                  "Info",
-                  "Hold"
+                  "Info"
                 ]
               },
               "affected_object": {

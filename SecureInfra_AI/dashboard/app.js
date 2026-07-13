@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const SEVERITIES = ["Critical", "High", "Medium", "Low", "Info", "Hold"];
+  const SEVERITIES = ["Critical", "High", "Medium", "Low", "Info"];
   const SEVERITY_RANK = Object.fromEntries(SEVERITIES.map((item, index) => [item, index]));
   const SCOPES = ["AD", "Host", "Server", "Workstation", "Network"];
 
@@ -214,7 +214,10 @@
 
   function normalizeFinding(finding, fileRecord, fileIndex, index, normalized) {
     const evidence = objectValue(finding.evidence) || {};
-    const severity = normalizeSeverity(finding.severity || evidence.severity || evidence.review_priority);
+    const sourceSeverity = finding.severity || evidence.severity || evidence.review_priority;
+    const legacyHold = isHoldValue(sourceSeverity);
+    const severity = normalizeSeverity(sourceSeverity);
+    const status = stringValue(finding.status || (legacyHold ? "Hold" : "Open"));
     const id = stringValue(finding.finding_id || `${normalized ? "NORM" : "SRC"}-${fileIndex}-${index}`);
     const normalizedFinding = {
       dashboard_id: `${fileIndex}:${index}:${id}`,
@@ -230,12 +233,12 @@
       business_impact: stringValue(finding.business_impact),
       technical_impact: stringValue(finding.technical_impact),
       recommendation: stringValue(finding.recommendation || evidence.recommendation || evidence.admin_action || "Review evidence and validate ownership before change."),
-      remediation_priority: stringValue(finding.remediation_priority || priorityFor(severity)),
+      remediation_priority: stringValue(finding.remediation_priority || (status === "Hold" ? "Hold" : priorityFor(severity))),
       requires_owner_review: Boolean(finding.requires_owner_review ?? true),
-      requires_change_approval: Boolean(finding.requires_change_approval ?? ["Critical", "High", "Medium", "Hold"].includes(severity)),
+      requires_change_approval: Boolean(finding.requires_change_approval ?? (status === "Hold" || ["Critical", "High", "Medium"].includes(severity))),
       safe_to_auto_remediate: Boolean(finding.safe_to_auto_remediate ?? false),
       not_safe_for_auto_remediation_reason: stringValue(finding.not_safe_for_auto_remediation_reason || "Human review and approved change control are required."),
-      status: stringValue(finding.status || "Open"),
+      status,
       timestamp_utc: stringValue(finding.timestamp_utc || fileRecord.generatedAt),
       source_file: fileRecord.path,
       source_kind: normalized ? "normalized" : "source",
@@ -248,7 +251,9 @@
 
   function sourceRowToFinding(row, config, fileRecord, fileIndex, index) {
     const evidence = compactEvidence(row);
-    const severity = normalizeSeverity(row.Severity || row.ReviewPriority || row.ExposurePriority || row.ActionPriority);
+    const sourcePriority = row.Severity || row.ReviewPriority || row.ExposurePriority || row.ActionPriority;
+    const workflowHold = isHoldValue(sourcePriority);
+    const severity = normalizeSeverity(sourcePriority);
     const affected = firstPresent(row, [
       "SamAccountName",
       "Subject",
@@ -273,8 +278,8 @@
         evidence,
         risk_factors: riskFactorsFromRow(row),
         recommendation: stringValue(row.Recommendation || row.AdminAction || row.RecommendedAction || "Review source evidence and validate owner approval."),
-        remediation_priority: priorityFor(severity),
-        status: "Open",
+        remediation_priority: workflowHold ? "Hold" : priorityFor(severity),
+        status: workflowHold ? "Hold" : "Open",
         timestamp_utc: fileRecord.generatedAt,
       },
       fileRecord,
@@ -1311,8 +1316,12 @@
     if (lower === "p2" || lower.startsWith("p2") || lower.includes("high")) return "High";
     if (lower === "p3" || lower.startsWith("p3") || lower.includes("medium") || lower.includes("moderate")) return "Medium";
     if (lower === "p4" || lower.startsWith("p4") || lower.includes("low")) return "Low";
-    if (lower.includes("hold")) return "Hold";
+    if (lower.includes("hold")) return "Info";
     return "Info";
+  }
+
+  function isHoldValue(value) {
+    return String(value || "").trim().toLowerCase() === "hold";
   }
 
   function priorityFor(severity) {
@@ -1322,7 +1331,6 @@
       Medium: "Planned Remediation",
       Low: "Monitor",
       Info: "Monitor",
-      Hold: "Hold",
     }[severity] || "Monitor";
   }
 
@@ -1333,7 +1341,6 @@
       Medium: "#946200",
       Low: "#246b43",
       Info: "#245b86",
-      Hold: "#5b4b7a",
     }[severity] || "#25636f";
   }
 

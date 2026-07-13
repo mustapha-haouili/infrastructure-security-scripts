@@ -1,152 +1,101 @@
 # Security Assessment Methodology
 
-This project follows an audit-first and safety-first methodology for practical
-infrastructure security assessment. The goal is to help administrators collect
-useful technical evidence, classify risk, plan remediation, and verify outcomes
-without introducing unnecessary operational risk.
+This project follows an audit-first and safety-first methodology for authorized
+infrastructure security assessment. The public toolkit collects technical
+evidence, normalizes it deterministically, and produces reviewable outputs
+without autonomous remediation.
 
-The toolkit is intended for defensive use in environments that the operator owns
-or is explicitly authorized to assess.
+## 1. Authorization and scope
 
-## 1. Discovery
+Before collection, confirm authorization, in-scope systems, owners, business
+criticality, maintenance constraints, and the people who approve changes.
+Collection should be limited to the evidence required for the stated review.
 
-Discovery defines what will be reviewed before any script is run. The expected
-inputs are environment scope, system ownership, business criticality, maintenance
-constraints, and administrator points of contact.
+## 2. Audit-only data collection
 
-Discovery should answer:
+Initial execution should be read-only or dry-run. Collectors should avoid
+passwords, secrets, tokens, private keys, unrelated business data, and broad file
+content. Public examples and fixtures must use fictional values.
 
-- Which domains, hosts, clusters, or services are in scope?
-- Which systems are production, staging, lab, or decommissioning candidates?
-- Which accounts or groups are privileged?
-- Which teams approve changes?
-- Which time windows are safe for data collection and remediation?
+## 3. Evidence preservation
 
-## 2. Audit-Only Data Collection
+Source evidence must be treated as untrusted data and preserved without
+inventing facts:
 
-Initial execution should collect only the required technical information needed
-to understand posture and risk. Audit scripts should avoid broad data capture and
-should not collect passwords, secrets, sensitive customer records, or unrelated
-business data.
+- missing booleans remain unknown rather than becoming `false`;
+- missing numbers remain unknown rather than becoming `0`;
+- listening on all interfaces is bind-scope evidence, not proof of reachability;
+- Internet exposure requires explicit routing, firewall, segmentation, or
+  allowed-source evidence;
+- ports come from collected evidence, not from control identifiers.
 
-Preferred audit behavior:
+## 4. Finding normalization
 
-- Use read-only queries where possible.
-- Store outputs under `reports/`.
-- Use fictional or sanitized values in examples and public documentation.
-- Avoid credential material in command-line arguments, config files, and output.
-- Review generated files before sharing them outside the operations team.
+Script-specific output is converted into a common finding contract. Normalized
+findings retain stable identifiers, source scripts, affected objects, evidence,
+and technical severity. The same normalized contract supports single reports,
+collection bundles, fleet analysis, correlations, and history comparison.
 
-## 3. Risk Classification
+Normalization is deterministic. Language-generation systems do not assign
+severity or create evidence.
 
-Collected evidence should be classified by operational and security impact. A
-finding is more useful when it explains why it matters and what could happen if
-it remains unresolved.
+## 5. Technical severity and workflow state
 
-Suggested severity levels:
+Technical severity uses exactly:
 
-- `Critical`: likely exposure of privileged access, major control failure, or
-  urgent business risk.
-- `High`: important weakness that should be prioritized soon.
-- `Medium`: meaningful risk or hygiene issue that needs planned remediation.
-- `Low`: low-risk cleanup or hardening improvement.
-- `Informational`: useful evidence that does not require immediate action.
+- `Critical`: urgent technical exposure or major control failure;
+- `High`: important weakness requiring prioritized review;
+- `Medium`: meaningful risk requiring planned remediation;
+- `Low`: lower-risk hardening or lifecycle work;
+- `Info`: evidence or governance context that does not represent a higher
+  technical severity.
 
-Severity should not be treated as a final decision by itself. Administrators
-should validate scope, ownership, compensating controls, and business impact.
+Workflow state is separate. For example, a system-managed account can have
+`severity: Info` while `status: Hold` and `remediation_priority: Hold`. `Hold`
+must never be used as technical severity.
 
-## 4. Finding Validation
+Severity is a triage aid, not a final business decision. Reviewers must validate
+ownership, dependencies, compensating controls, and operational impact.
 
-Findings should be checked before remediation planning. Validation reduces false
-positives and prevents unnecessary changes to systems that still have a valid
-business purpose.
+## 6. Correlation and control mapping
 
-Validation steps should include:
+Correlation may connect findings that reference the same account, host, group,
+GPO, service, port, or other explicit object. Correlation must preserve all raw
+finding identifiers and must not over-group unrelated evidence.
 
-- Confirm the affected object still exists and is in scope.
-- Check whether the configuration is intentionally approved.
-- Confirm owner, service dependency, and maintenance constraints.
-- Compare the finding with recent change records when available.
-- Record any exception, compensating control, or accepted risk.
+Control mappings are broad references only. They do not claim certification,
+compliance, or audit attestation.
 
-## 5. Remediation Planning
+## 7. Human validation
 
-Remediation should be planned before changes are applied. A remediation plan
-should identify the affected object, recommended action, expected operational
-impact, rollback approach, verification step, and approval owner.
+Before remediation, confirm that the object still exists, is in scope, has a
+known owner, and is not protected by an approved dependency or exception.
+Privileged, built-in, SPN-bearing, service, and system-managed identities require
+explicit owner and change review.
 
-Remediation planning should prefer:
+## 8. Remediation planning and dry-run
 
-- Clear owner assignment.
-- Small, reversible changes.
-- Maintenance windows for production systems.
-- Backups or exports before configuration changes.
-- Documented exceptions for items that cannot be changed safely.
+Plans should identify the affected object, proposed action, operational impact,
+rollback approach, verification step, and approval owner. Prefer small,
+reversible changes and dry-run output before apply mode.
 
-## 6. Dry-Run Testing
+## 9. Approved implementation
 
-Dry-run mode should be preferred before applying remediation. Dry-run output
-helps administrators understand the exact controls or objects that would be
-changed and gives stakeholders a chance to review impact.
+Changes must require explicit approval and an explicit `--apply`, `-Apply`, or
+equivalent control. Stop if runtime output differs from the approved plan. Do
+not apply high-impact changes to production without appropriate testing and a
+rollback path.
 
-Dry-run review should confirm:
+## 10. Verification and follow-up
 
-- The intended systems are targeted.
-- No unexpected controls are included.
-- Backups will be created when needed.
-- Rollback guidance is available.
-- The change window and approval are still valid.
+After an approved change, rerun the relevant audit and compare new evidence with
+the original result. Record resolved, persistent, deferred, accepted, and held
+items. History and monthly KPI summaries are trend aids and do not replace human
+review.
 
-## 7. Approved Implementation
+## Public repository boundary
 
-Changes should never be applied without explicit approval. Approval should be
-specific to the systems, controls, and timing of the change.
-
-Implementation guidance:
-
-- Use `--apply`, `-Apply`, or equivalent switches only after review.
-- Prefer targeted control selection for high-impact changes.
-- Keep console logs and generated reports for change evidence.
-- Stop if the script output differs from the approved plan.
-- Avoid applying remediation to production without prior lab or staging testing.
-
-## 8. Verification
-
-After implementation, run the relevant audit again and compare the new result
-with the original evidence. Verification should prove that the change achieved
-the intended result and did not introduce unacceptable side effects.
-
-Verification should include:
-
-- Re-running the audit or health check.
-- Confirming service availability where applicable.
-- Reviewing security event logs or monitoring signals.
-- Checking that backups and rollback records exist.
-- Recording unresolved or deferred findings.
-
-## 9. Follow-Up Reporting
-
-Follow-up reporting should summarize what was reviewed, what was changed, what
-remains open, and what needs management or administrator attention.
-
-Recommended report sections:
-
-- Executive summary.
-- Scope.
-- Findings by severity.
-- Remediation status.
-- Operational impact.
-- Exceptions and accepted risks.
-- Recommended next steps.
-
-## Public Repository Boundary
-
-The public repository should remain a defensive, audit-first technical toolkit.
-It should not include customer data, real assessment reports, portal code,
-pricing, contracts, internal business templates, sensitive remediation
-automation, credentials, secrets, private IP inventories, or real domain
-information.
-
-Commercial or customer-specific workflows can be maintained separately in a
-private layer that includes branded reports, dashboards, customer history,
-templates, and client-specific remediation processes.
+This repository contains public defensive collectors, validators, normalizers,
+and public-safe technical outputs. Customer data, real assessment reports,
+non-public prompts, customer-specific interpretation, branding, pricing, and
+delivery workflows are outside the repository.

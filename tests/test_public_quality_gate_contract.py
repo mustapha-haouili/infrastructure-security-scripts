@@ -47,9 +47,9 @@ class PublicQualityGateContractTests(unittest.TestCase):
     def test_quality_gate_checks_new_script_integration_contract(self):
         content = self.read_gate()
 
-        self.assertIn("Any new script added to this repository must have an explicit caller", content)
+        self.assertIn("Any new production script must have an explicit caller", content)
         self.assertIn("Require-TextMarker", content)
-        self.assertIn("CODEX_WORKFLOW.md", content)
+        self.assertIn("AGENTS.md", content)
         self.assertIn("Start-SecureInfraLinuxCollection.sh", content)
         self.assertIn("COLLECTION_BUNDLE_CONTRACT.md", content)
 

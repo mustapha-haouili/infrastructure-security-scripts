@@ -6,6 +6,22 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 
 ## [Unreleased]
 
+### Contract
+- Separated technical severity from workflow state across schemas, analyzers,
+  reports, monthly KPI output, and the local dashboard. Normalized severity now
+  accepts only `Critical`, `High`, `Medium`, `Low`, or `Info`; held items retain
+  `status: Hold` and `remediation_priority: Hold`.
+- Canonicalized legacy `Informational` source values to `Info` and added a
+  negative validation test that rejects `Hold` as technical severity.
+
+### Documentation
+- Consolidated duplicate SecureInfra AI architecture, methodology, roadmap,
+  Windows category, service-model, and release-note documents into the root
+  architecture, methodology, roadmap, script references, and this changelog.
+- Removed stale manually maintained Markdown report samples; machine-readable
+  fictional fixtures and generated test outputs remain the source of truth.
+- Renamed the monthly review document to `docs/monthly-kpi-methodology.md`.
+
 ### SecureInfra AI
 - Added deterministic public-safe network port context mapping for normalized
   Windows network exposure findings, including common service names, exposure
@@ -28,6 +44,21 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 - Included Backup readiness in the broad `All` client collection scope so
   default bundles include backup/recovery evidence while keeping `-Scope Backup`
   available for targeted collection.
+
+
+## [1.3.0-beta.2] - 2026-07-01
+
+### Fixed
+- Restored and validated GPO collection scope compatibility.
+- Improved normalized evidence summaries and details.
+- Improved Active Directory privileged-account classification.
+- Removed internal path leakage from report evidence.
+- Improved reviewer-facing interpretation while preserving source evidence.
+
+### Safety
+- Kept collection and analysis defensive, audit-only, and local by default.
+- Excluded customer data and non-public customer-specific workflows from the
+  public release.
 
 ## [1.3.0-beta.1] - 2026-07-01
 
@@ -118,17 +149,17 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 
 - Added `docs/methodology.md` for the audit-first and safety-first assessment workflow.
 - Added service model documentation for structured infrastructure security health checks.
-- Added fictional sample assessment reports under `examples/sample-reports/`.
+- Added fictional sample assessment outputs for documentation and testing.
 - Added fictional sample JSON outputs under `examples/sample-output/`.
 - Added JSON schemas under `schemas/` for findings, AD reports, GPO reports, Windows host audits, Linux host audits, and remediation plans.
 - Added `scripts/reporting/generate-markdown-report.py` to convert one or more JSON audit result files into a Markdown report.
-- Added release notes for `v1.1.0` under `docs/releases/`.
+- Added release-history documentation for `v1.1.0`.
 - Added `ROADMAP.md` for future toolkit development.
-- Added a script documentation standard for purpose, requirements, permissions, examples, safety notes, limitations, and next steps.
+- Added consistent script documentation requirements for purpose, permissions, examples, safety notes, limitations, and next steps.
 
 ### Windows
 
-- Added Windows expansion roadmap for AD, GPO, server, workstation, and shared helper categories.
+- Added an initial Windows expansion plan for AD, GPO, server, workstation, and shared helper categories.
 - Added scaffold folders for future Windows AD, GPO, server, workstation, and shared helper scripts.
 - Added the first 20 planned Windows security tasks with priority, status, target folder, and proposed script names.
 - Added `scripts/windows/ad/Get-ADInactiveUserReport.ps1` for audit-only inactive Active Directory user reporting with JSON and CSV output.

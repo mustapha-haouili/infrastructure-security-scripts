@@ -89,14 +89,26 @@ class ValidateSchemaCliTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("duplicate finding_id", result.stderr)
 
+    def test_validate_schema_rejects_hold_as_technical_severity(self):
+        report = self.build_valid_report()
+        report["findings"][0]["severity"] = "Hold"
+        report["findings"][0]["status"] = "Hold"
+        report["findings"][0]["remediation_priority"] = "Hold"
+        report["summary"]["severity_counts"] = {"Hold": 1}
+
+        result = self.run_validator(report)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("severity", result.stderr)
+        self.assertIn("Hold", result.stderr)
+
     def test_validate_schema_strict_safety_rejects_private_path_leak(self):
         report = self.build_valid_report()
-        report["metadata"]["debug_path"] = r"<local-workspace>\downstream-reporting-workspace\customer-projects\example"
+        report["metadata"]["debug_path"] = r"X:\Users\Example\customer-projects\sample"
 
         result = self.run_validator(report, "--strict-safety")
 
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("private commercial repository name", result.stderr)
         self.assertIn("local Windows drive path", result.stderr)
 
 

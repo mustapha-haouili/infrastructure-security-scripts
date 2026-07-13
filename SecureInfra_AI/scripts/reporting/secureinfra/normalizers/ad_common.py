@@ -12,7 +12,7 @@ from secureinfra.normalizers.evidence_contract import normalize_report_evidence_
 from secureinfra.risk_engine.rules import as_bool, as_int, as_list, remediation_priority_for
 
 
-SEVERITIES = ["Critical", "High", "Medium", "Low", "Info", "Hold"]
+SEVERITIES = ["Critical", "High", "Medium", "Low", "Info"]
 
 
 def utc_now() -> str:
@@ -419,6 +419,12 @@ def severity_counts(findings: list[dict[str, Any]]) -> dict[str, int]:
 
 
 def normalize_source_severity(value: Any) -> str:
+    """Normalize source priority to technical severity.
+
+    ``Hold`` is returned only as an internal compatibility sentinel so
+    ``build_common_finding`` can preserve the workflow state while emitting
+    technical severity ``Info``. It must never appear in normalized output.
+    """
     raw = str(value or "").strip()
     if raw in SEVERITIES:
         return raw
@@ -484,11 +490,13 @@ def build_common_finding(
     timestamp_utc: str,
     safety_reason: str,
 ) -> dict[str, Any]:
+    workflow_hold = severity == "Hold"
+    technical_severity = "Info" if workflow_hold else severity
     return {
         "finding_id": finding_id,
         "title": title,
         "category": category,
-        "severity": severity,
+        "severity": technical_severity,
         "affected_object": affected_object,
         "object_type": object_type,
         "source_script": source_script_name,
@@ -497,12 +505,12 @@ def build_common_finding(
         "business_impact": business_impact,
         "technical_impact": technical_impact,
         "recommendation": recommendation,
-        "remediation_priority": remediation_priority_for(severity),
+        "remediation_priority": "Hold" if workflow_hold else remediation_priority_for(technical_severity),
         "requires_owner_review": True,
-        "requires_change_approval": severity in {"Critical", "High", "Medium", "Hold"},
+        "requires_change_approval": workflow_hold or technical_severity in {"Critical", "High", "Medium"},
         "safe_to_auto_remediate": False,
         "not_safe_for_auto_remediation_reason": safety_reason,
-        "status": "Hold" if severity == "Hold" else "Open",
+        "status": "Hold" if workflow_hold else "Open",
         "timestamp_utc": timestamp_utc,
     }
 

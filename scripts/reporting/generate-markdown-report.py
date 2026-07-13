@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 
-SEVERITY_ORDER = ["Critical", "High", "Medium", "Low", "Informational", "Unknown"]
+SEVERITY_ORDER = ["Critical", "High", "Medium", "Low", "Info", "Unknown"]
 
 SEVERITY_ALIASES = {
     "critical": "Critical",
@@ -32,11 +32,11 @@ SEVERITY_ALIASES = {
     "moderate": "Medium",
     "med": "Medium",
     "low": "Low",
-    "info": "Informational",
-    "informational": "Informational",
-    "none": "Informational",
-    "ok": "Informational",
-    "hold": "Informational",
+    "info": "Info",
+    "informational": "Info",
+    "none": "Info",
+    "ok": "Info",
+    "hold": "Info",
 }
 
 PRIORITY_ALIASES = {
@@ -121,7 +121,7 @@ def normalize_severity(value: Any) -> str:
     if raw.upper() == "P3":
         return "Low"
     if raw.upper() == "P4":
-        return "Informational"
+        return "Info"
     return raw[:1].upper() + raw[1:].lower()
 
 

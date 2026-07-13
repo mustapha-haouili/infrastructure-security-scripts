@@ -17,8 +17,6 @@
   --low-bg: #eaf7ef;
   --info: #245b86;
   --info-bg: #eaf4fb;
-  --hold: #5b4b7a;
-  --hold-bg: #f1eef8;
   --accent: #25636f;
   --accent-strong: #164b54;
   --shadow: 0 16px 40px rgba(25, 32, 44, 0.08);
@@ -754,10 +752,6 @@ tbody tr.active {
   background: var(--info-bg);
 }
 
-.severity-Hold {
-  color: var(--hold);
-  background: var(--hold-bg);
-}
 
 .detail-panel {
   min-height: 620px;

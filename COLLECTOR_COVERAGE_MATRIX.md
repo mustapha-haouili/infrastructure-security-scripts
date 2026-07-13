@@ -17,20 +17,20 @@ New collectors must either be added to the platform launcher or marked manual-on
 Windows host or domain controller
   -> scripts/windows/Start-SecureInfraClientCollection.ps1
   -> ZIP bundle
-  -> customer-projects/<project>/03-input-bundles
   -> validate_bundle.py
   -> secureinfra_analyzer.py --type multi-bundle
   -> validate_schema.py
-  -> downstream-reporting-workspace reporting pipeline
+  -> normalized-report.json
+  -> optional downstream tooling
 
 Linux host
   -> scripts/linux/Start-SecureInfraLinuxCollection.sh
   -> ZIP bundle
-  -> customer-projects/<project>/03-input-bundles
   -> validate_bundle.py
   -> secureinfra_analyzer.py --type multi-bundle
   -> validate_schema.py
-  -> downstream-reporting-workspace reporting pipeline
+  -> normalized-report.json
+  -> optional downstream tooling
 ```
 
 ## Windows collectors

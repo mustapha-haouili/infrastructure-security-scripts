@@ -10,11 +10,7 @@ Use the launcher instead of running each collector manually:
 bash scripts/linux/Start-SecureInfraLinuxCollection.sh --quick
 ```
 
-The launcher runs the available Linux collectors, writes a standard bundle layout, and creates a ZIP archive that can be copied to:
-
-```text
-downstream-reporting-workspace/customer-projects/<project>/03-input-bundles
-```
+The launcher runs the available Linux collectors, writes a standard bundle layout, and creates a ZIP archive suitable for validation and public analyzer input.
 
 Typical output:
 

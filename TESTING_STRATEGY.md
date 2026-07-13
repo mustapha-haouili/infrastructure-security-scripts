@@ -9,7 +9,7 @@ This document defines testing expectations for the public SecureInfra defensive 
 Run from repository root:
 
 ```powershell
-cd <local-workspace>\infrastructure-security-scripts
+cd <repository-root>
 python -m unittest discover -s tests -p "test_*.py"
 ```
 
@@ -132,7 +132,7 @@ count consistency, and optional private path leakage detection.
 ## Public quality gate
 
 Run the repository quality gate before publishing, handing off normalized output,
-or asking the private commercial repository to consume public analyzer results.
+or asking the downstream customer-specific tooling to consume public analyzer results.
 
 Fast development check:
 
@@ -164,3 +164,12 @@ Linux tests must cover the launcher, `linux-security-audit.sh`, `linux-network-e
 
 Windows and Linux collectors are tracked in `COLLECTOR_COVERAGE_MATRIX.md`. The test `tests/test_collector_coverage_matrix.py` fails if a Windows/Linux collector script is not documented or if an automated collector is no longer invoked by its platform launcher. This prevents orphan collector scripts and protects the rule that every new script must be automatically invoked or explicitly documented as manual-only.
 
+
+
+## Severity and workflow contract tests
+
+Tests must prove that normalized severity accepts only `Critical`, `High`,
+`Medium`, `Low`, and `Info`; `Hold` is rejected as technical severity. A held
+item must use `severity: Info` with `status: Hold` and/or
+`remediation_priority: Hold`. Legacy source values may be accepted only when the
+normalizer converts them before output validation.

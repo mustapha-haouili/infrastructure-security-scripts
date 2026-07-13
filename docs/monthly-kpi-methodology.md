@@ -1,4 +1,4 @@
-# Monthly Security Review
+# Monthly KPI Methodology
 
 The monthly security review workflow uses existing SecureInfra AI
 `normalized-report.json` files to show repeatable improvement trends. It is
@@ -45,7 +45,8 @@ python3 SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py \
 The analyzer adds `monthly_kpi_summary` to the normalized report when
 `--monthly-summary` is used. It includes:
 
-- Current finding totals by severity.
+- Current finding totals by technical severity.
+- Held workflow items counted separately from severity.
 - New, persistent, and resolved findings.
 - A simple risk reduction score.
 - Top current risks and recommended actions.
