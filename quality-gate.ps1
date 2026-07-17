@@ -139,22 +139,23 @@ function Test-PublicIntegrationContracts {
 
 function Invoke-PublicTests {
     if ($Fast) {
-        $Args = @(
+        $testArguments = @(
             "-m", "unittest", "-v",
             "tests.test_validate_schema",
             "tests.test_validate_bundle",
             "tests.test_linux_security_normalizer",
             "tests.test_linux_collection_launcher",
             "tests.test_client_collection_launcher",
+            "tests.test_powershell_compatibility",
             "tests.test_secureinfra_windows_normalizers.SecureInfraWindowsNormalizerTests.test_windows_samples_pass_schema_validation",
             "tests.test_secureinfra_backup_readiness.SecureInfraBackupReadinessTests.test_normalized_output_schema_compatibility",
             "tests.test_secureinfra_ai.SecureInfraAITests.test_multi_bundle_keeps_server_security_finding_ids_unique"
         )
-        Invoke-CheckedCommand -Label "Run fast public unit tests" -Executable $Python -Arguments $Args
+        Invoke-CheckedCommand -Label "Run fast public unit tests" -Executable $Python -Arguments $testArguments
     }
     else {
-        $Args = @("-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py")
-        Invoke-CheckedCommand -Label "Run full public unit test suite" -Executable $Python -Arguments $Args
+        $testArguments = @("-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py")
+        Invoke-CheckedCommand -Label "Run full public unit test suite" -Executable $Python -Arguments $testArguments
     }
 }
 

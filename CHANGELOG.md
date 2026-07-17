@@ -45,6 +45,21 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
   default bundles include backup/recovery evidence while keeping `-Scope Backup`
   available for targeted collection.
 
+## [1.3.0-beta.3] - 2026-07-17
+
+### Fixed
+- Renamed the Network exposure process lookup key so it cannot overwrite the
+  read-only PowerShell `$PID` automatic variable.
+- Renamed the sensitive-port accumulator so PowerShell's `$Matches` automatic
+  variable cannot replace it while parsing firewall port ranges.
+- Materialized collection messages explicitly and removed an `$Args` shadow in
+  the quality gate for predictable Windows PowerShell 5.1 behavior.
+
+### Validation
+- Added repository-wide static guards against assignments, loop variables, and
+  typed declarations that shadow protected PowerShell automatic variables.
+- Added guards against known PowerShell 7-only syntax in the Windows runtime.
+
 
 ## [1.3.0-beta.2] - 2026-07-01
 

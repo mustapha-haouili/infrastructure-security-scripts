@@ -162,11 +162,11 @@ function Get-ServiceLookupByProcessId {
             }
         } -Default @())
     foreach ($service in $services) {
-        $pid = "$($service.ProcessId)"
-        if (-not $lookup.ContainsKey($pid)) {
-            $lookup[$pid] = @()
+        $processIdKey = "$($service.ProcessId)"
+        if (-not $lookup.ContainsKey($processIdKey)) {
+            $lookup[$processIdKey] = @()
         }
-        $lookup[$pid] = @($lookup[$pid]) + @($service)
+        $lookup[$processIdKey] = @($lookup[$processIdKey]) + @($service)
     }
     return $lookup
 }
@@ -214,23 +214,23 @@ function Get-MatchingSensitivePorts {
         return @()
     }
 
-    $matches = New-Object System.Collections.Generic.List[int]
+    $matchingPorts = New-Object System.Collections.Generic.List[int]
     foreach ($token in ($text -split "[,;\s]+")) {
         if ([string]::IsNullOrWhiteSpace($token)) { continue }
         if ($token -match "^(\d{1,5})-(\d{1,5})$") {
             $low = [int]$Matches[1]
             $high = [int]$Matches[2]
             foreach ($port in $sensitivePorts) {
-                if ($port -ge $low -and $port -le $high) { $matches.Add([int]$port) | Out-Null }
+                if ($port -ge $low -and $port -le $high) { $matchingPorts.Add([int]$port) | Out-Null }
             }
             continue
         }
         $parsed = 0
         if ([int]::TryParse($token, [ref]$parsed) -and $sensitivePorts -contains $parsed) {
-            $matches.Add([int]$parsed) | Out-Null
+            $matchingPorts.Add([int]$parsed) | Out-Null
         }
     }
-    return @($matches.ToArray() | Sort-Object -Unique)
+    return @($matchingPorts.ToArray() | Sort-Object -Unique)
 }
 
 function Get-InboundAllowFirewallRuleInventory {

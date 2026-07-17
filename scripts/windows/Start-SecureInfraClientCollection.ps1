@@ -634,7 +634,7 @@ $summary = [pscustomobject][ordered]@{
     NotYetImplemented  = @()
     AnalyzerNextStep   = "Run SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input <collection-or-zip> --type client-bundle --output <analysis-output> for full bundle normalization."
     SendBackToReviewer = if ($archivePath) { $archivePath } else { $script:OutputDirectory }
-    Messages           = @($script:CollectionMessages)
+    Messages           = @($script:CollectionMessages.ToArray())
 }
 Write-JsonFile -Path $summaryPath -InputObject $summary -Depth 8
 
