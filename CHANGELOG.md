@@ -28,8 +28,17 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
   type, risk explanation, acceptable-use context, customer validation questions,
   and safe next steps for common listener ports such as RDP, SMB, HTTP, WinRM,
   database, directory, cache, and search services.
+- Added explicit UDP service context for NetBIOS Name/Datagram, IKE, and IPsec
+  NAT Traversal so Windows listeners on 137, 138, 500, and 4500 are not labeled
+  as unknown custom services.
 
 ### Fixed
+- Preserved `PasswordRequired` in normalized local-administrator evidence and
+  made password-not-required summaries describe that control instead of only
+  repeating group membership.
+- Changed Windows service-installation summaries to Medium by default, include
+  the collection window and first/last observation time, and raise them to High
+  only when a bounded suspicious service-image-path heuristic is present.
 - Fixed AD account classification precedence so built-in Administrator and
   privileged administrator accounts are treated as governance reviews instead
   of strict service accounts when SPN, AdminCount, privileged membership, or

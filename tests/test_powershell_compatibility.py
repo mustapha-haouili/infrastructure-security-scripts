@@ -92,6 +92,15 @@ class PowerShellCompatibilityTests(unittest.TestCase):
         self.assertNotRegex(content, re.compile(r"^\s*\$pid\s*=", re.IGNORECASE | re.MULTILINE))
         self.assertNotRegex(content, re.compile(r"^\s*\$matches\s*=", re.IGNORECASE | re.MULTILINE))
 
+    def test_service_install_summary_uses_context_before_high_severity(self):
+        path = REPO_ROOT / "scripts" / "windows" / "host" / "Export-WindowsEventSecurityReport.ps1"
+        content = path.read_text(encoding="utf-8-sig")
+        self.assertIn("function Test-SuspiciousServiceInstallPath", content)
+        self.assertIn('$serviceSeverity = if ($suspiciousServiceInstalls.Count -gt 0) { "High" } else { "Medium" }', content)
+        self.assertIn("WindowDays=$Days", content)
+        self.assertIn("FirstObservedUtc=$firstObservedUtc", content)
+        self.assertIn("SuspiciousPathCount=$($suspiciousServiceInstalls.Count)", content)
+
 
 if __name__ == "__main__":
     unittest.main()

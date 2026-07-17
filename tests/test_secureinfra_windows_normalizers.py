@@ -119,6 +119,10 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
             ("tcp", 3389, "Remote Desktop Protocol", "RDP"),
             ("tcp", 445, "SMB", "Server Message Block"),
             ("tcp", 80, "HTTP web service", "Hypertext Transfer Protocol"),
+            ("udp", 137, "NetBIOS Name Service", "NetBIOS over TCP/IP name service"),
+            ("udp", 138, "NetBIOS Datagram Service", "NetBIOS over TCP/IP datagram service"),
+            ("udp", 500, "IKE", "Internet Key Exchange for IPsec"),
+            ("udp", 4500, "IPsec NAT-T", "IPsec NAT Traversal"),
         ]
         for protocol, port, service, common_name in cases:
             with self.subTest(port=port):
@@ -140,7 +144,7 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
             "ComputerName": "LAB-SRV01",
             "AdministratorsGroupName": "Administrators",
             "AdministratorsGroupSid": "S-1-5-32-544",
-            "Summary": {"FindingCount": 3},
+            "Summary": {"FindingCount": 4},
             "LocalAdministrators": [
                 {
                     "Name": r"EXAMPLE\Server Admins",
@@ -164,7 +168,7 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
                     "Sid": "S-1-5-21-100-200-300-501",
                     "Enabled": True,
                     "LastLogonUtc": "2026-06-01T10:00:00Z",
-                    "PasswordRequired": True,
+                    "PasswordRequired": False,
                 },
             ],
             "Findings": [
@@ -192,13 +196,21 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
                     "Evidence": r"LAB-SRV01\breakglass is enabled and belongs to local Administrators.",
                     "Recommendation": "Confirm owner and password management.",
                 },
+                {
+                    "FindingType": "LocalAdminPasswordNotRequired",
+                    "Severity": "High",
+                    "Principal": r"LAB-SRV01\breakglass",
+                    "Title": "Local admin user does not require a password",
+                    "Evidence": r"LAB-SRV01\breakglass has PasswordRequired set to false.",
+                    "Recommendation": "Require a password or disable the account after approved review.",
+                },
             ],
         }
 
         findings = normalize_client_source_file("server_windows_local_admins", data, Path("windows-local-admins.json"))
         finding_ids = [finding["finding_id"] for finding in findings]
 
-        self.assertEqual(len(finding_ids), 3)
+        self.assertEqual(len(finding_ids), 4)
         self.assertEqual(len(finding_ids), len(set(finding_ids)))
         self.assertTrue(all(finding_id.startswith("SERVER-LADMIN-") for finding_id in finding_ids))
         first = findings[0]
@@ -209,6 +221,9 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
         self.assertIn("local administrator rights", first["evidence"]["summary"])
         self.assertIn("Who owns this local administrator principal", first["evidence"]["customer_question"])
         self.assertFalse(first["safe_to_auto_remediate"])
+        password_finding = next(item for item in findings if item["evidence"]["finding_type"] == "LocalAdminPasswordNotRequired")
+        self.assertFalse(password_finding["evidence"]["password_required"])
+        self.assertIn("PasswordRequired=false", password_finding["evidence"]["summary"])
 
     def test_windows_rdp_exposure_findings_include_configuration_and_port_context(self):
         data = {

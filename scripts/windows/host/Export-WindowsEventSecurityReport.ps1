@@ -218,6 +218,16 @@ function New-InvestigationFinding {
     }
 }
 
+function Test-SuspiciousServiceInstallPath {
+    param([AllowNull()][string]$ServiceFileName)
+
+    if ([string]::IsNullOrWhiteSpace($ServiceFileName)) {
+        return $false
+    }
+
+    return [bool]($ServiceFileName -match '(?i)(\\Users\\Public\\|\\AppData\\Local\\Temp\\|\\Windows\\Temp\\|%TEMP%|\\powershell(?:\.exe)?\b|\\pwsh(?:\.exe)?\b|\\cmd\.exe\s+/c\b|\\mshta\.exe\b|\\wscript\.exe\b|\\cscript\.exe\b|\\rundll32\.exe\b|\\regsvr32\.exe\b|^\\\\)')
+}
+
 function New-InvestigationSummary {
     param([object[]]$Records)
 
@@ -252,8 +262,15 @@ function New-InvestigationSummary {
     }
 
     if ($serviceInstalls.Count -gt 0) {
+        $suspiciousServiceInstalls = @($serviceInstalls | Where-Object { Test-SuspiciousServiceInstallPath -ServiceFileName $_.ServiceFileName })
+        $serviceSeverity = if ($suspiciousServiceInstalls.Count -gt 0) { "High" } else { "Medium" }
+        $serviceTitle = if ($suspiciousServiceInstalls.Count -gt 0) { "Potentially suspicious service installation events require review" } else { "Service installation events require review" }
+        $firstObserved = @($serviceInstalls | Sort-Object -Property TimeCreated | Select-Object -First 1)
+        $lastObserved = @($serviceInstalls | Sort-Object -Property TimeCreated -Descending | Select-Object -First 1)
+        $firstObservedUtc = if ($firstObserved.Count -gt 0) { ConvertTo-ReportTime -Value $firstObserved[0].TimeCreated } else { "unknown" }
+        $lastObservedUtc = if ($lastObserved.Count -gt 0) { ConvertTo-ReportTime -Value $lastObserved[0].TimeCreated } else { "unknown" }
         $services = @($serviceInstalls | Select-Object -First 10 | ForEach-Object { "$($_.ServiceName) [$($_.ServiceFileName)]" }) -join "; "
-        $findings.Add((New-InvestigationFinding -FindingId "SERVICE-INSTALLATIONS" -EventIds @(7045) -EventCategory "Service installation" -Severity "High" -Title "Services were installed" -WhyItMatters "New services can be normal software installation or attacker persistence." -Recommendation "Verify service name, file path, signature, vendor, and change ticket." -Evidence "Count=$($serviceInstalls.Count); Services=$services")) | Out-Null
+        $findings.Add((New-InvestigationFinding -FindingId "SERVICE-INSTALLATIONS" -EventIds @(7045) -EventCategory "Service installation" -Severity $serviceSeverity -Title $serviceTitle -WhyItMatters "Service installation events can represent normal software deployment or persistence. Severity is raised only when the service image path matches a bounded suspicious-path heuristic." -Recommendation "Verify service name, timestamp, file path, signature, vendor, and change ticket." -Evidence "Count=$($serviceInstalls.Count); WindowDays=$Days; FirstObservedUtc=$firstObservedUtc; LastObservedUtc=$lastObservedUtc; SuspiciousPathCount=$($suspiciousServiceInstalls.Count); Services=$services")) | Out-Null
     }
 
     if ($rdpLogons.Count -gt 0) {

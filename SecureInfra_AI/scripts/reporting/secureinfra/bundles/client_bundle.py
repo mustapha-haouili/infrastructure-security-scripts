@@ -1372,11 +1372,25 @@ def local_admin_context_evidence(row: dict[str, Any], data: dict[str, Any], evid
     principal_source = str(first_value(row, ["PrincipalSource"], "") or member.get("PrincipalSource") or "").strip()
     sid = str(first_value(row, ["Sid", "SID"], "") or member.get("Sid") or member.get("SID") or "").strip()
     enabled = first_value(row, ["Enabled"], member.get("Enabled") if member else "")
+    password_required = first_value(
+        row,
+        ["PasswordRequired"],
+        member.get("PasswordRequired") if member else "",
+    )
     last_logon_utc = str(first_value(row, ["LastLogonUtc"], "") or member.get("LastLogonUtc") or "").strip()
     admin_group_name = str(data.get("AdministratorsGroupName") or "Administrators").strip()
     admin_group_sid = str(data.get("AdministratorsGroupSid") or "S-1-5-32-544").strip()
     finding_type = str(first_value(row, ["FindingType"], "") or evidence.get("finding_type") or "").strip()
-    summary = local_admin_summary(principal, principal_category, object_class, principal_source, admin_group_name, finding_type)
+    summary = local_admin_summary(
+        principal,
+        principal_category,
+        object_class,
+        principal_source,
+        admin_group_name,
+        finding_type,
+        enabled,
+        password_required,
+    )
     return {
         "principal": principal,
         "principal_category": principal_category,
@@ -1384,6 +1398,7 @@ def local_admin_context_evidence(row: dict[str, Any], data: dict[str, Any], evid
         "principal_source": principal_source,
         "sid": sid,
         "enabled": enabled,
+        "password_required": password_required,
         "last_logon_utc": last_logon_utc,
         "administrators_group_name": admin_group_name,
         "administrators_group_sid": admin_group_sid,
@@ -1416,12 +1431,20 @@ def local_admin_summary(
     principal_source: str,
     admin_group_name: str,
     finding_type: str,
+    enabled: Any,
+    password_required: Any,
 ) -> str:
     principal_text = principal or "A principal"
     category_text = principal_category or object_class or principal_source or "principal"
     group_text = admin_group_name or "Administrators"
     if finding_type == "UnresolvedLocalAdmin":
         return f"{principal_text} is an unresolved SID in the local {group_text} group and requires ownership validation."
+    if finding_type == "LocalAdminPasswordNotRequired":
+        password_state = "false" if password_required is False else str(password_required or "unknown").lower()
+        return f"{principal_text} ({category_text}) has local administrator rights and PasswordRequired={password_state}."
+    if finding_type == "EnabledLocalAdminUser":
+        enabled_state = "true" if enabled is True else str(enabled or "unknown").lower()
+        return f"{principal_text} ({category_text}) is enabled={enabled_state} and has local administrator rights through the {group_text} group."
     return f"{principal_text} ({category_text}) has local administrator rights through the {group_text} group."
 
 

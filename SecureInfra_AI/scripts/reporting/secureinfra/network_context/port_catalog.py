@@ -118,6 +118,26 @@ PORT_CONTEXT: dict[tuple[str, int], dict[str, str]] = {
         "safe_next_step": "Validate owner, dependency, firewall profile, allowed sources, and monitoring before changing RPC exposure.",
         "mapping_confidence": "high",
     },
+    ("udp", 137): {
+        "common_service": "NetBIOS Name Service",
+        "common_name": "NetBIOS over TCP/IP name service",
+        "exposure_type": "Legacy Windows name service",
+        "risk_explanation": "NetBIOS Name Service supports legacy Windows name registration and resolution. Validate whether the dependency is still required and restricted to trusted networks.",
+        "acceptable_when": "May be acceptable only for a documented legacy Windows dependency on trusted networks.",
+        "customer_question": "Which legacy Windows workflow requires NetBIOS name service, and which clients should reach it?",
+        "safe_next_step": "Confirm the legacy dependency and allowed source networks before changing NetBIOS name service exposure.",
+        "mapping_confidence": "high",
+    },
+    ("udp", 138): {
+        "common_service": "NetBIOS Datagram Service",
+        "common_name": "NetBIOS over TCP/IP datagram service",
+        "exposure_type": "Legacy Windows datagram service",
+        "risk_explanation": "NetBIOS Datagram Service supports legacy Windows browsing and datagram workflows. Validate whether the dependency is still required and restricted to trusted networks.",
+        "acceptable_when": "May be acceptable only for a documented legacy Windows dependency on trusted networks.",
+        "customer_question": "Which legacy Windows workflow requires NetBIOS datagrams, and which clients should reach this host?",
+        "safe_next_step": "Confirm the legacy dependency and allowed source networks before changing NetBIOS datagram exposure.",
+        "mapping_confidence": "high",
+    },
     ("tcp", 139): {
         "common_service": "NetBIOS Session Service",
         "common_name": "NetBIOS over TCP/IP",
@@ -156,6 +176,26 @@ PORT_CONTEXT: dict[tuple[str, int], dict[str, str]] = {
         "acceptable_when": "May be acceptable for approved file servers or domain workflows restricted to intended internal networks.",
         "customer_question": "Which file sharing or Windows management dependency requires SMB, and which clients should reach it?",
         "safe_next_step": "Validate share/server role, allowed source networks, firewall scope, SMB hardening, and monitoring before changing SMB exposure.",
+        "mapping_confidence": "high",
+    },
+    ("udp", 500): {
+        "common_service": "IKE",
+        "common_name": "Internet Key Exchange for IPsec",
+        "exposure_type": "VPN or IPsec key-exchange service",
+        "risk_explanation": "UDP 500 is commonly used for IKE negotiation by Windows IPsec and VPN services. Validate whether the host is expected to participate in an approved VPN or IPsec workflow.",
+        "acceptable_when": "May be acceptable for an approved VPN or IPsec endpoint with restricted network scope, managed policy, and monitoring.",
+        "customer_question": "Which VPN or IPsec policy requires IKE on this host, who owns it, and from which networks is negotiation expected?",
+        "safe_next_step": "Confirm the VPN or IPsec owner, policy scope, allowed peers, and firewall rules before changing the listener.",
+        "mapping_confidence": "high",
+    },
+    ("udp", 4500): {
+        "common_service": "IPsec NAT-T",
+        "common_name": "IPsec NAT Traversal",
+        "exposure_type": "VPN or IPsec NAT traversal service",
+        "risk_explanation": "UDP 4500 is commonly used for IPsec NAT Traversal by Windows VPN and IPsec services. Validate whether the host is expected to participate in an approved VPN or IPsec workflow.",
+        "acceptable_when": "May be acceptable for an approved VPN or IPsec endpoint with restricted network scope, managed policy, and monitoring.",
+        "customer_question": "Which VPN or IPsec policy requires NAT Traversal on this host, who owns it, and which peers are expected?",
+        "safe_next_step": "Confirm the VPN or IPsec owner, allowed peers, firewall scope, and monitoring before changing the listener.",
         "mapping_confidence": "high",
     },
     ("tcp", 636): {
@@ -329,4 +369,3 @@ def normalize_port(port: Any) -> int | None:
         return int(port)
     except (TypeError, ValueError):
         return None
-
