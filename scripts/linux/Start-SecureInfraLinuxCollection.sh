@@ -10,6 +10,7 @@ RUN_HARDENING_PLAN=1
 RUN_NETWORK=1
 RUN_LOG_AUDIT=1
 RUN_SERVICE_INVENTORY=1
+COLLECTOR_SAFE_MODE=0
 EXPECTED_BACKUP_PATHS=()
 COLLECTOR_TIMEOUT_SECONDS=180
 
@@ -29,6 +30,7 @@ Options:
                                    May be supplied more than once.
   --skip-backup                    Do not run backup-readiness-audit.sh.
   --skip-hardening-plan            Do not generate the dry-run hardening plan log.
+  --collector-safe-mode            Never invoke scripts that expose apply operations.
   --skip-network                   Do not run linux-network-exposure-audit.sh.
   --skip-log-audit                 Do not run linux-log-audit.sh.
   --skip-service-inventory         Do not run linux-service-inventory-audit.sh.
@@ -75,6 +77,11 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --skip-hardening-plan)
+            RUN_HARDENING_PLAN=0
+            shift
+            ;;
+        --collector-safe-mode)
+            COLLECTOR_SAFE_MODE=1
             RUN_HARDENING_PLAN=0
             shift
             ;;
@@ -231,7 +238,13 @@ PY
 
 write_bundle_metadata() {
     local collector_json
+    local safety_mode
     collector_json="$(write_json_array_from_status)"
+    if [[ "$COLLECTOR_SAFE_MODE" -eq 1 ]]; then
+        safety_mode="CollectorSafeMode: read-only scripts only; apply-capable scripts are not invoked."
+    else
+        safety_mode="Read-only collection. No remediation or configuration changes are applied by this launcher."
+    fi
     cat > "$BUNDLE_ROOT/client-info.json" <<JSON
 {
   "ComputerName": $(printf '%s' "$HOSTNAME_VALUE" | json_escape),
@@ -245,7 +258,7 @@ JSON
 {
   "CollectionId": "$BUNDLE_NAME",
   "GeneratedAtUtc": "$GENERATED_AT_UTC",
-  "SafetyMode": "Read-only collection. No remediation or configuration changes are applied by this launcher.",
+  "SafetyMode": "$safety_mode",
   "ScopeResolved": ["Linux", "Network", "Logging", "Backup"],
   "QuickMode": $([[ "$QUICK_MODE" -eq 1 ]] && echo true || echo false),
   "Collectors": $collector_json
@@ -261,7 +274,7 @@ JSON
   "Platform": "Linux",
   "GeneratedAtUtc": "$GENERATED_AT_UTC",
   "SourceLauncher": "Start-SecureInfraLinuxCollection.sh",
-  "SafetyMode": "Read-only collection; remediation is not applied.",
+  "SafetyMode": "$safety_mode",
   "CanonicalEvidence": {
     "LinuxSecuritySummary": "linux/linux-security-summary.json",
     "LinuxNetworkExposureSummary": "linux/linux-network-exposure-summary.json",

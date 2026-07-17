@@ -1841,7 +1841,7 @@ def network_port_context_evidence(row: dict[str, Any], data: dict[str, Any], evi
         if address
     ]
 
-    summary = listening_port_summary(protocol, port, process, scope, bind_address, context)
+    summary = listening_port_summary(protocol, port, process, scope, bind_address, bind_addresses, context)
     context_evidence = {
         "protocol": protocol.upper(),
         "port": port,
@@ -2146,6 +2146,7 @@ def listening_port_summary(
     process: str,
     scope: str,
     bind_address: str,
+    bind_addresses: list[str],
     context: dict[str, str],
 ) -> str:
     service_label = context["common_service"]
@@ -2155,6 +2156,11 @@ def listening_port_summary(
         listener_text = "listening on all interfaces"
     elif scope == "Loopback only":
         listener_text = "listening on loopback only"
+    elif len(bind_addresses) > 1:
+        displayed_addresses = ", ".join(bind_addresses[:6])
+        if len(bind_addresses) > 6:
+            displayed_addresses += f", and {len(bind_addresses) - 6} more"
+        listener_text = f"listening on {len(bind_addresses)} specific addresses ({displayed_addresses})"
     elif bind_address:
         listener_text = f"listening on {bind_address}"
     else:

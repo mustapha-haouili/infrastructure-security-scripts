@@ -872,6 +872,42 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
         self.assertEqual(winrm["evidence"]["common_service"], "Windows Remote Management")
         self.assertEqual(winrm["evidence"]["common_name"], "WinRM over HTTP")
 
+    def test_windows_network_listener_summary_preserves_all_specific_bind_addresses(self):
+        addresses = ["192.168.176.1", "192.168.56.1", "192.168.1.65", "10.10.10.2"]
+        data = {
+            "ToolName": "Get-WindowsNetworkExposureAudit",
+            "ReportType": "windows-network-exposure",
+            "GeneratedAtUtc": "2026-07-17T16:24:22Z",
+            "ComputerName": "MH-LAPTOP",
+            "Summary": {"FindingCount": len(addresses)},
+            "ListeningTcpPorts": [
+                {"LocalAddress": address, "LocalPort": 139, "OwningProcess": 4, "ProcessName": "System"}
+                for address in addresses
+            ],
+            "Findings": [
+                {
+                    "FindingType": "RiskyListeningPort",
+                    "Severity": "High",
+                    "Title": "Sensitive TCP port is listening",
+                    "Evidence": f"TCP 139 is listening on {address} by process System.",
+                    "Recommendation": "Confirm the listener is required and restricted by firewall policy.",
+                }
+                for address in addresses
+            ],
+        }
+
+        report = normalize_windows_network_exposure(data, "windows-network-exposure.json")
+        findings = [
+            finding for finding in report["findings"]
+            if finding["evidence"].get("finding_type") == "RiskyListeningPort"
+        ]
+        self.assertEqual(len(findings), 1)
+        evidence = findings[0]["evidence"]
+        self.assertEqual(evidence["bind_addresses"], addresses)
+        self.assertIn("4 specific addresses", evidence["summary"])
+        for address in addresses:
+            self.assertIn(address, evidence["summary"])
+
     def test_windows_network_sample_uses_port_context(self):
         data = load_json_file(WINDOWS_SAMPLE_ROOT / "sample-windows-network-exposure.json")
         report = normalize_windows_network_exposure(data, WINDOWS_SAMPLE_ROOT / "sample-windows-network-exposure.json")

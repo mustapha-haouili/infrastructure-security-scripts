@@ -32,6 +32,10 @@ Optional explicit baseline path for privileged group monitoring.
 Stop the collection when one task fails. By default, failures are recorded and
 the collector continues with the next task.
 
+.PARAMETER CollectorSafeMode
+Enforces the portable collector safety boundary. Scripts that expose any
+apply/delete capability are not invoked, even in their normal preview mode.
+
 .EXAMPLE
 .\scripts\windows\Start-SecureInfraClientCollection.ps1
 
@@ -71,6 +75,7 @@ param(
     [switch]$IncludeDisabled,
     [switch]$IncludeHotfixes,
     [switch]$SkipArchive,
+    [switch]$CollectorSafeMode,
     [switch]$StopOnError,
     [switch]$Quiet
 )
@@ -480,11 +485,16 @@ function Invoke-HostCollection {
         (Join-Path -Path $hostDirectory -ChildPath "windows-events\events.csv")
     )
 
-    Invoke-CollectionTask -ScopeName "Host" -Name "Windows hardening preview" -ScriptPath (Join-Path $script:ScriptRoot "host\Set-WindowsBaselineHardening.ps1") -Arguments @{
-        ReportPath = Join-Path -Path $hostDirectory -ChildPath "windows-hardening-preview.json"
-    } -ExpectedOutputs @(
-        (Join-Path -Path $hostDirectory -ChildPath "windows-hardening-preview.json")
-    )
+    if ($CollectorSafeMode) {
+        Add-SkippedTask -ScopeName "Host" -Name "Windows hardening preview" -Message "Skipped by CollectorSafeMode because the source script supports apply operations."
+    }
+    else {
+        Invoke-CollectionTask -ScopeName "Host" -Name "Windows hardening preview" -ScriptPath (Join-Path $script:ScriptRoot "host\Set-WindowsBaselineHardening.ps1") -Arguments @{
+            ReportPath = Join-Path -Path $hostDirectory -ChildPath "windows-hardening-preview.json"
+        } -ExpectedOutputs @(
+            (Join-Path -Path $hostDirectory -ChildPath "windows-hardening-preview.json")
+        )
+    }
 }
 
 function Invoke-ServerCollection {
@@ -518,12 +528,17 @@ function Invoke-ServerCollection {
         (Join-Path -Path $serverDirectory -ChildPath "windows-rdp-exposure-review.md")
     )
 
-    Invoke-CollectionTask -ScopeName "Server" -Name "RDP profile cache dry run" -ScriptPath (Join-Path $script:ScriptRoot "server\Clear-RDPUserProfileCache.ps1") -Arguments @{
-        MinimumAgeDays = $RdpCacheMinimumAgeDays
-        ReportPath     = Join-Path -Path $serverDirectory -ChildPath "rdp-profile-cache-cleanup.json"
-    } -ExpectedOutputs @(
-        (Join-Path -Path $serverDirectory -ChildPath "rdp-profile-cache-cleanup.json")
-    )
+    if ($CollectorSafeMode) {
+        Add-SkippedTask -ScopeName "Server" -Name "RDP profile cache dry run" -Message "Skipped by CollectorSafeMode because the source script supports deletion operations."
+    }
+    else {
+        Invoke-CollectionTask -ScopeName "Server" -Name "RDP profile cache dry run" -ScriptPath (Join-Path $script:ScriptRoot "server\Clear-RDPUserProfileCache.ps1") -Arguments @{
+            MinimumAgeDays = $RdpCacheMinimumAgeDays
+            ReportPath     = Join-Path -Path $serverDirectory -ChildPath "rdp-profile-cache-cleanup.json"
+        } -ExpectedOutputs @(
+            (Join-Path -Path $serverDirectory -ChildPath "rdp-profile-cache-cleanup.json")
+        )
+    }
 }
 
 function Invoke-WorkstationCollection {
@@ -623,7 +638,7 @@ $summary = [pscustomobject][ordered]@{
     CollectionId       = $collectionId
     ToolName           = "SecureInfra Client Collection"
     GeneratedAtUtc     = Get-UtcTimestamp
-    SafetyMode         = "Audit and dry-run only. No remediation is applied."
+    SafetyMode         = if ($CollectorSafeMode) { "CollectorSafeMode: read-only scripts only. Apply-capable scripts are not invoked." } else { "Audit and dry-run only. No remediation is applied." }
     OutputDirectory    = $script:OutputDirectory
     ArchivePath        = $archivePath
     ScopeRequested     = @($Scope)
@@ -644,7 +659,7 @@ $manifest = [pscustomobject][ordered]@{
     ToolName           = "SecureInfra Client Collection"
     GeneratedAtUtc     = Get-UtcTimestamp
     ScriptPath         = Resolve-FullPath -Path $PSCommandPath
-    SafetyMode         = "Audit and dry-run only"
+    SafetyMode         = if ($CollectorSafeMode) { "CollectorSafeMode: read-only scripts only" } else { "Audit and dry-run only" }
     ScopeRequested     = @($Scope)
     ScopeResolved      = @($resolvedScopes)
     OutputDirectory    = $script:OutputDirectory

@@ -6,6 +6,14 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 
 ## [Unreleased]
 
+### Collector safety
+- Added `CollectorSafeMode` to the Windows and Linux unified launchers. In this
+  mode, scripts that expose apply or deletion behavior are not invoked, even
+  for preview-only output.
+- Preserved the existing public dry-run workflow outside portable Enterprise
+  collection while enabling the Enterprise distribution to enforce a stricter
+  read-only runtime boundary.
+
 ### Contract
 - Separated technical severity from workflow state across schemas, analyzers,
   reports, monthly KPI output, and the local dashboard. Normalized severity now
@@ -33,6 +41,8 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
   as unknown custom services.
 
 ### Fixed
+- Preserved every deduplicated specific listener address in customer-facing
+  network summaries instead of describing only the first interface address.
 - Preserved `PasswordRequired` in normalized local-administrator evidence and
   made password-not-required summaries describe that control instead of only
   repeating group membership.
