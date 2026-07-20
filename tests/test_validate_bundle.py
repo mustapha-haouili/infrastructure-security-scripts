@@ -56,6 +56,58 @@ class ValidateBundleTests(unittest.TestCase):
             self.assertEqual(result.bundle_count, 1)
             self.assertEqual(result.errors, [])
 
+    def test_validate_bundle_accepts_compatibility_report_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = Path(tmp) / "secureinfra-client-collection-LAB-SRV01.zip"
+            entries = safe_client_bundle_entries()
+            entries["compatibility-report.json"] = json.dumps(
+                {
+                    "SchemaVersion": "1.0",
+                    "Contract": "secureinfra-windows-compatibility/1.0",
+                    "GeneratedAtUtc": "2026-07-20T12:00:00Z",
+                    "Host": {"Name": "LAB-SRV01", "OsVersion": "10.0", "Is64BitOperatingSystem": True, "Is64BitProcess": True},
+                    "Runtime": {
+                        "Ready": True,
+                        "PowerShellVersion": "5.1",
+                        "PowerShellEdition": "Desktop",
+                        "LanguageMode": "FullLanguage",
+                        "SelectedHost": "WindowsPowerShell",
+                        "AutomaticInstall": "prohibited",
+                    },
+                    "ScopeRequested": ["Host"],
+                    "Capabilities": [],
+                    "ScopeReadiness": [],
+                    "HardFailures": [],
+                    "Limitations": [],
+                    "Safety": {
+                        "Mode": "read-only-capability-discovery",
+                        "Downloads": "prohibited",
+                        "PackageInstallation": "prohibited",
+                        "ServiceChanges": "prohibited",
+                        "AutomaticRemediation": "prohibited",
+                    },
+                }
+            )
+            write_zip(archive_path, entries)
+
+            result = validate_bundle.validate_input_bundle(archive_path, strict_safety=True)
+
+            self.assertEqual(result.errors, [])
+
+    def test_validate_bundle_rejects_unsafe_compatibility_contract(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = Path(tmp) / "secureinfra-client-collection-LAB-SRV01.zip"
+            entries = safe_client_bundle_entries()
+            entries["compatibility-report.json"] = json.dumps(
+                {"SchemaVersion": "1.0", "Contract": "untrusted/1.0", "Runtime": {"Ready": True}}
+            )
+            write_zip(archive_path, entries)
+
+            with self.assertRaises(validate_bundle.BundleValidationError) as context:
+                validate_bundle.validate_input_bundle(archive_path, strict_safety=True)
+
+            self.assertIn("compatibility report", str(context.exception))
+
     def test_validate_bundle_accepts_directory_of_multiple_zips(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

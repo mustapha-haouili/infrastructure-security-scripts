@@ -24,6 +24,7 @@ CLIENT_FILE_DEFINITIONS: dict[str, dict[str, str]] = {
     "collection_summary": {"scope": "Client", "path": "collection-summary.json"},
     "manifest": {"scope": "Client", "path": "manifest.json"},
     "bundle_manifest": {"scope": "Client", "path": "bundle-manifest.json"},
+    "compatibility_report": {"scope": "Client", "path": "compatibility-report.json"},
     "host_windows_security_audit": {"scope": "Host", "path": "host/windows-security-audit.json"},
     "host_windows_events_summary": {"scope": "Host", "path": "host/windows-events/summary.json"},
     "host_windows_remediation_plan": {"scope": "Host", "path": "host/windows-remediation-plan.json"},
@@ -130,12 +131,123 @@ CATEGORY_BY_KEY = {
 MAX_ZIP_ENTRIES = 512
 MAX_ZIP_MEMBER_SIZE_BYTES = 25 * 1024 * 1024
 ALLOWED_ZIP_EXTENSIONS = {".json", ".csv", ".md", ".txt", ".log"}
-ALLOWED_ZIP_ROOT_FILES = {"client-info.json", "collection-summary.json", "manifest.json", "bundle-manifest.json"}
+ALLOWED_ZIP_ROOT_FILES = {
+    "client-info.json",
+    "collection-summary.json",
+    "manifest.json",
+    "bundle-manifest.json",
+    "compatibility-report.json",
+}
 ALLOWED_ZIP_TOP_LEVEL_DIRS = {"ad-shared", "host", "server", "workstation", "network", "backup", "linux", "devsecops", "docker", "kubernetes", "logs"}
 ALL_INTERFACES_BIND_SCOPE_EXPLANATION = (
     "Listening on all interfaces means the service binds to all local interfaces. "
     "Actual reachability depends on firewall rules, routing, segmentation, and allowed source networks."
 )
+WINDOWS_COMPATIBILITY_CONTRACT = "secureinfra-windows-compatibility/1.0"
+WINDOWS_COMPATIBILITY_SCOPES = {
+    "AD", "GPO", "Host", "Server", "Workstation", "Network", "Backup",
+    "IIS", "RDS", "SQLServer", "ExchangeServer",
+}
+WINDOWS_COMPATIBILITY_STATUSES = {"Ready", "Limited", "Unavailable", "Blocked"}
+
+
+def validate_windows_compatibility_report(value: Any) -> None:
+    """Validate bounded compatibility metadata before it reaches reporting."""
+    if not isinstance(value, dict):
+        raise ValueError("Windows compatibility report root must be an object")
+    expected_root = {
+        "SchemaVersion", "Contract", "GeneratedAtUtc", "Host", "Runtime",
+        "ScopeRequested", "Capabilities", "ScopeReadiness", "HardFailures",
+        "Limitations", "Safety",
+    }
+    if set(value) != expected_root:
+        raise ValueError("Windows compatibility report properties do not match the supported contract")
+    if value.get("SchemaVersion") != "1.0" or value.get("Contract") != WINDOWS_COMPATIBILITY_CONTRACT:
+        raise ValueError("Unsupported Windows compatibility report contract")
+
+    host = value.get("Host")
+    if not isinstance(host, dict) or set(host) != {
+        "Name", "OsVersion", "Is64BitOperatingSystem", "Is64BitProcess"
+    }:
+        raise ValueError("Invalid Windows compatibility host record")
+    if not all(isinstance(host.get(key), str) for key in ("Name", "OsVersion")):
+        raise ValueError("Invalid Windows compatibility host strings")
+    if not all(isinstance(host.get(key), bool) for key in ("Is64BitOperatingSystem", "Is64BitProcess")):
+        raise ValueError("Invalid Windows compatibility host architecture flags")
+
+    runtime = value.get("Runtime")
+    if not isinstance(runtime, dict) or set(runtime) != {
+        "PowerShellVersion", "PowerShellEdition", "LanguageMode", "SelectedHost",
+        "Ready", "AutomaticInstall",
+    }:
+        raise ValueError("Invalid Windows compatibility runtime record")
+    if not isinstance(runtime.get("Ready"), bool):
+        raise ValueError("Windows compatibility Runtime.Ready must be boolean")
+    if runtime.get("PowerShellEdition") not in {"Desktop", "Core"}:
+        raise ValueError("Unsupported PowerShell edition in compatibility report")
+    if runtime.get("SelectedHost") != "WindowsPowerShell" or runtime.get("AutomaticInstall") != "prohibited":
+        raise ValueError("Unsafe Windows compatibility runtime declaration")
+
+    requested = value.get("ScopeRequested")
+    if not isinstance(requested, list) or len(requested) > 32 or not all(isinstance(item, str) for item in requested):
+        raise ValueError("Invalid Windows compatibility requested scopes")
+
+    capabilities = value.get("Capabilities")
+    if not isinstance(capabilities, list) or len(capabilities) > 128:
+        raise ValueError("Invalid Windows compatibility capabilities")
+    capability_ids: set[str] = set()
+    for record in capabilities:
+        if not isinstance(record, dict) or set(record) != {
+            "Id", "Available", "Requirement", "Description", "MissingImpact"
+        }:
+            raise ValueError("Invalid Windows compatibility capability record")
+        capability_id = record.get("Id")
+        if not isinstance(capability_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,79}", capability_id):
+            raise ValueError("Invalid Windows compatibility capability identifier")
+        if capability_id in capability_ids:
+            raise ValueError("Duplicate Windows compatibility capability identifier")
+        capability_ids.add(capability_id)
+        if not isinstance(record.get("Available"), bool) or record.get("Requirement") not in {"required", "optional"}:
+            raise ValueError("Invalid Windows compatibility capability state")
+        if not all(isinstance(record.get(key), str) and len(record[key]) <= 1000 for key in ("Description", "MissingImpact")):
+            raise ValueError("Invalid Windows compatibility capability text")
+
+    readiness = value.get("ScopeReadiness")
+    if not isinstance(readiness, list) or len(readiness) > len(WINDOWS_COMPATIBILITY_SCOPES):
+        raise ValueError("Invalid Windows compatibility scope readiness")
+    observed_scopes: set[str] = set()
+    for record in readiness:
+        if not isinstance(record, dict) or set(record) != {"Scope", "Status", "MissingCapabilities", "Action"}:
+            raise ValueError("Invalid Windows compatibility scope record")
+        scope = record.get("Scope")
+        if scope not in WINDOWS_COMPATIBILITY_SCOPES or scope in observed_scopes:
+            raise ValueError("Invalid or duplicate Windows compatibility scope")
+        observed_scopes.add(scope)
+        if record.get("Status") not in WINDOWS_COMPATIBILITY_STATUSES:
+            raise ValueError("Invalid Windows compatibility scope status")
+        missing = record.get("MissingCapabilities")
+        if not isinstance(missing, list) or not all(isinstance(item, str) and item in capability_ids for item in missing):
+            raise ValueError("Invalid Windows compatibility missing-capability reference")
+        if not isinstance(record.get("Action"), str) or len(record["Action"]) > 1000:
+            raise ValueError("Invalid Windows compatibility scope action")
+
+    for key in ("HardFailures", "Limitations"):
+        rows = value.get(key)
+        if not isinstance(rows, list) or len(rows) > 128 or not all(isinstance(item, str) and len(item) <= 2000 for item in rows):
+            raise ValueError(f"Invalid Windows compatibility {key}")
+    if bool(runtime["Ready"]) == bool(value["HardFailures"]):
+        raise ValueError("Windows compatibility runtime readiness conflicts with hard failures")
+
+    safety = value.get("Safety")
+    if not isinstance(safety, dict) or set(safety) != {
+        "Mode", "Downloads", "PackageInstallation", "ServiceChanges", "AutomaticRemediation"
+    }:
+        raise ValueError("Invalid Windows compatibility safety record")
+    if safety.get("Mode") != "read-only-capability-discovery" or any(
+        safety.get(key) != "prohibited"
+        for key in ("Downloads", "PackageInstallation", "ServiceChanges", "AutomaticRemediation")
+    ):
+        raise ValueError("Unsafe Windows compatibility safety declaration")
 
 
 @contextmanager
@@ -286,7 +398,10 @@ def missing_client_files(detected_files: dict[str, Path]) -> list[str]:
     missing = [
         definition["path"]
         for key, definition in CLIENT_FILE_DEFINITIONS.items()
-        if key not in detected_files and key != "bundle_manifest" and definition["scope"] in SUPPORTED_SCOPES + ["Client"] and definition["scope"] not in {"Backup", "Linux"}
+        if key not in detected_files
+        and key not in {"bundle_manifest", "compatibility_report"}
+        and definition["scope"] in SUPPORTED_SCOPES + ["Client"]
+        and definition["scope"] not in {"Backup", "Linux"}
     ]
     if "ad_shared" not in detected_files:
         missing.append("ad-shared/")
@@ -322,6 +437,26 @@ def normalize_prepared_client_bundle(bundle_dir: Path, source_label: str) -> dic
     bundle_manifest = load_optional_json(detected_paths, "bundle_manifest", loaded_files, loaded_summaries, failed_files, bundle_dir, source_label)
     if manifest is None and bundle_manifest is not None:
         manifest = bundle_manifest
+    compatibility_report = load_optional_json(
+        detected_paths,
+        "compatibility_report",
+        loaded_files,
+        loaded_summaries,
+        failed_files,
+        bundle_dir,
+        source_label,
+    )
+    if compatibility_report is not None:
+        runtime = as_dict(compatibility_report.get("Runtime"))
+        if not bool(runtime.get("Ready", False)):
+            notes.append("Windows compatibility preflight blocked full collection; review compatibility-report.json.")
+        limited_scopes = [
+            str(record.get("Scope") or "")
+            for record in as_records(compatibility_report.get("ScopeReadiness"))
+            if str(record.get("Status") or "") in {"Limited", "Unavailable", "Blocked"}
+        ]
+        if limited_scopes:
+            notes.append("Compatibility evidence gaps were recorded for: " + ", ".join(limited_scopes) + ".")
 
     if "ad_shared" in detected_paths:
         try:
@@ -435,6 +570,12 @@ def load_optional_json(
     if not isinstance(data, dict):
         failed_files[key] = "JSON root is not an object"
         return None
+    if key == "compatibility_report":
+        try:
+            validate_windows_compatibility_report(data)
+        except ValueError as exc:
+            failed_files[key] = str(exc)
+            return None
     loaded_files[key] = display_path(bundle_dir, path, source_label)
     loaded_summaries[key] = summarize_source_json(key, data)
     return data
@@ -2245,6 +2386,18 @@ def normalize_rdp_cache_cleanup(data: dict[str, Any], source_file: Path, key: st
 
 
 def summarize_source_json(key: str, data: dict[str, Any]) -> dict[str, Any]:
+    if key == "compatibility_report":
+        runtime = as_dict(data.get("Runtime"))
+        scope_rows = as_records(data.get("ScopeReadiness"))
+        return {
+            "runtime_ready": bool(runtime.get("Ready", False)),
+            "powershell_version": str(runtime.get("PowerShellVersion") or ""),
+            "powershell_edition": str(runtime.get("PowerShellEdition") or ""),
+            "language_mode": str(runtime.get("LanguageMode") or ""),
+            "limited_scope_count": sum(
+                1 for row in scope_rows if str(row.get("Status") or "") in {"Limited", "Unavailable", "Blocked"}
+            ),
+        }
     summary = data.get("Summary")
     if isinstance(summary, dict):
         return summary

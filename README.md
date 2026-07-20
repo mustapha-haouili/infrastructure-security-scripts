@@ -16,6 +16,12 @@ It includes the SecureInfra_AI layer for deterministic, local, AI-ready analysis
 
 Development status: beta. See [CHANGELOG.md](CHANGELOG.md) for release history and the current development baseline.
 
+The packaged Windows workflow targets the inbox 64-bit Windows PowerShell 5.1
+Desktop host. A verified Enterprise wrapper may be started from PowerShell 7
+and hands execution to Windows PowerShell for inbox-module compatibility. The
+client bundle can include `compatibility-report.json`, which preserves missing
+module and scope evidence as limitations rather than false compliance.
+
 ## Try it in 2 minutes
 
 Run the local SecureInfra_AI analyzer against fictional sample evidence already

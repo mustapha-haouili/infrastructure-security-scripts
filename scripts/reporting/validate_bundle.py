@@ -36,6 +36,7 @@ from secureinfra.bundles.client_bundle import (  # noqa: E402
     is_allowed_zip_path_without_wrapper,
     is_allowed_zip_relative_path,
     missing_client_files,
+    validate_windows_compatibility_report,
     validate_zip_member,
 )
 from secureinfra.bundles.multi_bundle import discover_bundle_inputs, looks_like_client_bundle  # noqa: E402
@@ -240,8 +241,10 @@ def validate_json_zip_member(
     try:
         with archive.open(member) as handle:
             payload = handle.read()
-        json.loads(payload.decode("utf-8-sig"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        value = json.loads(payload.decode("utf-8-sig"))
+        if member.filename.replace("\\", "/").lower().endswith("/compatibility-report.json") or member.filename.lower() == "compatibility-report.json":
+            validate_windows_compatibility_report(value)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         result.add_error(f"{display_name}: invalid JSON: {exc}")
     except OSError as exc:
         result.add_error(f"{display_name}: cannot read JSON member: {exc}")
@@ -294,8 +297,10 @@ def validate_directory_bundle(bundle_dir: Path, result: BundleValidationResult, 
 def validate_json_file(path: Path, display_name: str, result: BundleValidationResult) -> None:
     try:
         with path.open("r", encoding="utf-8-sig") as handle:
-            json.load(handle)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            value = json.load(handle)
+        if path.name.lower() == "compatibility-report.json":
+            validate_windows_compatibility_report(value)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         result.add_error(f"{display_name}: invalid JSON: {exc}")
     except OSError as exc:
         result.add_error(f"{display_name}: cannot read JSON file: {exc}")

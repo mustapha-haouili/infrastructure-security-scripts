@@ -96,6 +96,50 @@ class SecureInfraBundleSafetyTests(unittest.TestCase):
             self.assertEqual(report["summary"]["normalized_finding_count"], 1)
             self.assertIn("host_windows_security_audit", report["metadata"]["loaded_files"])
 
+    def test_compatibility_report_is_loaded_as_evidence_gap_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = Path(tmp) / "safe-client-bundle.zip"
+            entries = safe_client_bundle_entries()
+            entries["compatibility-report.json"] = json.dumps(
+                {
+                    "SchemaVersion": "1.0",
+                    "Contract": "secureinfra-windows-compatibility/1.0",
+                    "GeneratedAtUtc": "2026-07-20T12:00:00Z",
+                    "Host": {"Name": "LAB-SRV01", "OsVersion": "10.0", "Is64BitOperatingSystem": True, "Is64BitProcess": True},
+                    "Runtime": {
+                        "Ready": True,
+                        "PowerShellVersion": "5.1.19041.1",
+                        "PowerShellEdition": "Desktop",
+                        "LanguageMode": "FullLanguage",
+                        "SelectedHost": "WindowsPowerShell",
+                        "AutomaticInstall": "prohibited",
+                    },
+                    "ScopeRequested": ["AD"],
+                    "Capabilities": [],
+                    "ScopeReadiness": [
+                        {"Scope": "AD", "Status": "Unavailable", "MissingCapabilities": [], "Action": "Install approved RSAT features."}
+                    ],
+                    "HardFailures": [],
+                    "Limitations": ["AD: Unavailable"],
+                    "Safety": {
+                        "Mode": "read-only-capability-discovery",
+                        "Downloads": "prohibited",
+                        "PackageInstallation": "prohibited",
+                        "ServiceChanges": "prohibited",
+                        "AutomaticRemediation": "prohibited",
+                    },
+                }
+            )
+            write_zip(archive_path, entries)
+
+            report = normalize_client_bundle(archive_path)
+
+            self.assertIn("compatibility_report", report["metadata"]["loaded_files"])
+            summary = report["metadata"]["loaded_summaries"]["compatibility_report"]
+            self.assertTrue(summary["runtime_ready"])
+            self.assertEqual(summary["limited_scope_count"], 1)
+            self.assertTrue(any("Compatibility evidence gaps" in note for note in report["notes"]))
+
     def test_rejects_parent_traversal_path(self):
         self.assert_rejects_zip({"../evil.json": "{}"}, "Unsafe zip entry path")
 

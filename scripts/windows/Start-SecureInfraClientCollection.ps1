@@ -77,7 +77,8 @@ param(
     [switch]$SkipArchive,
     [switch]$CollectorSafeMode,
     [switch]$StopOnError,
-    [switch]$Quiet
+    [switch]$Quiet,
+    [object]$CompatibilityProfile = $null
 )
 
 Set-StrictMode -Version Latest
@@ -198,6 +199,21 @@ function Add-SkippedTask {
         }) | Out-Null
 }
 
+function Get-ScopeCompatibilityRecord {
+    param([Parameter(Mandatory = $true)][string]$ScopeName)
+    if ($null -eq $CompatibilityProfile -or
+        $CompatibilityProfile.PSObject.Properties.Name -notcontains "ScopeReadiness") {
+        return $null
+    }
+    $records = @(
+        $CompatibilityProfile.ScopeReadiness |
+            Where-Object { "$($_.Scope)" -eq $ScopeName } |
+            Select-Object -First 1
+    )
+    if ($records.Count -eq 0) { return $null }
+    return $records[0]
+}
+
 function Invoke-CollectionTask {
     param(
         [Parameter(Mandatory = $true)][string]$ScopeName,
@@ -270,7 +286,15 @@ function Invoke-CollectionTask {
 function Get-ClientInfo {
     $os = $null
     try {
-        $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+        if ($null -ne (Get-Command -Name "Get-CimInstance" -ErrorAction SilentlyContinue)) {
+            $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+        }
+        elseif ($null -ne (Get-Command -Name "Get-WmiObject" -ErrorAction SilentlyContinue)) {
+            $os = Get-WmiObject -Class Win32_OperatingSystem -ErrorAction Stop
+        }
+        else {
+            throw "Neither Get-CimInstance nor Get-WmiObject is available."
+        }
     }
     catch {
         $script:CollectionMessages.Add("Unable to read Win32_OperatingSystem: $($_.Exception.Message)") | Out-Null
@@ -282,6 +306,9 @@ function Get-ClientInfo {
         UserDomain         = $env:USERDOMAIN
         IsAdministrator    = Test-IsAdministrator
         PowerShellVersion  = $PSVersionTable.PSVersion.ToString()
+        PowerShellEdition  = if ($PSVersionTable.PSObject.Properties.Name -contains "PSEdition") { "$($PSVersionTable.PSEdition)" } else { "Desktop" }
+        PowerShellLanguageMode = "$($ExecutionContext.SessionState.LanguageMode)"
+        Is64BitProcess     = [Environment]::Is64BitProcess
         OsCaption          = if ($os) { "$($os.Caption)" } else { "" }
         OsVersion          = if ($os) { "$($os.Version)" } else { "" }
         OsBuildNumber      = if ($os) { "$($os.BuildNumber)" } else { "" }
@@ -617,10 +644,30 @@ $archivePath = if ($SkipArchive) { "" } else { "$($script:OutputDirectory).zip" 
 $clientInfoPath = Join-Path -Path $script:OutputDirectory -ChildPath "client-info.json"
 $summaryPath = Join-Path -Path $script:OutputDirectory -ChildPath "collection-summary.json"
 $manifestPath = Join-Path -Path $script:OutputDirectory -ChildPath "manifest.json"
+$compatibilityPath = ""
+
+if ($null -ne $CompatibilityProfile) {
+    if ($CompatibilityProfile.PSObject.Properties.Name -notcontains "Contract" -or
+        $CompatibilityProfile.Contract -ne "secureinfra-windows-compatibility/1.0") {
+        throw "Unsupported Windows compatibility profile contract."
+    }
+    $compatibilityPath = Join-Path -Path $script:OutputDirectory -ChildPath "compatibility-report.json"
+    Write-JsonFile -Path $compatibilityPath -InputObject $CompatibilityProfile -Depth 10
+}
 
 Write-JsonFile -Path $clientInfoPath -InputObject (Get-ClientInfo)
 
 foreach ($scopeName in $resolvedScopes) {
+    $scopeCompatibility = Get-ScopeCompatibilityRecord -ScopeName $scopeName
+    if ($null -ne $scopeCompatibility -and $scopeCompatibility.Status -in @("Blocked", "Unavailable")) {
+        $message = "Compatibility preflight marked this scope $($scopeCompatibility.Status): $($scopeCompatibility.Action)"
+        Add-SkippedTask -ScopeName $scopeName -Name "Scope compatibility preflight" -Message $message
+        $script:CollectionMessages.Add($message) | Out-Null
+        continue
+    }
+    if ($null -ne $scopeCompatibility -and $scopeCompatibility.Status -eq "Limited") {
+        $script:CollectionMessages.Add("Compatibility [$scopeName] is Limited: $($scopeCompatibility.Action)") | Out-Null
+    }
     switch ($scopeName) {
         "AD" { Invoke-ADCollection }
         "GPO" { Invoke-GPOCollection }
@@ -649,6 +696,7 @@ $summary = [pscustomobject][ordered]@{
     NotYetImplemented  = @()
     AnalyzerNextStep   = "Run SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input <collection-or-zip> --type client-bundle --output <analysis-output> for full bundle normalization."
     SendBackToReviewer = if ($archivePath) { $archivePath } else { $script:OutputDirectory }
+    CompatibilityReport = $compatibilityPath
     Messages           = @($script:CollectionMessages.ToArray())
 }
 Write-JsonFile -Path $summaryPath -InputObject $summary -Depth 8
@@ -664,6 +712,7 @@ $manifest = [pscustomobject][ordered]@{
     ScopeResolved      = @($resolvedScopes)
     OutputDirectory    = $script:OutputDirectory
     ArchivePath        = $archivePath
+    CompatibilityReport = $compatibilityPath
     Tasks              = $taskResults
     Files              = @(Get-CollectionFiles)
 }

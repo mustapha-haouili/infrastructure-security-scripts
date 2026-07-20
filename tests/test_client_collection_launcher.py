@@ -43,6 +43,9 @@ class ClientCollectionLauncherTests(unittest.TestCase):
         self.assertIn("Get-WindowsNetworkExposureAudit.ps1", collector)
         self.assertIn("Get-WindowsBackupReadinessAudit.ps1", collector)
         self.assertIn("The broad All scope includes Backup readiness", collector)
+        self.assertIn("CompatibilityProfile", collector)
+        self.assertIn("compatibility-report.json", collector)
+        self.assertIn("Scope compatibility preflight", collector)
 
     def test_client_collection_scope_values_document_current_coverage(self):
         collector = self.read_text("scripts/windows/Start-SecureInfraClientCollection.ps1")

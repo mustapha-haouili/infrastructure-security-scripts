@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/windows-compatibility-report.schema.json",
+  "title": "SecureInfra Windows Compatibility Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "SchemaVersion",
+    "Contract",
+    "GeneratedAtUtc",
+    "Host",
+    "Runtime",
+    "ScopeRequested",
+    "Capabilities",
+    "ScopeReadiness",
+    "HardFailures",
+    "Limitations",
+    "Safety"
+  ],
+  "properties": {
+    "SchemaVersion": { "const": "1.0" },
+    "Contract": { "const": "secureinfra-windows-compatibility/1.0" },
+    "GeneratedAtUtc": { "type": "string", "format": "date-time" },
+    "Host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Name", "OsVersion", "Is64BitOperatingSystem", "Is64BitProcess"],
+      "properties": {
+        "Name": { "type": "string", "maxLength": 255 },
+        "OsVersion": { "type": "string", "maxLength": 128 },
+        "Is64BitOperatingSystem": { "type": "boolean" },
+        "Is64BitProcess": { "type": "boolean" }
+      }
+    },
+    "Runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["PowerShellVersion", "PowerShellEdition", "LanguageMode", "SelectedHost", "Ready", "AutomaticInstall"],
+      "properties": {
+        "PowerShellVersion": { "type": "string", "maxLength": 64 },
+        "PowerShellEdition": { "enum": ["Desktop", "Core"] },
+        "LanguageMode": { "type": "string", "maxLength": 64 },
+        "SelectedHost": { "const": "WindowsPowerShell" },
+        "Ready": { "type": "boolean" },
+        "AutomaticInstall": { "const": "prohibited" }
+      }
+    },
+    "ScopeRequested": {
+      "type": "array",
+      "maxItems": 32,
+      "items": { "type": "string", "maxLength": 64 }
+    },
+    "Capabilities": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["Id", "Available", "Requirement", "Description", "MissingImpact"],
+        "properties": {
+          "Id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{0,79}$" },
+          "Available": { "type": "boolean" },
+          "Requirement": { "enum": ["required", "optional"] },
+          "Description": { "type": "string", "maxLength": 1000 },
+          "MissingImpact": { "type": "string", "maxLength": 1000 }
+        }
+      }
+    },
+    "ScopeReadiness": {
+      "type": "array",
+      "maxItems": 11,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["Scope", "Status", "MissingCapabilities", "Action"],
+        "properties": {
+          "Scope": { "enum": ["AD", "GPO", "Host", "Server", "Workstation", "Network", "Backup", "IIS", "RDS", "SQLServer", "ExchangeServer"] },
+          "Status": { "enum": ["Ready", "Limited", "Unavailable", "Blocked"] },
+          "MissingCapabilities": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{0,79}$" }
+          },
+          "Action": { "type": "string", "maxLength": 1000 }
+        }
+      }
+    },
+    "HardFailures": {
+      "type": "array",
+      "maxItems": 128,
+      "items": { "type": "string", "maxLength": 2000 }
+    },
+    "Limitations": {
+      "type": "array",
+      "maxItems": 128,
+      "items": { "type": "string", "maxLength": 2000 }
+    },
+    "Safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["Mode", "Downloads", "PackageInstallation", "ServiceChanges", "AutomaticRemediation"],
+      "properties": {
+        "Mode": { "const": "read-only-capability-discovery" },
+        "Downloads": { "const": "prohibited" },
+        "PackageInstallation": { "const": "prohibited" },
+        "ServiceChanges": { "const": "prohibited" },
+        "AutomaticRemediation": { "const": "prohibited" }
+      }
+    }
+  }
+}

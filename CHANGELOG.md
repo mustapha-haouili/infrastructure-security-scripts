@@ -6,6 +6,19 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 
 ## [Unreleased]
 
+### Windows runtime compatibility
+- Added optional `compatibility-report.json` bundle metadata with a strict
+  public schema and defensive validator. The client-bundle normalizer exposes
+  runtime readiness and limited-scope counts without converting missing
+  capabilities into compliant values.
+- The Windows client launcher accepts the verified compatibility profile from
+  the portable Enterprise entry point, records it in the archive, skips AD/GPO
+  scopes that cannot run, and continues limited local scopes with explicit
+  evidence-gap messages.
+- Added CIM-to-WMI fallback for base operating-system metadata and tests for
+  safe bundle ingestion, invalid compatibility contracts, and launcher
+  integration.
+
 ### Collector safety
 - Added `CollectorSafeMode` to the Windows and Linux unified launchers. In this
   mode, scripts that expose apply or deletion behavior are not invoked, even
