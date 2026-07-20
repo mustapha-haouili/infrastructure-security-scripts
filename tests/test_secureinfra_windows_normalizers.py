@@ -933,6 +933,54 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
         self.assertNotIn("port", profile["evidence"]["customer_question"].lower())
         self.assertFalse(profile["safe_to_auto_remediate"])
 
+    def test_windows_multiple_public_network_profiles_have_stable_unique_ids(self):
+        data = {
+            "ToolName": "Get-WindowsNetworkExposureAudit",
+            "ReportType": "windows-network-exposure",
+            "GeneratedAtUtc": "2026-07-20T11:00:00Z",
+            "ComputerName": "LAB-WKS01",
+            "NetworkProfiles": [
+                {
+                    "Name": "Guest Network",
+                    "InterfaceAlias": "Ethernet 1",
+                    "NetworkCategory": "Public",
+                },
+                {
+                    "Name": "Isolated Network",
+                    "InterfaceAlias": "Ethernet 2",
+                    "NetworkCategory": "Public",
+                },
+            ],
+            "Findings": [
+                {
+                    "FindingType": "PublicNetworkProfileActive",
+                    "Severity": "Medium",
+                    "Title": "Public network profile is active",
+                    "Evidence": "Ethernet 1 is using the Public network category.",
+                    "Recommendation": "Confirm the network classification is intended.",
+                },
+                {
+                    "FindingType": "PublicNetworkProfileActive",
+                    "Severity": "Medium",
+                    "Title": "Public network profile is active",
+                    "Evidence": "Ethernet 2 is using the Public network category.",
+                    "Recommendation": "Confirm the network classification is intended.",
+                },
+            ],
+        }
+
+        first = normalize_windows_network_exposure(data, "windows-network-exposure.json")
+        second = normalize_windows_network_exposure(data, "windows-network-exposure.json")
+        first_ids = [finding["finding_id"] for finding in first["findings"]]
+        second_ids = [finding["finding_id"] for finding in second["findings"]]
+
+        self.assertEqual(len(first_ids), 2)
+        self.assertEqual(len(first_ids), len(set(first_ids)))
+        self.assertEqual(first_ids, second_ids)
+        self.assertTrue(all(item.startswith("NETWORK-EXPOSURE-PUBLICNETWORKPROFILEACTIVE-") for item in first_ids))
+        self.assertTrue(all(len(item.rsplit("-", 1)[-1]) == 8 for item in first_ids))
+        validate_normalized_report(first)
+
     def test_windows_server_unquoted_service_path_suppresses_service_host_noise(self):
         def unquoted_row(name: str, path_name: str) -> dict:
             return {

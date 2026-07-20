@@ -6,6 +6,8 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 
 ## [Unreleased]
 
+## [1.3.0-beta.6] - 2026-07-20
+
 ### Windows runtime compatibility
 - Added optional `compatibility-report.json` bundle metadata with a strict
   public schema and defensive validator. The client-bundle normalizer exposes
@@ -54,6 +56,13 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
   as unknown custom services.
 
 ### Fixed
+- Made Windows Public-network-profile finding identifiers stable and unique
+  per interface/profile object. Multiple active Public profiles no longer
+  produce duplicate `finding_id` values in standalone client-bundle analysis.
+- Restricted compatibility evidence-gap notes and limited-scope counts to the
+  public scopes actually requested by the collection. Complete capability
+  inventory remains available without presenting unrequested Enterprise roles
+  as report limitations.
 - Preserved every deduplicated specific listener address in customer-facing
   network summaries instead of describing only the first interface address.
 - Preserved `PasswordRequired` in normalized local-administrator evidence and

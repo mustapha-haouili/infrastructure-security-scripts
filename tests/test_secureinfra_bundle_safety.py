@@ -117,10 +117,11 @@ class SecureInfraBundleSafetyTests(unittest.TestCase):
                     "ScopeRequested": ["AD"],
                     "Capabilities": [],
                     "ScopeReadiness": [
-                        {"Scope": "AD", "Status": "Unavailable", "MissingCapabilities": [], "Action": "Install approved RSAT features."}
+                        {"Scope": "AD", "Status": "Unavailable", "MissingCapabilities": [], "Action": "Install approved RSAT features."},
+                        {"Scope": "ExchangeServer", "Status": "Limited", "MissingCapabilities": [], "Action": "Use Exchange management tools."},
                     ],
                     "HardFailures": [],
-                    "Limitations": ["AD: Unavailable"],
+                    "Limitations": ["AD: Unavailable", "ExchangeServer: Limited"],
                     "Safety": {
                         "Mode": "read-only-capability-discovery",
                         "Downloads": "prohibited",
@@ -138,7 +139,9 @@ class SecureInfraBundleSafetyTests(unittest.TestCase):
             summary = report["metadata"]["loaded_summaries"]["compatibility_report"]
             self.assertTrue(summary["runtime_ready"])
             self.assertEqual(summary["limited_scope_count"], 1)
-            self.assertTrue(any("Compatibility evidence gaps" in note for note in report["notes"]))
+            compatibility_note = next(note for note in report["notes"] if "Compatibility evidence gaps" in note)
+            self.assertIn("AD", compatibility_note)
+            self.assertNotIn("ExchangeServer", compatibility_note)
 
     def test_rejects_parent_traversal_path(self):
         self.assert_rejects_zip({"../evil.json": "{}"}, "Unsafe zip entry path")

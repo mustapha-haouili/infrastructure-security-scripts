@@ -450,10 +450,12 @@ def normalize_prepared_client_bundle(bundle_dir: Path, source_label: str) -> dic
         runtime = as_dict(compatibility_report.get("Runtime"))
         if not bool(runtime.get("Ready", False)):
             notes.append("Windows compatibility preflight blocked full collection; review compatibility-report.json.")
+        requested_compatibility_scopes = compatibility_requested_scopes(compatibility_report)
         limited_scopes = [
             str(record.get("Scope") or "")
             for record in as_records(compatibility_report.get("ScopeReadiness"))
             if str(record.get("Status") or "") in {"Limited", "Unavailable", "Blocked"}
+            and str(record.get("Scope") or "") in requested_compatibility_scopes
         ]
         if limited_scopes:
             notes.append("Compatibility evidence gaps were recorded for: " + ", ".join(limited_scopes) + ".")
@@ -693,6 +695,9 @@ def normalize_source_rows(key: str, data: dict[str, Any], rows: list[dict[str, A
             firewall_source_id = network_firewall_rule_source_id(source_id, evidence)
             if firewall_source_id:
                 source_id = firewall_source_id
+            profile_source_id = network_profile_source_id(source_id, affected_object, evidence)
+            if profile_source_id:
+                source_id = profile_source_id
         if key in {"server_windows_local_admins", "workstation_windows_local_admins"}:
             source_id = local_admin_source_id(source_id, row, affected_object, evidence)
         if key in {"server_windows_rdp_exposure", "workstation_windows_rdp_exposure"}:
@@ -897,6 +902,21 @@ def network_firewall_rule_source_id(source_id: Any, evidence: dict[str, Any]) ->
     rule_name = str(evidence.get("firewall_rule_name") or evidence.get("firewall_rule_display_name") or "rule")
     digest = stable_row_digest(finding_type, protocol, port, rule_name, evidence.get("remote_addresses"), evidence.get("firewall_profile"))
     return f"FW-SENSITIVE-{protocol}-{port}-{sanitize_id(rule_name)[:12] or 'RULE'}-{digest}"
+
+
+def network_profile_source_id(source_id: Any, affected_object: str, evidence: dict[str, Any]) -> str:
+    finding_type = str(evidence.get("finding_type") or "").strip()
+    if finding_type.lower() != "publicnetworkprofileactive":
+        return ""
+    interface_alias = str(evidence.get("interface_alias") or "").strip()
+    profile_name = str(evidence.get("network_profile_name") or "").strip()
+    category = str(evidence.get("network_category") or "Public").strip()
+    object_name = interface_alias or profile_name or affected_object or "network-profile"
+    digest = stable_row_digest(finding_type, interface_alias, profile_name, category, affected_object)
+    # build_finding_id limits the source token to 48 characters. Keep the
+    # object hint short enough that the stable digest is never truncated.
+    object_token = sanitize_id(object_name)[:10] or "PROFILE"
+    return f"{finding_type}-{object_token}-{digest}"
 
 
 def local_admin_source_id(source_id: Any, row: dict[str, Any], affected_object: str, evidence: dict[str, Any]) -> str:
@@ -2389,13 +2409,17 @@ def summarize_source_json(key: str, data: dict[str, Any]) -> dict[str, Any]:
     if key == "compatibility_report":
         runtime = as_dict(data.get("Runtime"))
         scope_rows = as_records(data.get("ScopeReadiness"))
+        requested_scopes = compatibility_requested_scopes(data)
         return {
             "runtime_ready": bool(runtime.get("Ready", False)),
             "powershell_version": str(runtime.get("PowerShellVersion") or ""),
             "powershell_edition": str(runtime.get("PowerShellEdition") or ""),
             "language_mode": str(runtime.get("LanguageMode") or ""),
             "limited_scope_count": sum(
-                1 for row in scope_rows if str(row.get("Status") or "") in {"Limited", "Unavailable", "Blocked"}
+                1
+                for row in scope_rows
+                if str(row.get("Status") or "") in {"Limited", "Unavailable", "Blocked"}
+                and str(row.get("Scope") or "") in requested_scopes
             ),
         }
     summary = data.get("Summary")
@@ -2495,6 +2519,18 @@ def as_string_list(value: Any) -> list[str]:
     if isinstance(value, list):
         return [str(item) for item in value if str(item).strip()]
     return [str(value)]
+
+
+def compatibility_requested_scopes(value: dict[str, Any]) -> set[str]:
+    public_scopes = {"AD", "GPO", "Host", "Server", "Workstation", "Network", "Backup"}
+    requested = {
+        str(item).strip()
+        for item in as_string_list(value.get("ScopeRequested"))
+        if str(item).strip()
+    }
+    if any(item.lower() == "all" for item in requested):
+        return public_scopes
+    return {item for item in requested if item in public_scopes}
 
 
 def as_int(value: Any, default: int = 0) -> int:
