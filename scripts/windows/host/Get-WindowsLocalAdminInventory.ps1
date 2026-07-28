@@ -38,6 +38,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+$builtinGroupHelper = Join-Path (Split-Path -Parent $PSScriptRoot) "common\Get-WindowsBuiltinGroupInventory.ps1"
+if (-not (Test-Path -LiteralPath $builtinGroupHelper -PathType Leaf)) {
+    throw "Required built-in group helper was not found: $builtinGroupHelper"
+}
+. $builtinGroupHelper
+
 function New-Directory {
     param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -73,15 +79,6 @@ function Invoke-Safe {
     catch {
         $Default
     }
-}
-
-function Get-AdministratorsGroup {
-    $group = Invoke-Safe -ScriptBlock { Get-LocalGroup -SID "S-1-5-32-544" -ErrorAction Stop } -Default $null
-    if ($group) {
-        return $group
-    }
-
-    return Invoke-Safe -ScriptBlock { Get-LocalGroup -Name "Administrators" -ErrorAction Stop } -Default $null
 }
 
 function Get-MemberNameLeaf {
@@ -199,6 +196,12 @@ function Write-CsvReport {
         [object[]]$Rows
     )
 
+    if (@($Rows).Count -eq 0) {
+        '"Name","ObjectClass","PrincipalSource","PrincipalCategory","Sid","Enabled","LastLogonUtc","PasswordRequired","Description"' |
+            Out-File -FilePath $Path -Encoding utf8
+        return
+    }
+
     $Rows | Export-Csv -Path $Path -NoTypeInformation -Encoding UTF8
 }
 
@@ -229,6 +232,7 @@ function Write-MarkdownReport {
     Add-MarkdownLine -Lines $lines -Text "Generated at UTC: ``$($Report.GeneratedAtUtc)``"
     Add-MarkdownLine -Lines $lines -Text "Computer: ``$($Report.ComputerName)``"
     Add-MarkdownLine -Lines $lines -Text "Administrators group: ``$($Report.AdministratorsGroupName)``"
+    Add-MarkdownLine -Lines $lines -Text "Collection status: ``$($Report.CollectionStatus)`` via ``$($Report.CollectionProvider)``"
     Add-MarkdownLine -Lines $lines
     Add-MarkdownLine -Lines $lines -Text "## Summary"
     Add-MarkdownLine -Lines $lines
@@ -276,18 +280,30 @@ $reportErrors = New-Object System.Collections.Generic.List[string]
 $members = New-Object System.Collections.Generic.List[object]
 $findings = New-Object System.Collections.Generic.List[object]
 
-$adminGroup = Get-AdministratorsGroup
-if (-not $adminGroup) {
-    throw "Unable to find the local Administrators group."
+$isDomainController = Test-SecureInfraDomainController
+$adminGroup = Get-SecureInfraBuiltinGroup -Sid "S-1-5-32-544" -EnglishFallbackName "Administrators" -IsDomainController $isDomainController
+$collectionStatus = "Complete"
+$collectionProvider = if ($null -ne $adminGroup) { "$($adminGroup.Provider)" } else { "Unavailable" }
+$groupMembers = @()
+
+if ($null -eq $adminGroup) {
+    $collectionStatus = "Unavailable"
+    $groupContext = if ($isDomainController) { "Active Directory BUILTIN container" } else { "local security authority" }
+    $message = "Unable to resolve the Administrators group by SID S-1-5-32-544 through the $groupContext. Membership evidence remains unknown."
+    $reportErrors.Add($message) | Out-Null
+    $findings.Add((New-AdminFinding -FindingType "LocalAdminEvidenceUnavailable" -Severity "Info" -Principal "S-1-5-32-544" -Title "Administrators membership evidence is unavailable" -Evidence $message -Recommendation "Confirm the approved read capability for the Administrators group and rerun the collector; do not treat missing evidence as an empty group.")) | Out-Null
 }
-
-$groupMembers = Invoke-Safe -ScriptBlock {
-    Get-LocalGroupMember -Group $adminGroup.Name -ErrorAction Stop
-} -Default $null
-
-if ($null -eq $groupMembers) {
-    $reportErrors.Add("Get-LocalGroupMember failed. Try running PowerShell as Administrator for complete local group membership evidence.") | Out-Null
-    $groupMembers = @()
+else {
+    try {
+        $groupMembers = @(Get-SecureInfraBuiltinGroupMembers -Group $adminGroup)
+    }
+    catch {
+        $collectionStatus = "Limited"
+        $message = "Administrators group was resolved through $collectionProvider, but direct membership could not be read: $($_.Exception.Message)"
+        $reportErrors.Add($message) | Out-Null
+        $findings.Add((New-AdminFinding -FindingType "LocalAdminMembershipUnavailable" -Severity "Info" -Principal "$($adminGroup.Name)" -Title "Administrators membership could not be enumerated" -Evidence $message -Recommendation "Verify approved read permissions and rerun the collector; do not interpret the missing member list as zero administrators.")) | Out-Null
+        $groupMembers = @()
+    }
 }
 
 foreach ($member in @($groupMembers)) {
@@ -314,8 +330,9 @@ foreach ($member in @($groupMembers)) {
     }
 }
 
-$domainPrincipalCount = @($members | Where-Object { $_.PrincipalCategory -in @("DomainGroup", "DomainUser") }).Count
-$enabledLocalAdminUserCount = @($members | Where-Object { $_.PrincipalCategory -eq "LocalUser" -and $_.Enabled }).Count
+$memberCount = if ($collectionStatus -eq "Complete") { $members.Count } else { $null }
+$domainPrincipalCount = if ($collectionStatus -eq "Complete") { @($members | Where-Object { $_.PrincipalCategory -in @("DomainGroup", "DomainUser") }).Count } else { $null }
+$enabledLocalAdminUserCount = if ($collectionStatus -eq "Complete") { @($members | Where-Object { $_.PrincipalCategory -eq "LocalUser" -and $_.Enabled }).Count } else { $null }
 $severityCounts = [ordered]@{
     Critical = @($findings | Where-Object { $_.Severity -eq "Critical" }).Count
     High     = @($findings | Where-Object { $_.Severity -eq "High" }).Count
@@ -329,10 +346,13 @@ $report = [pscustomobject][ordered]@{
     ReportType              = "windows-local-admin-inventory"
     GeneratedAtUtc          = $generatedAtUtc
     ComputerName            = $env:COMPUTERNAME
-    AdministratorsGroupName = "$($adminGroup.Name)"
-    AdministratorsGroupSid  = "$($adminGroup.SID)"
+    BuiltinGroupContext     = if ($isDomainController) { "ActiveDirectoryDomainController" } else { "LocalSecurityAuthority" }
+    CollectionStatus        = $collectionStatus
+    CollectionProvider      = $collectionProvider
+    AdministratorsGroupName = if ($null -ne $adminGroup) { "$($adminGroup.Name)" } else { "" }
+    AdministratorsGroupSid  = "S-1-5-32-544"
     Summary                 = [ordered]@{
-        MemberCount                 = $members.Count
+        MemberCount                 = $memberCount
         FindingCount                = $findings.Count
         DomainPrincipalCount        = $domainPrincipalCount
         EnabledLocalAdminUserCount  = $enabledLocalAdminUserCount
@@ -353,6 +373,7 @@ Write-MarkdownReport -Path $markdownPath -Report $report
 
 if (-not $Quiet) {
     Write-Host "Windows local administrators report written to: $jsonPath"
-    Write-Host "Members: $($members.Count)"
+    Write-Host "Collection status: $collectionStatus ($collectionProvider)"
+    Write-Host "Members: $(if ($null -eq $memberCount) { 'Unknown' } else { $memberCount })"
     Write-Host "Findings: $($findings.Count)"
 }

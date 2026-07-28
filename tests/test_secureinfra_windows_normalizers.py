@@ -225,6 +225,51 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
         self.assertFalse(password_finding["evidence"]["password_required"])
         self.assertIn("PasswordRequired=false", password_finding["evidence"]["summary"])
 
+    def test_domain_controller_local_admin_gap_remains_an_explicit_unknown(self):
+        data = {
+            "ToolName": "Get-WindowsLocalAdminInventory",
+            "ReportType": "windows-local-admin-inventory",
+            "GeneratedAtUtc": "2026-07-28T09:00:00Z",
+            "ComputerName": "LAB-DC01",
+            "BuiltinGroupContext": "ActiveDirectoryDomainController",
+            "CollectionStatus": "Unavailable",
+            "CollectionProvider": "Unavailable",
+            "AdministratorsGroupName": "",
+            "AdministratorsGroupSid": "S-1-5-32-544",
+            "Summary": {
+                "MemberCount": None,
+                "FindingCount": 1,
+                "DomainPrincipalCount": None,
+                "EnabledLocalAdminUserCount": None,
+            },
+            "LocalAdministrators": [],
+            "Findings": [
+                {
+                    "FindingType": "LocalAdminEvidenceUnavailable",
+                    "Severity": "Info",
+                    "Principal": "S-1-5-32-544",
+                    "Title": "Administrators membership evidence is unavailable",
+                    "Evidence": "The domain controller Administrators group could not be read; membership remains unknown.",
+                    "Recommendation": "Confirm approved Active Directory read capability and rerun.",
+                }
+            ],
+            "ReportErrors": [
+                "Unable to resolve the Administrators group by SID S-1-5-32-544 through the Active Directory BUILTIN container."
+            ],
+        }
+
+        findings = normalize_client_source_file("server_windows_local_admins", data, Path("windows-local-admins.json"))
+
+        self.assertEqual(len(findings), 1)
+        finding = findings[0]
+        repeated = normalize_client_source_file("server_windows_local_admins", data, Path("windows-local-admins.json"))
+        self.assertEqual(finding["finding_id"], repeated[0]["finding_id"])
+        self.assertTrue(finding["finding_id"].startswith("SERVER-LADMIN-LOCALADMINEVIDENCEUNAVAILABL"))
+        self.assertEqual(finding["severity"], "Info")
+        self.assertEqual(finding["affected_object"], "S-1-5-32-544")
+        self.assertIn("Local administrator membership grants", finding["evidence"]["risk_explanation"])
+        self.assertFalse(finding["safe_to_auto_remediate"])
+
     def test_windows_rdp_exposure_findings_include_configuration_and_port_context(self):
         data = {
             "ToolName": "Get-WindowsRDPExposureAudit",

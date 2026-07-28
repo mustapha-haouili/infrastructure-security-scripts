@@ -21,6 +21,11 @@ Desktop host. A verified Enterprise wrapper may be started from PowerShell 7
 and hands execution to Windows PowerShell for inbox-module compatibility. The
 client bundle can include `compatibility-report.json`, which preserves missing
 module and scope evidence as limitations rather than false compliance.
+Built-in Administrators and Remote Desktop Users membership is resolved by
+well-known SID: domain controllers use the Active Directory `BUILTIN`
+container, while member hosts use LocalAccounts or a read-only WinNT fallback.
+This avoids English-name assumptions and preserves an explicit Unknown state
+when membership cannot be read.
 
 ## Try it in 2 minutes
 

@@ -92,6 +92,30 @@ class ClientCollectionLauncherTests(unittest.TestCase):
             self.assertNotIn("[switch]$Apply", text)
             self.assertNotIn("Set-ItemProperty", text)
 
+    def test_builtin_group_inventory_supports_domain_controllers_and_localized_hosts(self):
+        helper_path = "scripts/windows/common/Get-WindowsBuiltinGroupInventory.ps1"
+        helper = self.read_text(helper_path)
+        local_admins = self.read_text("scripts/windows/host/Get-WindowsLocalAdminInventory.ps1")
+        rdp = self.read_text("scripts/windows/host/Get-WindowsRDPExposureAudit.ps1")
+
+        self.assertIn("[int]$domainRole -in @(4, 5)", helper)
+        self.assertIn("Get-ADGroup -Identity $Sid", helper)
+        self.assertIn("Get-ADGroupMember -Identity $Group.SourceObject", helper)
+        self.assertIn("Get-SecureInfraLocalizedBuiltinGroupName", helper)
+        self.assertIn('Provider     = "WinNT"', helper)
+        self.assertIn("does not change group membership", helper)
+        for collector in (local_admins, rdp):
+            self.assertIn("Get-WindowsBuiltinGroupInventory.ps1", collector)
+            self.assertIn("Get-SecureInfraBuiltinGroup", collector)
+            self.assertIn("Get-SecureInfraBuiltinGroupMembers", collector)
+
+        self.assertIn('Sid "S-1-5-32-544"', local_admins)
+        self.assertIn('"LocalAdminEvidenceUnavailable"', local_admins)
+        self.assertIn("CollectionStatus", local_admins)
+        self.assertNotIn('throw "Unable to find the local Administrators group."', local_admins)
+        self.assertIn('Sid "S-1-5-32-555"', rdp)
+        self.assertIn("GroupMembershipStatus", rdp)
+
 
 if __name__ == "__main__":
     unittest.main()

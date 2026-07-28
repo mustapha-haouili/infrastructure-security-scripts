@@ -216,8 +216,15 @@ Start reading the report at:
 
 ### `scripts/windows/host/Get-WindowsLocalAdminInventory.ps1`
 
-Inventories local Administrators group membership and writes JSON, CSV, and
-Markdown reports. It does not change local users, groups, or policy.
+Inventories Administrators group membership and writes JSON, CSV, and Markdown
+reports. Member servers and workstations resolve the built-in group by SID
+through LocalAccounts or the read-only WinNT fallback. Domain controllers read
+the `BUILTIN\Administrators` domain-local group through Active Directory
+because a domain controller has no local SAM database. Localized group names
+are resolved from SID `S-1-5-32-544`. The collector does not change users,
+groups, or policy. When membership cannot be read, the report records an
+explicit evidence gap instead of returning an empty compliant result or
+stopping the full collection.
 
 Default mode: audit only.
 
@@ -248,6 +255,8 @@ Start reading the report at:
 
 - `Summary.MemberCount`
 - `Summary.FindingCount`
+- `CollectionStatus`
+- `CollectionProvider`
 - `LocalAdministrators`
 - `Findings`
 

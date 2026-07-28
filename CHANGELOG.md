@@ -6,6 +6,25 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 
 ## [Unreleased]
 
+## [1.3.0-beta.7] - 2026-07-28
+
+### Fixed
+- Made Windows built-in group inventory host-role aware and localization-safe.
+  Member servers and workstations resolve Administrators and Remote Desktop
+  Users by well-known SID through LocalAccounts or a read-only WinNT fallback.
+  Domain controllers read the corresponding groups from the Active Directory
+  `BUILTIN` container instead of querying a nonexistent local SAM database.
+- Replaced the fatal "Unable to find the local Administrators group" path with
+  an explicit `Unavailable` or `Limited` evidence record. Missing membership
+  remains Unknown and no longer stops the remaining collection tasks.
+- Ensured the local-administrator CSV artifact is still created with a stable
+  header when membership is unavailable or the group has no direct members.
+
+### Validation
+- Added regression coverage for domain-controller provider selection,
+  well-known SID discovery, localized-name fallback, non-fatal evidence gaps,
+  and stable normalization of the resulting informational finding.
+
 ## [1.3.0-beta.6] - 2026-07-20
 
 ### Windows runtime compatibility

@@ -34,6 +34,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+$builtinGroupHelper = Join-Path (Split-Path -Parent $PSScriptRoot) "common\Get-WindowsBuiltinGroupInventory.ps1"
+if (-not (Test-Path -LiteralPath $builtinGroupHelper -PathType Leaf)) {
+    throw "Required built-in group helper was not found: $builtinGroupHelper"
+}
+. $builtinGroupHelper
+
 function New-Directory {
     param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -66,34 +72,6 @@ function Get-RegistryValueSafe {
         $item = Get-ItemProperty -Path $Path -Name $Name -ErrorAction Stop
         $item.$Name
     } -Default $null
-}
-
-function Get-RemoteDesktopUsersGroup {
-    $group = Invoke-Safe -ScriptBlock { Get-LocalGroup -SID "S-1-5-32-555" -ErrorAction Stop } -Default $null
-    if ($group) {
-        return $group
-    }
-
-    return Invoke-Safe -ScriptBlock { Get-LocalGroup -Name "Remote Desktop Users" -ErrorAction Stop } -Default $null
-}
-
-function Get-LocalGroupMembersSafe {
-    param([AllowNull()][object]$Group)
-
-    if (-not $Group) {
-        return @()
-    }
-
-    Invoke-Safe -ScriptBlock {
-        Get-LocalGroupMember -Group $Group.Name -ErrorAction Stop | ForEach-Object {
-            [pscustomobject][ordered]@{
-                Name              = "$($_.Name)"
-                ObjectClass       = "$($_.ObjectClass)"
-                PrincipalSource   = "$($_.PrincipalSource)"
-                Sid               = "$($_.SID)"
-            }
-        }
-    } -Default @()
 }
 
 function Get-ServiceStateSafe {
@@ -213,6 +191,7 @@ function Write-MarkdownReport {
     Add-MarkdownLine -Lines $lines -Text "- NLA required: $($Report.Summary.NetworkLevelAuthenticationRequired)"
     Add-MarkdownLine -Lines $lines -Text "- RDP port: $($Report.Summary.RdpPort)"
     Add-MarkdownLine -Lines $lines -Text "- Listener count: $($Report.Summary.ListenerCount)"
+    Add-MarkdownLine -Lines $lines -Text "- Remote Desktop Users membership: $($Report.GroupMembershipStatus)"
     Add-MarkdownLine -Lines $lines -Text "- Finding count: $($Report.Summary.FindingCount)"
     Add-MarkdownLine -Lines $lines
     Add-MarkdownLine -Lines $lines -Text "## Findings"
@@ -254,6 +233,7 @@ $csvPath = Join-Path -Path $resolvedOutputDirectory -ChildPath "windows-rdp-expo
 $markdownPath = Join-Path -Path $resolvedOutputDirectory -ChildPath "windows-rdp-exposure-review.md"
 $generatedAtUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 $findings = New-Object System.Collections.Generic.List[object]
+$reportErrors = New-Object System.Collections.Generic.List[string]
 
 $terminalServerPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server"
 $rdpTcpPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp"
@@ -266,8 +246,25 @@ if ($null -eq $portNumber) {
 $rdpEnabled = ($fDeny -eq 0)
 $nlaRequired = ($nla -eq 1)
 $termService = Get-ServiceStateSafe -Name "TermService"
-$rdpGroup = Get-RemoteDesktopUsersGroup
-$rdpMembers = @(Get-LocalGroupMembersSafe -Group $rdpGroup)
+$isDomainController = Test-SecureInfraDomainController
+$rdpGroup = Get-SecureInfraBuiltinGroup -Sid "S-1-5-32-555" -EnglishFallbackName "Remote Desktop Users" -IsDomainController $isDomainController
+$groupMembershipStatus = "Complete"
+$groupMembershipProvider = if ($null -ne $rdpGroup) { "$($rdpGroup.Provider)" } else { "Unavailable" }
+$rdpMembers = @()
+if ($null -eq $rdpGroup) {
+    $groupMembershipStatus = "Unavailable"
+    $reportErrors.Add("Unable to resolve the Remote Desktop Users group by SID S-1-5-32-555. Direct membership evidence remains unknown.") | Out-Null
+}
+else {
+    try {
+        $rdpMembers = @(Get-SecureInfraBuiltinGroupMembers -Group $rdpGroup)
+    }
+    catch {
+        $groupMembershipStatus = "Limited"
+        $reportErrors.Add("Remote Desktop Users group was resolved through $groupMembershipProvider, but direct membership could not be read: $($_.Exception.Message)") | Out-Null
+        $rdpMembers = @()
+    }
+}
 $firewallRules = @(Get-RdpFirewallRules)
 $enabledAllowRules = @($firewallRules | Where-Object { $_.Enabled -eq "True" -and $_.Action -eq "Allow" -and $_.Direction -eq "Inbound" })
 $listeners = @(Get-RdpListeners -Port ([int]$portNumber))
@@ -277,6 +274,9 @@ if ($rdpEnabled) {
 }
 if ($rdpEnabled -and -not $nlaRequired) {
     $findings.Add((New-RdpFinding -FindingType "RdpNlaDisabled" -Severity "High" -Title "RDP Network Level Authentication is not required" -Evidence "UserAuthentication=$nla." -Recommendation "Require NLA unless a documented legacy client exception exists.")) | Out-Null
+}
+if ($rdpEnabled -and $groupMembershipStatus -ne "Complete") {
+    $findings.Add((New-RdpFinding -FindingType "RdpGroupMembershipUnavailable" -Severity "Info" -Title "Remote Desktop Users membership evidence is unavailable" -Evidence "MembershipStatus=$groupMembershipStatus; Provider=$groupMembershipProvider." -Recommendation "Verify approved read permissions and rerun collection; do not interpret missing membership evidence as an empty group.")) | Out-Null
 }
 if ($rdpMembers.Count -gt 0) {
     $findings.Add((New-RdpFinding -FindingType "RdpAllowedUsersPresent" -Severity "Medium" -Title "Remote Desktop Users group has direct members" -Evidence "$($rdpMembers.Count) direct member(s) are present." -Recommendation "Review each member and prefer approved groups with controlled membership.")) | Out-Null
@@ -301,13 +301,18 @@ $report = [pscustomobject][ordered]@{
     ReportType      = "windows-rdp-exposure"
     GeneratedAtUtc  = $generatedAtUtc
     ComputerName    = $env:COMPUTERNAME
+    BuiltinGroupContext = if ($isDomainController) { "ActiveDirectoryDomainController" } else { "LocalSecurityAuthority" }
+    GroupMembershipStatus = $groupMembershipStatus
+    GroupMembershipProvider = $groupMembershipProvider
+    RemoteDesktopUsersGroupName = if ($null -ne $rdpGroup) { "$($rdpGroup.Name)" } else { "" }
+    RemoteDesktopUsersGroupSid = "S-1-5-32-555"
     Summary         = [ordered]@{
         RdpEnabled                         = [bool]$rdpEnabled
         NetworkLevelAuthenticationRequired = [bool]$nlaRequired
         RdpPort                            = [int]$portNumber
         TermServiceStatus                  = $termService.Status
         TermServiceStartMode               = $termService.StartMode
-        RemoteDesktopUserCount             = $rdpMembers.Count
+        RemoteDesktopUserCount             = if ($groupMembershipStatus -eq "Complete") { $rdpMembers.Count } else { $null }
         EnabledInboundAllowRuleCount       = $enabledAllowRules.Count
         ListenerCount                      = $listeners.Count
         FindingCount                       = $findings.Count
@@ -323,6 +328,7 @@ $report = [pscustomobject][ordered]@{
     FirewallRules   = @($firewallRules)
     Listeners       = @($listeners)
     Findings        = @($findings.ToArray())
+    ReportErrors    = @($reportErrors.ToArray())
     Notes           = @(
         "This report is audit-only and does not change Remote Desktop configuration.",
         "Remote access changes require owner review and approved change control."
