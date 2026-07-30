@@ -6,6 +6,7 @@ authorize remediation.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 
@@ -88,17 +89,8 @@ def is_system_managed(user: dict[str, Any]) -> bool:
 
 
 def is_built_in_administrator(user: dict[str, Any]) -> bool:
-    sam = lower_text(user.get("SamAccountName"))
-    category = lower_text(user.get("AccountCategory"))
-    risk_flags = " ".join(as_list(user.get("RiskFlags"))).lower()
-    sid = str(user.get("ObjectSid") or "")
-    return (
-        sam == "administrator"
-        or "builtinadministrator" in category
-        or "built-in administrator" in category
-        or "builtinadministrator" in risk_flags
-        or sid.endswith("-500")
-    )
+    sid = str(user.get("ObjectSid") or user.get("SID") or user.get("SubjectSID") or "")
+    return re.fullmatch(r"S-\d-\d+(?:-\d+){1,14}-500", sid, re.IGNORECASE) is not None
 
 
 def has_mail_review_signal(user: dict[str, Any]) -> bool:

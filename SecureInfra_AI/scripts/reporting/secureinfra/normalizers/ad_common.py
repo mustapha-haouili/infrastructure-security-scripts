@@ -210,15 +210,8 @@ def account_identity_text(row: dict[str, Any]) -> str:
 
 
 def is_built_in_administrator_account(row: dict[str, Any]) -> bool:
-    sam = str(first_present(row, ["SamAccountName", "Subject", "Name"], "") or "").strip().lower()
     sid = str(first_present(row, ["ObjectSid", "SID", "SubjectSID"], "") or "")
-    text = account_identity_text(row)
-    return (
-        sam == "administrator"
-        or "builtinadministrator" in normalized_account_type(text)
-        or "built-in administrator" in text
-        or sid.endswith("-500")
-    )
+    return re.fullmatch(r"S-\d-\d+(?:-\d+){1,14}-500", sid, re.IGNORECASE) is not None
 
 
 def explicit_category_present(row: dict[str, Any], categories: set[str]) -> bool:

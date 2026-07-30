@@ -6,6 +6,11 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 
 ## [Unreleased]
 
+### Fixed
+- Require explicit SID evidence with RID `500` before classifying an account as
+  the built-in Administrator. Account name, category text, and risk labels
+  alone now remain unverified instead of proving that identity.
+
 ## [1.3.0-beta.7] - 2026-07-28
 
 ### Fixed

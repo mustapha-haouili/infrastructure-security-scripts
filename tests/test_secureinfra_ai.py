@@ -709,6 +709,29 @@ class SecureInfraAITests(unittest.TestCase):
         self.assertNotIn("delete", finding["recommendation"].lower().replace("do not delete", ""))
         self.assertFalse(finding["safe_to_auto_remediate"])
 
+    def test_built_in_administrator_requires_rid_500_evidence(self):
+        row = self.built_in_admin_account_row()
+        row.pop("ObjectSid")
+
+        report = normalize_service_accounts(
+            {
+                "GeneratedAtUtc": "2026-06-08T09:00:00Z",
+                "ServiceAccounts": [row],
+            },
+            SAMPLE_INPUT,
+        )
+        finding = report["findings"][0]
+
+        self.assertNotEqual(
+            finding["evidence"]["classification"],
+            "Built-in Administrator Governance Review",
+        )
+        self.assertNotIn("built-in administrator", finding["title"].lower())
+
+        risk = classify_ad_inactive_user(row)
+        self.assertNotIn("built-in administrator", risk["title"].lower())
+        self.assertNotIn("Built-in Administrator", risk["risk_factors"])
+
     def test_spn_on_built_in_administrator_is_dependency_review_not_service_classification(self):
         data = {
             "GeneratedAtUtc": "2026-06-08T09:00:00Z",
