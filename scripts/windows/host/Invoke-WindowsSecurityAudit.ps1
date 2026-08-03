@@ -51,6 +51,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+$builtinGroupHelper = Join-Path -Path (Split-Path -Parent $PSScriptRoot) -ChildPath "common\Get-WindowsBuiltinGroupInventory.ps1"
+if (-not (Test-Path -LiteralPath $builtinGroupHelper -PathType Leaf)) {
+    throw "Required built-in group inventory helper is missing: $builtinGroupHelper"
+}
+. $builtinGroupHelper
+
 function Invoke-Safe {
     param(
         [Parameter(Mandatory = $true)]
@@ -93,23 +99,47 @@ function Get-RegistryValueSafe {
     } -Default $null
 }
 
-function Get-LocalAdministratorsSafe {
-    $members = Invoke-Safe -ScriptBlock {
-        Get-LocalGroupMember -Group "Administrators" | ForEach-Object {
-            [ordered]@{
-                Name        = $_.Name
-                ObjectClass = $_.ObjectClass
-                PrincipalSource = $_.PrincipalSource
-            }
-        }
-    } -Default $null
+function Get-LocalAdministratorEvidence {
+    $isDomainController = Test-SecureInfraDomainController
+    $groupContext = if ($isDomainController) { "ActiveDirectoryDomainController" } else { "LocalSecurityAuthority" }
+    $group = Get-SecureInfraBuiltinGroup `
+        -Sid "S-1-5-32-544" `
+        -EnglishFallbackName "Administrators" `
+        -IsDomainController $isDomainController
+    $status = "Complete"
+    $provider = if ($null -ne $group) { "$($group.Provider)" } else { "Unavailable" }
+    $members = @()
+    $errors = New-Object System.Collections.Generic.List[string]
 
-    if ($members) {
-        return $members
+    if ($null -eq $group) {
+        $status = "Unavailable"
+        $errors.Add(
+            "Unable to resolve the built-in Administrators group by SID S-1-5-32-544. Membership evidence remains unknown."
+        ) | Out-Null
+    }
+    else {
+        try {
+            $members = @(Get-SecureInfraBuiltinGroupMembers -Group $group)
+        }
+        catch {
+            $status = "Limited"
+            $members = @()
+            $errors.Add(
+                "The built-in Administrators group was resolved through $provider, but direct membership could not be read: $($_.Exception.Message)"
+            ) | Out-Null
+        }
     }
 
-    $raw = Invoke-Safe -ScriptBlock { net localgroup Administrators } -Default @()
-    return @($raw | Where-Object { $_ -and $_ -notmatch "command completed|---|Alias name|Comment|Members" })
+    [pscustomobject][ordered]@{
+        Status             = $status
+        Provider           = $provider
+        Context            = $groupContext
+        GroupName          = if ($null -ne $group) { "$($group.Name)" } else { "" }
+        GroupSid           = "S-1-5-32-544"
+        MemberCount        = if ($status -eq "Complete") { @($members).Count } else { $null }
+        Members            = @($members)
+        Errors             = @($errors.ToArray())
+    }
 }
 
 function Get-ListeningPortsSafe {
@@ -889,6 +919,7 @@ function New-AuditSummary {
 
 $os = Invoke-Safe -ScriptBlock { Get-CimInstance -ClassName Win32_OperatingSystem } -Default $null
 $computer = Invoke-Safe -ScriptBlock { Get-CimInstance -ClassName Win32_ComputerSystem } -Default $null
+$localAdministratorEvidence = Get-LocalAdministratorEvidence
 
 $audit = [ordered]@{
     ReportMetadata = [ordered]@{
@@ -914,7 +945,16 @@ $audit = [ordered]@{
     Defender = Invoke-Safe -ScriptBlock {
         Get-MpComputerStatus | Select-Object AMServiceEnabled, AntispywareEnabled, AntivirusEnabled, RealTimeProtectionEnabled, BehaviorMonitorEnabled, IoavProtectionEnabled, NISEnabled, AntivirusSignatureLastUpdated
     } -Default $null
-    LocalAdministrators = @(Get-LocalAdministratorsSafe)
+    LocalAdministratorCollection = [ordered]@{
+        Status      = $localAdministratorEvidence.Status
+        Provider    = $localAdministratorEvidence.Provider
+        Context     = $localAdministratorEvidence.Context
+        GroupName   = $localAdministratorEvidence.GroupName
+        GroupSid    = $localAdministratorEvidence.GroupSid
+        MemberCount = $localAdministratorEvidence.MemberCount
+        Errors      = @($localAdministratorEvidence.Errors)
+    }
+    LocalAdministrators = @($localAdministratorEvidence.Members)
     LocalAccounts = [ordered]@{
         Guest = Invoke-Safe -ScriptBlock {
             Get-CimInstance -Query "SELECT Name,Disabled,SID,LocalAccount FROM Win32_UserAccount WHERE LocalAccount = TRUE AND SID LIKE 'S-1-5-21-%-501'" | Select-Object -First 1 Name, Disabled, SID, LocalAccount
@@ -987,11 +1027,18 @@ New-ParentDirectory -Path $OutputPath
 $audit | ConvertTo-Json -Depth 10 | Out-File -FilePath $OutputPath -Encoding utf8
 
 if (-not $Quiet) {
+    $localAdministratorCount = if ($audit.LocalAdministratorCollection.Status -eq "Complete") {
+        "$($audit.LocalAdministratorCollection.MemberCount)"
+    }
+    else {
+        "Unknown"
+    }
     Write-Host "Windows security audit written to: $OutputPath"
     Write-Host "Computer: $env:COMPUTERNAME"
     Write-Host "Administrator: $(Test-IsAdministrator)"
     Write-Host "Posture: $($audit.Summary.Posture)"
     Write-Host "Findings: $($audit.Summary.FindingCount)"
     Write-Host "Listening TCP ports: $(@($audit.ListeningTcpPorts).Count)"
-    Write-Host "Local administrators: $(@($audit.LocalAdministrators).Count)"
+    Write-Host "Local administrator membership status: $($audit.LocalAdministratorCollection.Status)"
+    Write-Host "Local administrators: $localAdministratorCount"
 }

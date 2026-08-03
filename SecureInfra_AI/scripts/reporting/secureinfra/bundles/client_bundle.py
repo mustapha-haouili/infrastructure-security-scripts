@@ -2449,6 +2449,21 @@ def summarize_source_json(key: str, data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def optional_explicit_bool(value: Any) -> bool | None:
+    """Return an explicit boolean while preserving absent or unsupported values."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in (0, 1):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "yes", "1"}:
+            return True
+        if normalized in {"false", "no", "0"}:
+            return False
+    return None
+
+
 def build_environment_summary(
     client_info: dict[str, Any] | None,
     collection_summary: dict[str, Any] | None,
@@ -2466,7 +2481,7 @@ def build_environment_summary(
         "user_domain": str(client.get("UserDomain") or ""),
         "os_caption": str(client.get("OsCaption") or ""),
         "os_version": str(client.get("OsVersion") or ""),
-        "is_administrator": bool(client.get("IsAdministrator")) if "IsAdministrator" in client else False,
+        "is_administrator": optional_explicit_bool(client.get("IsAdministrator")),
         "collection_id": str(summary.get("CollectionId") or manifest_data.get("CollectionId") or ""),
         "scope_resolved": as_string_list(summary.get("ScopeResolved") or manifest_data.get("ScopeResolved")),
         "safety_mode": str(summary.get("SafetyMode") or manifest_data.get("SafetyMode") or ""),

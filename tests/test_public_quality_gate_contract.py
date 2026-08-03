@@ -5,6 +5,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 QUALITY_GATE = ROOT / "quality-gate.ps1"
+WINDOWS_WORKFLOW = ROOT / ".github" / "workflows" / "windows-runtime-compatibility.yml"
+GITIGNORE = ROOT / ".gitignore"
 
 
 class PublicQualityGateContractTests(unittest.TestCase):
@@ -60,6 +62,22 @@ class PublicQualityGateContractTests(unittest.TestCase):
         allowed_scoped_variables = {"$script:"}
         unexpected = [item for item in bad_expansions if item not in allowed_scoped_variables]
         self.assertEqual(unexpected, [])
+
+    def test_windows_workflow_runs_ps51_parse_and_full_quality_gate(self):
+        workflow = WINDOWS_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn("runs-on: windows-latest", workflow)
+        self.assertIn("python-version: '3.11'", workflow)
+        self.assertIn("shell: powershell", workflow)
+        self.assertIn("Parser]::ParseFile", workflow)
+        self.assertIn("quality-gate.ps1 -Python python", workflow)
+        self.assertIn("-ExecutionPolicy Bypass", workflow)
+        self.assertNotIn("continue-on-error", workflow)
+
+    def test_windows_workflows_are_not_hidden_by_yaml_ignore_rule(self):
+        gitignore = GITIGNORE.read_text(encoding="utf-8")
+
+        self.assertIn("!.github/workflows/*.yml", gitignore.splitlines())
 
 
 if __name__ == "__main__":

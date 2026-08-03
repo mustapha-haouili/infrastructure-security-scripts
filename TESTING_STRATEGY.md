@@ -19,6 +19,14 @@ On Unix-like systems, static shell checks may also be run where supported:
 ./tests/run_static_checks.sh
 ```
 
+## Native Windows continuous integration
+
+`.github/workflows/windows-runtime-compatibility.yml` runs on
+`windows-latest`. It parses the root quality gate and every tracked PowerShell
+script with the inbox Windows PowerShell 5.1 parser, then runs the complete
+public quality gate using Python 3.11. Failures are blocking; the workflow does
+not use `continue-on-error`.
+
 ## Test scope
 
 Public tests should cover:

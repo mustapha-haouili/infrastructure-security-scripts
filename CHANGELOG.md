@@ -10,6 +10,15 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 - Require explicit SID evidence with RID `500` before classifying an account as
   the built-in Administrator. Account name, category text, and risk labels
   alone now remain unverified instead of proving that identity.
+- Reused the SID-based built-in group provider in the main Windows host audit.
+  Local Administrators evidence is now role-aware and localization-safe, and
+  unavailable membership has an explicit status and nullable count instead of
+  appearing as an empty group.
+- Preserve a missing client `IsAdministrator` value as Unknown in normalized
+  environment metadata instead of converting it to `false`.
+- Added a native Windows CI workflow that parses the public PowerShell runtime
+  with Windows PowerShell 5.1 and runs the complete public quality gate on a
+  Windows runner.
 
 ## [1.3.0-beta.7] - 2026-07-28
 

@@ -173,7 +173,11 @@ Safety notes:
 ### `scripts/windows/host/Invoke-WindowsSecurityAudit.ps1`
 
 Collects Windows security posture information and writes a JSON report. It does
-not change the system.
+not change the system. Built-in Administrators membership is resolved by SID
+`S-1-5-32-544`: domain controllers use the Active Directory `BUILTIN`
+container, while member hosts use LocalAccounts or a read-only WinNT fallback.
+Missing group visibility is recorded as Unknown rather than an empty member
+list.
 
 Default mode: audit only.
 
@@ -212,6 +216,10 @@ Start reading the report at:
 
 - `Summary.Posture`
 - `Summary.SeverityCounts`
+- `LocalAdministratorCollection.Status`
+- `LocalAdministratorCollection.Provider`
+- `LocalAdministratorCollection.MemberCount`
+- `LocalAdministrators`
 - `Findings`
 
 ### `scripts/windows/host/Get-WindowsLocalAdminInventory.ps1`

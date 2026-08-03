@@ -95,6 +95,7 @@ class ClientCollectionLauncherTests(unittest.TestCase):
     def test_builtin_group_inventory_supports_domain_controllers_and_localized_hosts(self):
         helper_path = "scripts/windows/common/Get-WindowsBuiltinGroupInventory.ps1"
         helper = self.read_text(helper_path)
+        host_audit = self.read_text("scripts/windows/host/Invoke-WindowsSecurityAudit.ps1")
         local_admins = self.read_text("scripts/windows/host/Get-WindowsLocalAdminInventory.ps1")
         rdp = self.read_text("scripts/windows/host/Get-WindowsRDPExposureAudit.ps1")
 
@@ -104,11 +105,16 @@ class ClientCollectionLauncherTests(unittest.TestCase):
         self.assertIn("Get-SecureInfraLocalizedBuiltinGroupName", helper)
         self.assertIn('Provider     = "WinNT"', helper)
         self.assertIn("does not change group membership", helper)
-        for collector in (local_admins, rdp):
+        for collector in (host_audit, local_admins, rdp):
             self.assertIn("Get-WindowsBuiltinGroupInventory.ps1", collector)
             self.assertIn("Get-SecureInfraBuiltinGroup", collector)
             self.assertIn("Get-SecureInfraBuiltinGroupMembers", collector)
 
+        self.assertIn('Sid "S-1-5-32-544"', host_audit)
+        self.assertIn("LocalAdministratorCollection", host_audit)
+        self.assertIn('MemberCount        = if ($status -eq "Complete")', host_audit)
+        self.assertNotIn('Get-LocalGroupMember -Group "Administrators"', host_audit)
+        self.assertNotIn('net localgroup Administrators', host_audit)
         self.assertIn('Sid "S-1-5-32-544"', local_admins)
         self.assertIn('"LocalAdminEvidenceUnavailable"', local_admins)
         self.assertIn("CollectionStatus", local_admins)

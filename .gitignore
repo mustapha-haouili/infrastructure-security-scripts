@@ -36,6 +36,7 @@ Thumbs.db
 # internal Rule
 scripts/ruleset
 *.yml
+!.github/workflows/*.yml
 
 #docs
 docs/review-artifacts/

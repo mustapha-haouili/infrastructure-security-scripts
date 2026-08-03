@@ -1,0 +1,61 @@
+name: Windows runtime compatibility
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-runtime:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout public repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Parse PowerShell with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $failures = New-Object System.Collections.Generic.List[string]
+          $paths = @(
+            (Join-Path $PWD "quality-gate.ps1"),
+            (Join-Path $PWD "scripts")
+          )
+          foreach ($path in $paths) {
+            if (Test-Path -LiteralPath $path -PathType Leaf) {
+              $files = @(Get-Item -LiteralPath $path)
+            }
+            else {
+              $files = @(Get-ChildItem -LiteralPath $path -Recurse -File -Filter *.ps1)
+            }
+            foreach ($file in $files) {
+              $tokens = $null
+              $errors = $null
+              [System.Management.Automation.Language.Parser]::ParseFile(
+                $file.FullName,
+                [ref]$tokens,
+                [ref]$errors
+              ) | Out-Null
+              foreach ($parseError in @($errors)) {
+                $failures.Add("$($file.FullName):$($parseError.Extent.StartLineNumber): $($parseError.Message)") | Out-Null
+              }
+            }
+          }
+          if ($failures.Count -gt 0) {
+            $failures | ForEach-Object { Write-Error $_ }
+            exit 1
+          }
+
+      - name: Run full public quality gate on Windows
+        shell: powershell
+        run: |
+          & powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+            -File .\quality-gate.ps1 -Python python
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

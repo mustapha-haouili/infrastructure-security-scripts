@@ -15,7 +15,7 @@ WINDOWS_SAMPLE_ROOT = ROOT / "SecureInfra_AI" / "examples" / "sample-input" / "w
 sys.path.insert(0, str(SECUREINFRA_REPORTING))
 
 from secureinfra.loaders.json_loader import load_json_file
-from secureinfra.bundles.client_bundle import normalize_client_source_file
+from secureinfra.bundles.client_bundle import build_environment_summary, normalize_client_source_file
 from secureinfra.network_context.port_catalog import lookup_port_context
 from secureinfra.normalizers.windows_host import normalize_windows_host_audit
 from secureinfra.normalizers.windows_network import normalize_windows_network_exposure
@@ -87,6 +87,19 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
                 self.assertIsInstance(data["Findings"], list)
                 self.assertGreater(len(data["Findings"]), 0)
                 self.assertEqual(data.get("ComputerName") or data.get("ReportMetadata", {}).get("ComputerName"), case["computer_name"])
+
+    def test_client_environment_preserves_unknown_administrator_state(self):
+        missing = build_environment_summary({}, {}, {}, Path("bundle"), "bundle")
+        explicit_false = build_environment_summary(
+            {"IsAdministrator": False}, {}, {}, Path("bundle"), "bundle"
+        )
+        explicit_true = build_environment_summary(
+            {"IsAdministrator": "true"}, {}, {}, Path("bundle"), "bundle"
+        )
+
+        self.assertIsNone(missing["is_administrator"])
+        self.assertIs(explicit_false["is_administrator"], False)
+        self.assertIs(explicit_true["is_administrator"], True)
 
     def test_windows_samples_normalize_to_common_finding_contract(self):
         for case in WINDOWS_SAMPLE_CASES:
