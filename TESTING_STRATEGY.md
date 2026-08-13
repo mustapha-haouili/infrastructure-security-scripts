@@ -27,6 +27,14 @@ script with the inbox Windows PowerShell 5.1 parser, then runs the complete
 public quality gate using Python 3.11. Failures are blocking; the workflow does
 not use `continue-on-error`.
 
+## Field validation boundary
+
+CI validates contracts and a hosted Windows runner; it does not establish
+support for every domain-controller, member-server, workstation, locale, or
+permission combination. [FIELD_VALIDATION.md](FIELD_VALIDATION.md) defines the
+minimum authorized live-system dimensions and the metadata-only evidence that
+may be retained. Planned cases must not be presented as validated support.
+
 ## Test scope
 
 Public tests should cover:

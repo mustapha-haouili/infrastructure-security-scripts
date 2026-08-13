@@ -27,6 +27,11 @@ container, while member hosts use LocalAccounts or a read-only WinNT fallback.
 This avoids English-name assumptions and preserves an explicit Unknown state
 when membership cannot be read.
 
+Automated tests are not treated as proof of support for every live platform.
+See [FIELD_VALIDATION.md](FIELD_VALIDATION.md) for the required Windows role,
+runtime, locale, privilege, and sanitized-evidence matrix before changing a
+platform support statement.
+
 ## Try it in 2 minutes
 
 Run the local SecureInfra_AI analyzer against fictional sample evidence already
@@ -295,10 +300,13 @@ Collect backup readiness explicitly:
 ```
 
 The current collector supports AD, GPO, Windows host, server, workstation,
-local network exposure, and backup readiness evidence. The broad `All` scope includes Backup readiness so the default client bundle is
-complete. The broad `AD` scope still includes GPO health evidence for
-compatibility, while `GPO` can be requested alone when only Group Policy
-evidence is needed.
+local network exposure, and backup readiness evidence. The broad `All` scope
+uses local Windows role facts: AD/GPO runs only on a detected domain controller,
+Server or Workstation is selected from the operating-system product type, and
+Backup readiness remains included. Unknown role evidence is not silently
+treated as absent. Explicit `AD` and `GPO` scopes remain available for an
+approved management host. The broad `AD` scope still includes GPO health
+evidence.
 
 Analyze the full client collection folder or zip:
 

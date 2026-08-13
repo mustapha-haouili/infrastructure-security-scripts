@@ -32,6 +32,7 @@ def normalize_multi_bundle(input_dir: str | Path) -> dict[str, Any]:
     seen_machine_ids: dict[str, int] = {}
     seen_collection_keys: set[str] = set()
     seen_fleet_finding_ids: set[str] = set()
+    prepared_bundles: list[dict[str, Any]] = []
 
     for bundle_index, bundle_input in enumerate(bundle_inputs, start=1):
         source_label = str(bundle_input)
@@ -49,6 +50,27 @@ def normalize_multi_bundle(input_dir: str | Path) -> dict[str, Any]:
 
         machine_name = machine_name_for(client_report, bundle_input, bundle_index)
         machine_id = unique_machine_id(machine_name, seen_machine_ids, bundle_index)
+        prepared_bundles.append(
+            {
+                "report": client_report,
+                "machine_name": machine_name,
+                "machine_id": machine_id,
+                "source_label": source_label,
+            }
+        )
+
+    shared_ad_domains = {
+        str(as_dict(item["report"].get("environment_summary")).get("domain") or "").strip().lower()
+        for item in prepared_bundles
+        if report_has_ad_evidence(item["report"])
+        and str(as_dict(item["report"].get("environment_summary")).get("domain") or "").strip()
+    }
+
+    for item in prepared_bundles:
+        client_report = item["report"]
+        machine_name = item["machine_name"]
+        machine_id = item["machine_id"]
+        source_label = item["source_label"]
         child_findings = client_report.get("findings", [])
         if not isinstance(child_findings, list):
             child_findings = []
@@ -72,9 +94,30 @@ def normalize_multi_bundle(input_dir: str | Path) -> dict[str, Any]:
         for scope, count in child_scope_counts.items():
             scope_counts[scope] += count
 
-        rows = bundle_coverage_rows(client_report, machine_name, machine_id, source_label)
+        domain = str(as_dict(client_report.get("environment_summary")).get("domain") or "").strip().lower()
+        shared_ad_available = bool(
+            domain
+            and domain in shared_ad_domains
+            and not report_has_ad_evidence(client_report)
+        )
+        rows = bundle_coverage_rows(
+            client_report,
+            machine_name,
+            machine_id,
+            source_label,
+            shared_ad_available=shared_ad_available,
+        )
         coverage_matrix.extend(rows)
-        machine_inventory.append(machine_record(client_report, machine_name, machine_id, source_label, rows))
+        machine_inventory.append(
+            machine_record(
+                client_report,
+                machine_name,
+                machine_id,
+                source_label,
+                rows,
+                shared_ad_available=shared_ad_available,
+            )
+        )
 
     counts = severity_counts(findings)
     top_machines = top_risky_machines(machine_inventory)
@@ -143,6 +186,7 @@ def normalize_multi_bundle(input_dir: str | Path) -> dict[str, Any]:
                 "Finding IDs are prefixed with the machine identifier to keep IDs unique across hosts.",
                 "Duplicate collection IDs are skipped so a zip and its extracted folder are not counted twice.",
                 "Machine inventory and coverage_matrix metadata show which scopes were collected, missing, or failed per host.",
+                "AD evidence is domain-shared: one valid ad-shared collection covers other bundles in the same explicitly identified domain.",
                 "Human owner review and approved change control are required before remediation.",
             ],
         }
@@ -279,18 +323,41 @@ def stable_finding_suffix(finding: dict[str, Any], finding_index: int) -> str:
     return hashlib.sha1(text.encode("utf-8")).hexdigest()[:8].upper()
 
 
+def report_has_ad_evidence(report: dict[str, Any]) -> bool:
+    summary = as_dict(report.get("summary"))
+    scope_file_counts = as_dict(summary.get("scope_file_counts"))
+    if int(scope_file_counts.get("AD", 0) or 0) > 0:
+        return True
+    metadata = as_dict(report.get("report_type_metadata")) or as_dict(report.get("metadata"))
+    loaded = as_dict(metadata.get("loaded_files"))
+    detected = as_dict(metadata.get("detected_files"))
+    return "ad_shared" in loaded or "ad_shared" in detected
+
+
 def machine_record(
     report: dict[str, Any],
     machine_name: str,
     machine_id: str,
     source_label: str,
     rows: list[dict[str, Any]],
+    *,
+    shared_ad_available: bool = False,
 ) -> dict[str, Any]:
     summary = as_dict(report.get("summary"))
     metadata = as_dict(report.get("report_type_metadata")) or as_dict(report.get("metadata"))
     environment = as_dict(report.get("environment_summary"))
     finding_count = int(summary.get("normalized_finding_count") or len(report.get("findings", [])))
     counts = severity_counts([item for item in report.get("findings", []) if isinstance(item, dict)])
+    missing_files = as_string_list(metadata.get("missing_files"))
+    failed_files = as_dict(metadata.get("failed_files"))
+    coverage_failed_files = failed_files
+    if shared_ad_available:
+        missing_files = [item for item in missing_files if item != "ad-shared/"]
+        coverage_failed_files = {
+            key: value
+            for key, value in failed_files.items()
+            if scope_for_client_file_key(str(key)) != "AD"
+        }
     return {
         "machine_id": machine_id,
         "machine_name": machine_name,
@@ -303,14 +370,22 @@ def machine_record(
         "severity_counts": counts,
         "scope_finding_counts": as_scope_counts(summary.get("scope_finding_counts")),
         "scope_file_counts": as_dict(summary.get("scope_file_counts")),
-        "coverage_status": coverage_status(rows, object_entries(metadata.get("failed_files"))).get("label"),
-        "coverage_status_class": coverage_status(rows, object_entries(metadata.get("failed_files"))).get("className"),
-        "missing_files": as_string_list(metadata.get("missing_files")),
-        "failed_files": as_dict(metadata.get("failed_files")),
+        "coverage_status": coverage_status(rows, object_entries(coverage_failed_files)).get("label"),
+        "coverage_status_class": coverage_status(rows, object_entries(coverage_failed_files)).get("className"),
+        "missing_files": missing_files,
+        "failed_files": failed_files,
+        "shared_ad_coverage": shared_ad_available,
     }
 
 
-def bundle_coverage_rows(report: dict[str, Any], machine_name: str, machine_id: str, source_label: str) -> list[dict[str, Any]]:
+def bundle_coverage_rows(
+    report: dict[str, Any],
+    machine_name: str,
+    machine_id: str,
+    source_label: str,
+    *,
+    shared_ad_available: bool = False,
+) -> list[dict[str, Any]]:
     metadata = as_dict(report.get("report_type_metadata")) or as_dict(report.get("metadata"))
     summary = as_dict(report.get("summary"))
     environment = as_dict(report.get("environment_summary"))
@@ -324,8 +399,15 @@ def bundle_coverage_rows(report: dict[str, Any], machine_name: str, machine_id: 
     rows = []
     for scope in SUPPORTED_SCOPES:
         selected = scope in requested_scopes if requested_scopes else scope_file_count(scope, scope_file_counts, loaded_files, detected_files) > 0
-        required_missing = [item for item in required_files_for_scope(scope) if selected and item in missing_files]
+        shared_scope_coverage = scope == "AD" and selected and shared_ad_available
+        required_missing = [
+            item
+            for item in required_files_for_scope(scope)
+            if selected and not shared_scope_coverage and item in missing_files
+        ]
         failed = any(scope_for_client_file_key(item["key"]) == scope for item in failed_files)
+        if shared_scope_coverage:
+            failed = False
         file_count = int(scope_file_counts.get(scope, scope_file_count(scope, scope_file_counts, loaded_files, detected_files)) or 0)
         finding_count = int(scope_finding_counts.get(scope, 0) or 0)
         status = "Collected"
@@ -339,7 +421,7 @@ def bundle_coverage_rows(report: dict[str, Any], machine_name: str, machine_id: 
         elif required_missing:
             status = "Needs rerun"
             status_class = "rerun"
-        elif file_count == 0:
+        elif file_count == 0 and not shared_scope_coverage:
             status = "Partial"
             status_class = "partial"
         rows.append(
@@ -354,6 +436,7 @@ def bundle_coverage_rows(report: dict[str, Any], machine_name: str, machine_id: 
                 "required_missing": required_missing,
                 "status": status,
                 "status_class": status_class,
+                "coverage_source": "shared-domain-evidence" if shared_scope_coverage else "local-bundle",
             }
         )
     return rows
@@ -362,9 +445,10 @@ def bundle_coverage_rows(report: dict[str, Any], machine_name: str, machine_id: 
 def coverage_status(rows: list[dict[str, Any]], failed_files: list[dict[str, str]]) -> dict[str, str]:
     if failed_files:
         return {"label": "Failed", "className": "failed"}
-    if any(row.get("status") == "Needs rerun" for row in rows):
+    selected_rows = [row for row in rows if row.get("selected", True)]
+    if any(row.get("status") == "Needs rerun" for row in selected_rows):
         return {"label": "Needs rerun", "className": "rerun"}
-    if any(row.get("status") in {"Not collected", "Partial"} for row in rows):
+    if any(row.get("status") in {"Not collected", "Partial"} for row in selected_rows):
         return {"label": "Partial", "className": "partial"}
     return {"label": "Complete", "className": "complete"}
 

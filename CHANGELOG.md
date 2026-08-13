@@ -6,7 +6,32 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 
 ## [Unreleased]
 
+## [1.3.0-beta.8] - 2026-08-13
+
 ### Fixed
+- Preserved Windows `All` scope components as an array on domain controllers.
+  PowerShell 5.1 previously coerced the single `AD` and `Server` intermediate
+  values into one concatenated scope name, causing a valid DC run to execute
+  zero public collection tasks.
+- Made Windows `All` collection role-aware: workstation operating systems now
+  collect the Workstation scope, server operating systems collect the Server
+  scope, and AD/GPO is collected automatically only on a detected domain
+  controller. Explicit scopes remain available as operator overrides. The
+  analyzer de-duplicates legacy role scopes, requires files only for effective
+  scopes, and treats valid AD evidence as shared across bundles in the same
+  explicitly identified domain.
+- Extended the Windows compatibility host record with nullable domain-role
+  facts and a `NotApplicable` readiness state. Missing role evidence remains
+  Unknown rather than being converted to a member-server assumption.
+- Added explicit Security/System event-log query status to Windows event
+  summaries. Failed or partial log access now emits an informational evidence
+  gap and an `Insufficient evidence` verdict instead of claiming that no attack
+  indicators were found. Legacy zero-event summaries without query status are
+  also normalized as Unknown coverage.
+- Stopped optional CollectorSafeMode hardening-preview and RDP cache-cleanup
+  artifacts from appearing as missing coverage. Fleet status now evaluates
+  only scopes selected for each host, so an intentionally unselected scope no
+  longer downgrades an otherwise complete machine.
 - Require explicit SID evidence with RID `500` before classifying an account as
   the built-in Administrator. Account name, category text, and risk labels
   alone now remain unverified instead of proving that identity.
@@ -19,6 +44,9 @@ This project follows semantic versioning after the initial `1.0.0` baseline.
 - Added a native Windows CI workflow that parses the public PowerShell runtime
   with Windows PowerShell 5.1 and runs the complete public quality gate on a
   Windows runner.
+- Added a field-validation policy that separates CI contract coverage from
+  live platform support claims and requires role, runtime, locale, privilege,
+  and sanitized-evidence coverage before support statements change.
 
 ## [1.3.0-beta.7] - 2026-07-28
 

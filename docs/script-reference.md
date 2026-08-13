@@ -108,7 +108,7 @@ Parameters:
 
 | Parameter | Type | Default | Description |
 |---|---:|---|---|
-| `-Scope` | string array | `All` | Scopes to collect. Supported values: `All`, `AD`, `GPO`, `Host`, `Server`, `Workstation`, `Network`, `Backup`. The broad `AD` scope still includes GPO health evidence for compatibility. `GPO` can be requested alone for Group Policy evidence only. The broad `All` scope includes Backup readiness. |
+| `-Scope` | string array | `All` | Scopes to collect. Supported values: `All`, `AD`, `GPO`, `Host`, `Server`, `Workstation`, `Network`, `Backup`. `All` includes AD/GPO only on a detected domain controller, selects Server for ProductType 2/3 or Workstation for ProductType 1, and includes Backup. Unknown role evidence remains Unknown and keeps the applicable discovery scope. Explicit `AD` or `GPO` is an intentional override for an approved management host. |
 | `-OutputDirectory` | string | `.\reports\secureinfra-client-collection-COMPUTER-TIMESTAMP` | Collection output directory. |
 | `-BaselineDirectory` | string | `.\reports\secureinfra-client-baselines` | Persistent local baseline directory used by the privileged group audit. |
 | `-PrivilegedGroupBaselinePath` | string | empty | Optional explicit privileged group baseline path. |
@@ -167,8 +167,10 @@ Safety notes:
 - Backup readiness is collected by the broad `All` scope and can also be
   requested directly with `-Scope Backup`; it checks metadata only and does not
   read backup contents or run restores.
-- If an AD module, GPO module, or permission is missing, that task is recorded
-  as failed and the collector continues unless `-StopOnError` is used.
+- On `All`, a host explicitly identified as not being a domain controller does
+  not select AD/GPO and their artifacts are not reported as missing. With an
+  explicit `AD` or `GPO` request, missing modules or permissions remain visible
+  evidence gaps and collection continues unless `-StopOnError` is used.
 
 ### `scripts/windows/host/Invoke-WindowsSecurityAudit.ps1`
 
@@ -993,7 +995,7 @@ Default mode: audit only.
 Outputs:
 
 - `summary.txt`: admin-readable verdict, findings, evidence, and actions
-- `summary.json`: machine-readable summary with `InvestigationSummary`
+- `summary.json`: machine-readable summary with `CollectionStatus` and `InvestigationSummary`
 - `events.csv`: one row per event with parsed fields and raw evidence
 
 Parameters:
@@ -1018,7 +1020,10 @@ Examples:
 ```
 
 Start with `summary.txt`. A High item means "review first", not automatic proof
-of an attack.
+of an attack. `CollectionStatus.State` is `Complete`, `Partial`, or
+`Unavailable`. A partial or unavailable query produces an informational
+evidence-gap finding and the verdict `Insufficient evidence`; zero events are
+reported as clear only when both tracked logs were queried successfully.
 
 ### `scripts/windows/server/Clear-RDPUserProfileCache.ps1`
 

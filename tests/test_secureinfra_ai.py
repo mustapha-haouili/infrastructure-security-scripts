@@ -18,6 +18,7 @@ SAMPLE_INPUT = ROOT / "SecureInfra_AI" / "examples" / "sample-input" / "active-d
 sys.path.insert(0, str(SECUREINFRA_REPORTING))
 
 from secureinfra.bundles.ad_shared_bundle import discover_ad_shared_bundle, normalize_ad_shared_bundle
+from secureinfra.bundles.client_bundle import normalize_windows_event_summary_rows
 from secureinfra.loaders.csv_loader import load_csv_file
 from secureinfra.loaders.json_loader import load_json_file
 from secureinfra.normalizers.ad_inactive_users import normalize_ad_inactive_users
@@ -80,6 +81,23 @@ class SecureInfraAITests(unittest.TestCase):
             self.assertNotIn(blocked, serialized)
         for blocked_path in blocked_paths:
             self.assertNotIn(str(blocked_path).lower(), serialized)
+
+    def test_legacy_zero_event_summary_without_collection_status_becomes_evidence_gap(self):
+        legacy = {
+            "ComputerName": "SYNTHETIC-DC01",
+            "TotalEvents": 0,
+            "InvestigationSummary": {"Findings": []},
+        }
+
+        rows = normalize_windows_event_summary_rows([], legacy)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["FindingId"], "EVENT-LOG-COLLECTION-GAP")
+        self.assertEqual(rows[0]["Severity"], "Info")
+
+        complete = copy.deepcopy(legacy)
+        complete["CollectionStatus"] = {"State": "Complete"}
+        self.assertEqual(normalize_windows_event_summary_rows([], complete), [])
 
     def create_ad_shared_bundle(self, root: Path, include_inactive_users: bool = True) -> Path:
         bundle_dir = root / "ad-shared"
@@ -965,6 +983,31 @@ class SecureInfraAITests(unittest.TestCase):
             self.assert_evidence_contract(normalized)
             self.assert_no_internal_paths(normalized, bundle_dir)
 
+    def test_client_bundle_safe_mode_outputs_are_optional_coverage_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle_dir = self.create_client_bundle(Path(tmp))
+            (bundle_dir / "host" / "windows-hardening-preview.json").unlink()
+            (bundle_dir / "server" / "rdp-profile-cache-cleanup.json").unlink()
+            output_dir = Path(tmp) / "output"
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = secureinfra_analyzer.main(
+                    [
+                        "--input",
+                        str(bundle_dir),
+                        "--type",
+                        "client-bundle",
+                        "--output",
+                        str(output_dir),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            normalized = json.loads((output_dir / "normalized-report.json").read_text(encoding="utf-8"))
+            missing = normalized["metadata"]["missing_files"]
+            self.assertNotIn("host/windows-hardening-preview.json", missing)
+            self.assertNotIn("server/rdp-profile-cache-cleanup.json", missing)
+
     def test_client_bundle_zip_input_is_supported(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1028,6 +1071,79 @@ class SecureInfraAITests(unittest.TestCase):
             self.assertIn("network_windows_network_exposure", normalized["metadata"]["loaded_files"])
             self.assertIn("server_windows_server_security", normalized["metadata"]["loaded_files"])
             self.assertIn("workstation_windows_workstation_security", normalized["metadata"]["loaded_files"])
+
+    def test_legacy_all_scope_server_bundle_does_not_double_count_workstation_findings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bundle_dir = self.create_client_bundle(root)
+            self.add_expanded_scope_reports(bundle_dir)
+            for file_name in ("collection-summary.json", "manifest.json"):
+                path = bundle_dir / file_name
+                value = json.loads(path.read_text(encoding="utf-8"))
+                value["ScopeRequested"] = ["All"]
+                value["ScopeResolved"] = ["AD", "Host", "Server", "Workstation", "Network", "Backup"]
+                path.write_text(json.dumps(value), encoding="utf-8")
+            output_dir = root / "output"
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = secureinfra_analyzer.main(
+                    [
+                        "--input",
+                        str(bundle_dir),
+                        "--type",
+                        "client-bundle",
+                        "--output",
+                        str(output_dir),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            normalized = json.loads((output_dir / "normalized-report.json").read_text(encoding="utf-8"))
+            self.assertEqual(normalized["summary"]["normalized_finding_count"], 22)
+            self.assertEqual(normalized["summary"]["scope_finding_counts"]["Workstation"], 0)
+            self.assertEqual(normalized["summary"]["scope_file_counts"]["Workstation"], 0)
+            self.assertEqual(normalized["environment_summary"]["windows_role_scope"], "Server")
+            self.assertNotIn("Workstation", normalized["environment_summary"]["scope_resolved"])
+            self.assertIn("Workstation", normalized["environment_summary"]["scope_collected"])
+            self.assertIn(
+                "workstation_windows_workstation_security",
+                normalized["metadata"]["ignored_inapplicable_scope_files"],
+            )
+            self.assertFalse(
+                any(item["finding_id"].startswith("WORKSTATION-") for item in normalized["findings"])
+            )
+
+    def test_all_scope_non_domain_controller_does_not_require_ad_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bundle_dir = self.create_client_bundle(root)
+            shutil.rmtree(bundle_dir / "ad-shared")
+            client_info_path = bundle_dir / "client-info.json"
+            client_info = json.loads(client_info_path.read_text(encoding="utf-8"))
+            client_info["OsProductType"] = 3
+            client_info["ComputerDomainRole"] = 3
+            client_info["IsDomainController"] = False
+            client_info_path.write_text(json.dumps(client_info), encoding="utf-8")
+            for file_name in ("collection-summary.json", "manifest.json"):
+                path = bundle_dir / file_name
+                value = json.loads(path.read_text(encoding="utf-8"))
+                value["ScopeRequested"] = ["All"]
+                value["ScopeResolved"] = ["AD", "Host", "Server"]
+                path.write_text(json.dumps(value), encoding="utf-8")
+            output_dir = root / "output"
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = secureinfra_analyzer.main(
+                    ["--input", str(bundle_dir), "--type", "client-bundle", "--output", str(output_dir)]
+                )
+
+            self.assertEqual(exit_code, 0)
+            normalized = json.loads((output_dir / "normalized-report.json").read_text(encoding="utf-8"))
+            self.assertEqual(normalized["summary"]["normalized_finding_count"], 5)
+            self.assertNotIn("ad-shared/", normalized["metadata"]["missing_files"])
+            self.assertNotIn("AD", normalized["environment_summary"]["scope_resolved"])
+            self.assertEqual(normalized["environment_summary"]["directory_scope_applicability"], "not-applicable")
+            self.assertFalse(normalized["environment_summary"]["is_domain_controller"])
 
     def test_multi_bundle_keeps_server_security_finding_ids_unique(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1213,6 +1329,78 @@ class SecureInfraAITests(unittest.TestCase):
             self.assertTrue(any(str(value).endswith(".zip!ad-shared") for value in normalized["source_files"]))
             self.assert_evidence_contract(normalized)
             self.assert_no_internal_paths(normalized, root, fleet_dir)
+
+    def test_multi_bundle_unselected_scopes_do_not_downgrade_machine_coverage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fleet_dir = root / "fleet-input"
+            fleet_dir.mkdir()
+            bundle_dir = self.create_client_bundle(fleet_dir, machine_name="EXAMPLE-SRV01")
+            for file_name in ("collection-summary.json", "manifest.json"):
+                path = bundle_dir / file_name
+                content = json.loads(path.read_text(encoding="utf-8"))
+                content["ScopeResolved"] = ["Host"]
+                path.write_text(json.dumps(content), encoding="utf-8")
+            output_dir = root / "output"
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = secureinfra_analyzer.main(
+                    [
+                        "--input",
+                        str(fleet_dir),
+                        "--type",
+                        "multi-bundle",
+                        "--output",
+                        str(output_dir),
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            normalized = json.loads((output_dir / "normalized-report.json").read_text(encoding="utf-8"))
+            machine = normalized["report_type_metadata"]["machine_inventory"][0]
+            self.assertEqual(machine["coverage_status"], "Complete")
+            server_row = next(
+                row
+                for row in normalized["report_type_metadata"]["coverage_matrix"]
+                if row["scope"] == "Server"
+            )
+            self.assertFalse(server_row["selected"])
+            self.assertEqual(server_row["status"], "Not collected")
+
+    def test_multi_bundle_uses_domain_shared_ad_evidence_for_other_hosts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fleet_dir = root / "fleet-input"
+            fleet_dir.mkdir()
+            dc_bundle = self.create_client_bundle(fleet_dir, machine_name="EXAMPLE-DC01")
+            self.add_expanded_scope_reports(dc_bundle, machine_name="EXAMPLE-DC01")
+            member_bundle = self.create_client_bundle(fleet_dir, machine_name="EXAMPLE-SRV02")
+            self.add_expanded_scope_reports(member_bundle, machine_name="EXAMPLE-SRV02")
+            shutil.rmtree(member_bundle / "ad-shared")
+            output_dir = root / "output"
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = secureinfra_analyzer.main(
+                    ["--input", str(fleet_dir), "--type", "multi-bundle", "--output", str(output_dir)]
+                )
+
+            self.assertEqual(exit_code, 0)
+            normalized = json.loads((output_dir / "normalized-report.json").read_text(encoding="utf-8"))
+            member = next(
+                item
+                for item in normalized["report_type_metadata"]["machine_inventory"]
+                if item["machine_name"] == "EXAMPLE-SRV02"
+            )
+            self.assertEqual(member["coverage_status"], "Complete")
+            self.assertTrue(member["shared_ad_coverage"])
+            self.assertNotIn("ad-shared/", member["missing_files"])
+            ad_row = next(
+                row
+                for row in normalized["report_type_metadata"]["coverage_matrix"]
+                if row["machine_name"] == "EXAMPLE-SRV02" and row["scope"] == "AD"
+            )
+            self.assertEqual(ad_row["status"], "Collected")
+            self.assertEqual(ad_row["coverage_source"], "shared-domain-evidence")
 
     def test_multi_bundle_skips_duplicate_collection_zip_and_folder(self):
         with tempfile.TemporaryDirectory() as tmp:

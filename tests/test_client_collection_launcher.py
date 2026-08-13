@@ -1,4 +1,7 @@
+import json
 import re
+import shutil
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -42,7 +45,7 @@ class ClientCollectionLauncherTests(unittest.TestCase):
         self.assertIn("Get-WindowsWorkstationSecurityInventory.ps1", collector)
         self.assertIn("Get-WindowsNetworkExposureAudit.ps1", collector)
         self.assertIn("Get-WindowsBackupReadinessAudit.ps1", collector)
-        self.assertIn("The broad All scope includes Backup readiness", collector)
+        self.assertIn("The broad All scope includes AD/GPO only", collector)
         self.assertIn("CompatibilityProfile", collector)
         self.assertIn("compatibility-report.json", collector)
         self.assertIn("Scope compatibility preflight", collector)
@@ -50,10 +53,58 @@ class ClientCollectionLauncherTests(unittest.TestCase):
     def test_client_collection_scope_values_document_current_coverage(self):
         collector = self.read_text("scripts/windows/Start-SecureInfraClientCollection.ps1")
 
-        self.assertIn('$defaultAllScopes = @("AD", "Host", "Server", "Workstation", "Network", "Backup")', collector)
+        self.assertIn('$productTypeNumber -eq 1', collector)
+        self.assertIn('$productTypeNumber -in @(2, 3)', collector)
+        self.assertIn('$IsDomainController -ne $false', collector)
+        self.assertIn('$roleScopes = @(', collector)
+        self.assertIn('$directoryScopes = @(', collector)
+        self.assertIn('$defaultAllScopes = @($directoryScopes) + @("Host") + @($roleScopes) + @("Network", "Backup")', collector)
+        self.assertIn('OsProductType', collector)
+        self.assertIn('ComputerDomainRole', collector)
+        self.assertIn('IsDomainController', collector)
+        self.assertIn('Resolve-CollectionScopes -OsProductType $clientInfo.OsProductType -IsDomainController $clientInfo.IsDomainController', collector)
         self.assertIn('@("AD", "GPO", "Host", "Server", "Workstation", "Network", "Backup")', collector)
         self.assertIn('SupportedToday     = @("AD", "GPO", "Host", "Server", "Workstation", "Network", "Backup")', collector)
         self.assertIn('NotYetImplemented  = @()', collector)
+
+    def test_all_scope_resolution_preserves_domain_controller_scope_array(self):
+        powershell = (
+            shutil.which("powershell.exe")
+            or shutil.which("powershell")
+            or shutil.which("pwsh")
+        )
+        if powershell is None:
+            self.skipTest("PowerShell is not installed")
+
+        collector = self.read_text("scripts/windows/Start-SecureInfraClientCollection.ps1")
+        start = collector.index("function Resolve-CollectionScopes")
+        end = collector.index("function Add-SkippedTask", start)
+        function_source = collector[start:end]
+        command = f"""
+{function_source}
+$script:Scope = @("All")
+[pscustomobject]@{{
+    DomainController = @((Resolve-CollectionScopes -OsProductType 2 -IsDomainController $true))
+    MemberServer = @((Resolve-CollectionScopes -OsProductType 3 -IsDomainController $false))
+}} | ConvertTo-Json -Depth 4 -Compress
+"""
+        result = subprocess.run(
+            [powershell, "-NoProfile", "-NonInteractive", "-Command", command],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8-sig",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        resolved = json.loads(result.stdout)
+        self.assertEqual(
+            resolved["DomainController"],
+            ["AD", "Host", "Server", "Network", "Backup"],
+        )
+        self.assertEqual(
+            resolved["MemberServer"],
+            ["Host", "Server", "Network", "Backup"],
+        )
 
     def test_client_collection_restores_explicit_gpo_scope(self):
         collector = self.read_text("scripts/windows/Start-SecureInfraClientCollection.ps1")
@@ -76,7 +127,7 @@ class ClientCollectionLauncherTests(unittest.TestCase):
             self.assertIn("-Scope GPO", document)
         self.assertIn("`All`, `AD`, `GPO`, `Host`, `Server`, `Workstation`, `Network`, `Backup`", script_reference)
         self.assertIn("The broad `AD`", readme)
-        self.assertIn("scope still includes GPO health evidence", readme)
+        self.assertIn("GPO health", readme)
 
     def test_new_windows_collection_scripts_are_audit_only(self):
         for script in [
@@ -121,6 +172,14 @@ class ClientCollectionLauncherTests(unittest.TestCase):
         self.assertNotIn('throw "Unable to find the local Administrators group."', local_admins)
         self.assertIn('Sid "S-1-5-32-555"', rdp)
         self.assertIn("GroupMembershipStatus", rdp)
+
+    def test_windows_security_audit_accepts_textual_disabled_lockout_threshold(self):
+        host_audit = self.read_text("scripts/windows/host/Invoke-WindowsSecurityAudit.ps1")
+
+        self.assertIn("function ConvertTo-NullableInt", host_audit)
+        self.assertIn('$lockoutThresholdText -eq "Never"', host_audit)
+        self.assertIn("$null -ne $lockoutThresholdNumber -and $lockoutThresholdNumber -eq 0", host_audit)
+        self.assertNotIn("([int]$lockoutThreshold -eq 0)", host_audit)
 
 
 if __name__ == "__main__":

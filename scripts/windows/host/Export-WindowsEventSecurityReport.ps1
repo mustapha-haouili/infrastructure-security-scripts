@@ -73,11 +73,32 @@ function Read-Events {
     )
 
     try {
-        Get-WinEvent -FilterHashtable @{ LogName = $LogName; Id = $Ids; StartTime = $StartTime } -ErrorAction Stop
+        $events = @(Get-WinEvent -FilterHashtable @{ LogName = $LogName; Id = $Ids; StartTime = $StartTime } -ErrorAction Stop)
+        return [pscustomobject][ordered]@{
+            LogName   = $LogName
+            Succeeded = $true
+            Error     = $null
+            Events    = $events
+        }
     }
     catch {
-        Write-Warning "Could not read $LogName events $($Ids -join ','): $($_.Exception.Message)"
-        @()
+        if ($_.FullyQualifiedErrorId -like "NoMatchingEventsFound*") {
+            return [pscustomobject][ordered]@{
+                LogName   = $LogName
+                Succeeded = $true
+                Error     = $null
+                Events    = @()
+            }
+        }
+
+        $collectionError = $_.Exception.Message
+        Write-Warning "Could not read $LogName events $($Ids -join ','): $collectionError"
+        return [pscustomobject][ordered]@{
+            LogName   = $LogName
+            Succeeded = $false
+            Error     = $collectionError
+            Events    = @()
+        }
     }
 }
 
@@ -229,7 +250,10 @@ function Test-SuspiciousServiceInstallPath {
 }
 
 function New-InvestigationSummary {
-    param([object[]]$Records)
+    param(
+        [object[]]$Records,
+        [AllowNull()][System.Collections.IDictionary]$CollectionStatus
+    )
 
     $findings = New-Object System.Collections.Generic.List[object]
     $failedLogons = @($Records | Where-Object { $_.Id -eq 4625 })
@@ -243,6 +267,24 @@ function New-InvestigationSummary {
     $suspiciousExplicitProcesses = @($explicitCredentials | Where-Object {
             $_.ProcessName -match "\\(cmd|powershell|pwsh|wscript|cscript|rundll32|regsvr32|mshta|psexec|wmic)\.exe$"
         })
+
+    $collectionState = if ($null -ne $CollectionStatus) { [string]$CollectionStatus["State"] } else { "Complete" }
+    if ($collectionState -ne "Complete") {
+        $failedLogs = @()
+        $collectionDetails = @()
+        foreach ($logName in @("Security", "System")) {
+            $logStatus = if ($null -ne $CollectionStatus) { $CollectionStatus[$logName] } else { $null }
+            if ($null -ne $logStatus -and -not [bool]$logStatus["Succeeded"]) {
+                $failedLogs += $logName
+                $errorText = [string]$logStatus["Error"]
+                if ([string]::IsNullOrWhiteSpace($errorText)) {
+                    $errorText = "unavailable"
+                }
+                $collectionDetails += "$logName=$errorText"
+            }
+        }
+        $findings.Add((New-InvestigationFinding -FindingId "EVENT-LOG-COLLECTION-GAP" -EventCategory "Evidence coverage" -Severity "Info" -Title "Windows event-log evidence is incomplete" -WhyItMatters "An empty result cannot be interpreted as an absence of security activity when one or more event logs could not be queried." -Recommendation "Rerun from an elevated session and confirm read access to the Security and System event logs." -Evidence "CollectionState=$collectionState; FailedLogs=$($failedLogs -join ','); Details=$($collectionDetails -join '; ')")) | Out-Null
+    }
 
     if ($failedLogons.Count -gt 0) {
         $topSources = @(New-NameCountSummary -Records $failedLogons -PropertyName "IpAddress" -First 5 | ForEach-Object { "$($_.Name)=$($_.Count)" }) -join "; "
@@ -292,11 +334,12 @@ function New-InvestigationSummary {
     $criticalCount = @($findings.ToArray() | Where-Object { $_.Severity -eq "Critical" }).Count
     $highCount = @($findings.ToArray() | Where-Object { $_.Severity -eq "High" }).Count
     $mediumCount = @($findings.ToArray() | Where-Object { $_.Severity -eq "Medium" }).Count
-    $verdict = "No obvious attack indicators found"
-    if ($criticalCount -gt 0 -or $highCount -gt 0) {
+    $infoCount = @($findings.ToArray() | Where-Object { $_.Severity -eq "Info" }).Count
+    $verdict = if ($collectionState -eq "Complete") { "No obvious attack indicators found" } else { "Insufficient evidence" }
+    if ($collectionState -eq "Complete" -and ($criticalCount -gt 0 -or $highCount -gt 0)) {
         $verdict = "Review high-priority indicators"
     }
-    elseif ($mediumCount -gt 0) {
+    elseif ($collectionState -eq "Complete" -and $mediumCount -gt 0) {
         $verdict = "Review recommended"
     }
 
@@ -305,6 +348,7 @@ function New-InvestigationSummary {
         CriticalCount = $criticalCount
         HighCount = $highCount
         MediumCount = $mediumCount
+        InfoCount = $infoCount
         FindingCount = $findings.Count
         Findings = @($findings.ToArray())
         QuickHowToRead = @(
@@ -378,6 +422,7 @@ function New-ReadableEventSummary {
     Add-ReportLine -Builder $builder -Text "Period start UTC: $(Format-ReportValue -Value $Summary["StartTimeUtc"])"
     Add-ReportLine -Builder $builder -Text "Days reviewed: $(Format-ReportValue -Value $Summary["Days"])"
     Add-ReportLine -Builder $builder -Text "Total tracked events: $(Format-ReportValue -Value $Summary["TotalEvents"])"
+    Add-ReportLine -Builder $builder -Text "Collection status: $(Format-ReportValue -Value $Summary["CollectionStatus"]["State"])"
     Add-ReportLine -Builder $builder
     Add-ReportLine -Builder $builder -Text "Verdict: $(Format-ReportValue -Value $investigation["Verdict"])"
     Add-ReportLine -Builder $builder -Text "Findings: $(Format-ReportValue -Value $investigation["FindingCount"]) total, High=$($investigation["HighCount"]), Medium=$($investigation["MediumCount"])"
@@ -438,14 +483,40 @@ $systemIds = @(7045)
 
 $records = New-Object System.Collections.Generic.List[object]
 
-foreach ($event in (Read-Events -LogName "Security" -Ids $securityIds -StartTime $startTime)) {
+$securityResult = Read-Events -LogName "Security" -Ids $securityIds -StartTime $startTime
+$systemResult = Read-Events -LogName "System" -Ids $systemIds -StartTime $startTime
+
+foreach ($event in @($securityResult.Events)) {
     $data = Get-EventDataMap -Event $event
     $records.Add((New-EventReportRecord -Event $event -LogName "Security" -Data $data)) | Out-Null
 }
 
-foreach ($event in (Read-Events -LogName "System" -Ids $systemIds -StartTime $startTime)) {
+foreach ($event in @($systemResult.Events)) {
     $data = Get-EventDataMap -Event $event
     $records.Add((New-EventReportRecord -Event $event -LogName "System" -Data $data)) | Out-Null
+}
+
+$collectionState = if ($securityResult.Succeeded -and $systemResult.Succeeded) {
+    "Complete"
+}
+elseif ($securityResult.Succeeded -or $systemResult.Succeeded) {
+    "Partial"
+}
+else {
+    "Unavailable"
+}
+$collectionStatus = [ordered]@{
+    State = $collectionState
+    Security = [ordered]@{
+        Succeeded = [bool]$securityResult.Succeeded
+        EventCount = @($securityResult.Events).Count
+        Error = $securityResult.Error
+    }
+    System = [ordered]@{
+        Succeeded = [bool]$systemResult.Succeeded
+        EventCount = @($systemResult.Events).Count
+        Error = $systemResult.Error
+    }
 }
 
 $csvPath = Join-Path -Path $OutputDirectory -ChildPath "events.csv"
@@ -461,7 +532,8 @@ $summary = [ordered]@{
     StartTimeUtc = $startTime.ToUniversalTime().ToString("o")
     Days = $Days
     TotalEvents = $recordRows.Count
-    InvestigationSummary = New-InvestigationSummary -Records $recordRows
+    CollectionStatus = $collectionStatus
+    InvestigationSummary = New-InvestigationSummary -Records $recordRows -CollectionStatus $collectionStatus
     CountsByEventId = @(New-EventCountSummary -Records $recordRows)
     FailedLogonsTopUsers = @($recordRows | Where-Object { $_.Id -eq 4625 -and $_.TargetUserName } | Group-Object TargetUserName | Sort-Object Count -Descending | Select-Object -First 20 Name, Count)
     FailedLogonsTopSources = @($recordRows | Where-Object { $_.Id -eq 4625 -and $_.IpAddress } | Group-Object IpAddress | Sort-Object Count -Descending | Select-Object -First 20 Name, Count)

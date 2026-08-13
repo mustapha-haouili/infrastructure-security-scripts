@@ -50,6 +50,10 @@ class PowerShellMarkdownHelperTests(unittest.TestCase):
         self.assert_markdown_helper_is_not_collection_typed(script)
         self.assert_table_rows_allow_empty_results(script, "Add-MarkdownFindingTable")
 
+        action_plan_body = function_body(read_script(script), "Add-MarkdownAdminActionPlan")
+        self.assertIn("[AllowEmptyCollection()]", action_plan_body)
+        self.assertIn("[object[]]$Findings", action_plan_body)
+
     def test_privileged_group_markdown_helpers_allow_blank_and_empty_reports(self):
         script = "scripts/windows/ad/Watch-ADPrivilegedGroupChanges.ps1"
         self.assert_markdown_helper_is_not_collection_typed(script)

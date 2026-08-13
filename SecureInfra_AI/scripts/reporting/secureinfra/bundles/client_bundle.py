@@ -44,6 +44,10 @@ CLIENT_FILE_DEFINITIONS: dict[str, dict[str, str]] = {
     "linux_service_inventory_summary": {"scope": "Linux", "path": "linux/linux-service-inventory-summary.json"},
     "linux_inventory": {"scope": "Linux", "path": "linux/linux-inventory.json"},
 }
+OPTIONAL_SAFE_MODE_OUTPUT_KEYS = {
+    "host_windows_hardening_preview",
+    "server_rdp_profile_cache_cleanup",
+}
 FINDING_SOURCE_KEYS = {
     "host_windows_security_audit",
     "host_windows_events_summary",
@@ -148,7 +152,7 @@ WINDOWS_COMPATIBILITY_SCOPES = {
     "AD", "GPO", "Host", "Server", "Workstation", "Network", "Backup",
     "IIS", "RDS", "SQLServer", "ExchangeServer",
 }
-WINDOWS_COMPATIBILITY_STATUSES = {"Ready", "Limited", "Unavailable", "Blocked"}
+WINDOWS_COMPATIBILITY_STATUSES = {"Ready", "Limited", "Unavailable", "Blocked", "NotApplicable"}
 
 
 def validate_windows_compatibility_report(value: Any) -> None:
@@ -166,14 +170,27 @@ def validate_windows_compatibility_report(value: Any) -> None:
         raise ValueError("Unsupported Windows compatibility report contract")
 
     host = value.get("Host")
-    if not isinstance(host, dict) or set(host) != {
-        "Name", "OsVersion", "Is64BitOperatingSystem", "Is64BitProcess"
-    }:
+    required_host_properties = {"Name", "OsVersion", "Is64BitOperatingSystem", "Is64BitProcess"}
+    allowed_host_properties = required_host_properties | {"DomainRole", "IsDomainController"}
+    if (
+        not isinstance(host, dict)
+        or not required_host_properties.issubset(host)
+        or not set(host).issubset(allowed_host_properties)
+    ):
         raise ValueError("Invalid Windows compatibility host record")
     if not all(isinstance(host.get(key), str) for key in ("Name", "OsVersion")):
         raise ValueError("Invalid Windows compatibility host strings")
     if not all(isinstance(host.get(key), bool) for key in ("Is64BitOperatingSystem", "Is64BitProcess")):
         raise ValueError("Invalid Windows compatibility host architecture flags")
+    domain_role = host.get("DomainRole")
+    is_domain_controller = host.get("IsDomainController")
+    if domain_role is not None and (not isinstance(domain_role, int) or isinstance(domain_role, bool) or domain_role not in range(6)):
+        raise ValueError("Invalid Windows compatibility domain role")
+    if is_domain_controller is not None and not isinstance(is_domain_controller, bool):
+        raise ValueError("Invalid Windows compatibility domain-controller state")
+    if domain_role is not None and is_domain_controller is not None:
+        if is_domain_controller != (domain_role in {4, 5}):
+            raise ValueError("Conflicting Windows compatibility domain-role evidence")
 
     runtime = value.get("Runtime")
     if not isinstance(runtime, dict) or set(runtime) != {
@@ -230,6 +247,8 @@ def validate_windows_compatibility_report(value: Any) -> None:
             raise ValueError("Invalid Windows compatibility missing-capability reference")
         if not isinstance(record.get("Action"), str) or len(record["Action"]) > 1000:
             raise ValueError("Invalid Windows compatibility scope action")
+        if record.get("Status") == "NotApplicable" and (missing or record.get("Action")):
+            raise ValueError("Not-applicable Windows compatibility scope contains gap evidence")
 
     for key in ("HardFailures", "Limitations"):
         rows = value.get(key)
@@ -394,16 +413,31 @@ def discover_client_bundle(input_dir: str | Path) -> dict[str, Path]:
     return detected
 
 
-def missing_client_files(detected_files: dict[str, Path]) -> list[str]:
+def missing_client_files(
+    detected_files: dict[str, Path],
+    applicable_windows_scope: str = "",
+    selected_scopes: set[str] | None = None,
+) -> list[str]:
     missing = [
         definition["path"]
         for key, definition in CLIENT_FILE_DEFINITIONS.items()
         if key not in detected_files
         and key not in {"bundle_manifest", "compatibility_report"}
+        and key not in OPTIONAL_SAFE_MODE_OUTPUT_KEYS
         and definition["scope"] in SUPPORTED_SCOPES + ["Client"]
         and definition["scope"] not in {"Backup", "Linux"}
+        and (
+            definition["scope"] == "Client"
+            or selected_scopes is None
+            or definition["scope"] in selected_scopes
+        )
+        and not (
+            applicable_windows_scope in {"Server", "Workstation"}
+            and definition["scope"] in {"Server", "Workstation"}
+            and definition["scope"] != applicable_windows_scope
+        )
     ]
-    if "ad_shared" not in detected_files:
+    if "ad_shared" not in detected_files and (selected_scopes is None or "AD" in selected_scopes):
         missing.append("ad-shared/")
     return missing
 
@@ -416,7 +450,6 @@ def normalize_client_bundle(input_path: str | Path) -> dict[str, Any]:
 
 def normalize_prepared_client_bundle(bundle_dir: Path, source_label: str) -> dict[str, Any]:
     detected_paths = discover_client_bundle(bundle_dir)
-    missing_files = missing_client_files(detected_paths)
     loaded_files: dict[str, str] = {}
     loaded_summaries: dict[str, dict[str, Any]] = {}
     failed_files: dict[str, str] = {}
@@ -446,6 +479,17 @@ def normalize_prepared_client_bundle(bundle_dir: Path, source_label: str) -> dic
         bundle_dir,
         source_label,
     )
+    applicable_windows_scope = auto_applicable_windows_scope(client_info, collection_summary, manifest)
+    effective_scopes, directory_applicability = effective_collection_scopes(
+        client_info,
+        collection_summary,
+        manifest,
+        compatibility_report,
+        applicable_windows_scope,
+        directory_evidence_present="ad_shared" in detected_paths,
+    )
+    selected_scopes = normalized_collection_scopes(effective_scopes) if effective_scopes else None
+    missing_files = missing_client_files(detected_paths, applicable_windows_scope, selected_scopes)
     if compatibility_report is not None:
         runtime = as_dict(compatibility_report.get("Runtime"))
         if not bool(runtime.get("Ready", False)):
@@ -459,6 +503,11 @@ def normalize_prepared_client_bundle(bundle_dir: Path, source_label: str) -> dic
         ]
         if limited_scopes:
             notes.append("Compatibility evidence gaps were recorded for: " + ", ".join(limited_scopes) + ".")
+
+    if directory_applicability == "not-applicable":
+        notes.append(
+            "Automatic All-scope collection excluded AD/GPO because the host is explicitly identified as not being a domain controller."
+        )
 
     if "ad_shared" in detected_paths:
         try:
@@ -482,15 +531,30 @@ def normalize_prepared_client_bundle(bundle_dir: Path, source_label: str) -> dic
             failed_files["ad_shared"] = str(exc)
             notes.append(f"ad-shared could not be normalized: {exc}")
 
+    ignored_inapplicable_scope_files: list[str] = []
     for key in FINDING_SOURCE_KEYS:
         data = load_optional_json(detected_paths, key, loaded_files, loaded_summaries, failed_files, bundle_dir, source_label)
         if data is None:
             continue
+        scope = CLIENT_FILE_DEFINITIONS[key]["scope"]
+        if (
+            applicable_windows_scope in {"Server", "Workstation"}
+            and scope in {"Server", "Workstation"}
+            and scope != applicable_windows_scope
+        ):
+            ignored_inapplicable_scope_files.append(key)
+            normalized_source_counts[key] = 0
+            continue
         source_findings = normalize_client_source_file(key, data, detected_paths[key])
         findings.extend(source_findings)
-        scope = CLIENT_FILE_DEFINITIONS[key]["scope"]
         scope_counts[scope] += len(source_findings)
         normalized_source_counts[key] = len(source_findings)
+
+    if ignored_inapplicable_scope_files:
+        notes.append(
+            f"Legacy All-scope {applicable_windows_scope.lower()} collection included the opposite Windows role scope; "
+            "those files were retained as source metadata but were not counted as findings."
+        )
 
     for metadata_key in ("host_windows_remediation_plan", "host_windows_hardening_preview", "linux_inventory"):
         load_optional_json(detected_paths, metadata_key, loaded_files, loaded_summaries, failed_files, bundle_dir, source_label)
@@ -498,8 +562,17 @@ def normalize_prepared_client_bundle(bundle_dir: Path, source_label: str) -> dic
     generated_at = collection_generated_at(collection_summary, manifest)
     source_files = list(loaded_files.values())
     counts = severity_counts(findings)
-    environment_summary = build_environment_summary(client_info, collection_summary, manifest, bundle_dir, source_label)
-    loaded_scope_counts = scope_file_counts(detected_paths)
+    environment_summary = build_environment_summary(
+        client_info,
+        collection_summary,
+        manifest,
+        bundle_dir,
+        source_label,
+        applicable_windows_scope,
+        effective_scopes,
+        directory_applicability,
+    )
+    loaded_scope_counts = scope_file_counts(detected_paths, applicable_windows_scope)
 
     return normalize_report_evidence_contract(
         {
@@ -532,6 +605,7 @@ def normalize_prepared_client_bundle(bundle_dir: Path, source_label: str) -> dic
                 "loaded_summaries": loaded_summaries,
                 "supported_scopes": SUPPORTED_SCOPES,
                 "normalized_source_counts": normalized_source_counts,
+                "ignored_inapplicable_scope_files": ignored_inapplicable_scope_files,
             },
             "findings": findings,
             "metadata": {
@@ -546,6 +620,7 @@ def normalize_prepared_client_bundle(bundle_dir: Path, source_label: str) -> dic
                 "loaded_summaries": loaded_summaries,
                 "normalized_finding_count": len(findings),
                 "scope_finding_counts": scope_counts,
+                "ignored_inapplicable_scope_files": ignored_inapplicable_scope_files,
             },
             "notes": notes,
         }
@@ -634,6 +709,46 @@ def normalize_windows_event_summary_rows(rows: list[dict[str, Any]], data: dict[
         output.setdefault("AffectedObject", computer or title or "Windows event security summary")
         output.setdefault("EventCategory", event_finding_id.replace("-", " ").title() if event_finding_id else "Windows Event Security")
         normalized.append(output)
+
+    finding_ids = {
+        str(item.get("FindingId") or "")
+        for item in normalized
+        if isinstance(item, dict)
+    }
+    collection_status = data.get("CollectionStatus")
+    collection_state = (
+        str(collection_status.get("State") or "")
+        if isinstance(collection_status, dict)
+        else ""
+    )
+    total_events = data.get("TotalEvents")
+    legacy_zero_without_status = (
+        not isinstance(collection_status, dict)
+        and isinstance(total_events, (int, float))
+        and not isinstance(total_events, bool)
+        and total_events == 0
+    )
+    incomplete_collection = bool(collection_state and collection_state != "Complete")
+    if (legacy_zero_without_status or incomplete_collection) and "EVENT-LOG-COLLECTION-GAP" not in finding_ids:
+        reason = (
+            f"CollectionState={collection_state}"
+            if incomplete_collection
+            else "CollectionStatus=absent; TotalEvents=0"
+        )
+        normalized.append(
+            {
+                "FindingId": "EVENT-LOG-COLLECTION-GAP",
+                "FindingType": "WindowsEventSecurityIndicator",
+                "EventCategory": "Evidence coverage",
+                "EventIds": [],
+                "Severity": "Info",
+                "Title": "Windows event-log evidence is incomplete",
+                "WhyItMatters": "An empty legacy event summary without a successful query status cannot prove that no relevant activity occurred.",
+                "Recommendation": "Rerun with the updated collector from an elevated session and confirm Security and System event-log read access.",
+                "Evidence": reason,
+                "AffectedObject": computer or "Windows event security summary",
+            }
+        )
     return normalized
 
 
@@ -2429,6 +2544,7 @@ def summarize_source_json(key: str, data: dict[str, Any]) -> dict[str, Any]:
         investigation = as_dict(data.get("InvestigationSummary"))
         return {
             "total_events": data.get("TotalEvents", 0),
+            "collection_state": as_dict(data.get("CollectionStatus")).get("State", "LegacyUnknown"),
             "verdict": investigation.get("Verdict", ""),
             "finding_count": investigation.get("FindingCount", 0),
             "high_count": investigation.get("HighCount", 0),
@@ -2464,26 +2580,157 @@ def optional_explicit_bool(value: Any) -> bool | None:
     return None
 
 
+def auto_applicable_windows_scope(
+    client_info: dict[str, Any] | None,
+    collection_summary: dict[str, Any] | None,
+    manifest: dict[str, Any] | None,
+) -> str:
+    """Return the role scope selected automatically by a legacy All collection.
+
+    Explicit Server or Workstation requests remain untouched. ProductType is
+    authoritative when present; the bounded English product-caption fallback
+    exists only for older bundles that did not record ProductType.
+    """
+    summary = collection_summary or {}
+    manifest_data = manifest or {}
+    requested = as_string_list(summary.get("ScopeRequested") or manifest_data.get("ScopeRequested"))
+    if not any(item.strip().lower() == "all" for item in requested):
+        return ""
+
+    client = client_info or {}
+    product_type = as_int(client.get("OsProductType"), default=0)
+    if product_type == 1:
+        return "Workstation"
+    if product_type in {2, 3}:
+        return "Server"
+
+    caption = str(client.get("OsCaption") or "").strip().lower()
+    if "windows server" in caption:
+        return "Server"
+    if re.search(r"\bwindows\s+(?:10|11)\b", caption):
+        return "Workstation"
+    return ""
+
+
+def automatic_all_requested(
+    collection_summary: dict[str, Any] | None,
+    manifest: dict[str, Any] | None,
+) -> bool:
+    summary = collection_summary or {}
+    manifest_data = manifest or {}
+    requested = as_string_list(summary.get("ScopeRequested") or manifest_data.get("ScopeRequested"))
+    return any(item.strip().lower() == "all" for item in requested)
+
+
+def domain_controller_state(
+    client_info: dict[str, Any] | None,
+    compatibility_report: dict[str, Any] | None,
+) -> bool | None:
+    """Return explicit domain-controller applicability without guessing.
+
+    ProductType 2 and ComputerSystem DomainRole 4/5 are documented Windows
+    role signals. Missing or malformed role facts remain Unknown.
+    """
+    client = client_info or {}
+    explicit = optional_explicit_bool(client.get("IsDomainController"))
+    if explicit is not None:
+        return explicit
+
+    product_type = as_int(client.get("OsProductType"), default=-1)
+    if product_type == 2:
+        return True
+    if product_type in {1, 3}:
+        return False
+
+    domain_role = as_int(client.get("ComputerDomainRole"), default=-1)
+    if domain_role in {4, 5}:
+        return True
+    if domain_role in {0, 1, 2, 3}:
+        return False
+
+    compatibility_host = as_dict(as_dict(compatibility_report).get("Host"))
+    explicit = optional_explicit_bool(compatibility_host.get("IsDomainController"))
+    if explicit is not None:
+        return explicit
+    domain_role = as_int(compatibility_host.get("DomainRole"), default=-1)
+    if domain_role in {4, 5}:
+        return True
+    if domain_role in {0, 1, 2, 3}:
+        return False
+    return None
+
+
+def normalized_collection_scopes(scopes: list[str]) -> set[str]:
+    normalized: set[str] = set()
+    for scope in scopes:
+        text = str(scope).strip().lower()
+        if text in {"ad", "gpo"} or "active directory" in text:
+            normalized.add("AD")
+        elif text in {"host", "server", "workstation", "network", "backup", "linux"}:
+            normalized.add(text.title())
+    return {scope for scope in normalized if scope in SUPPORTED_SCOPES}
+
+
+def effective_collection_scopes(
+    client_info: dict[str, Any] | None,
+    collection_summary: dict[str, Any] | None,
+    manifest: dict[str, Any] | None,
+    compatibility_report: dict[str, Any] | None,
+    applicable_windows_scope: str,
+    *,
+    directory_evidence_present: bool,
+) -> tuple[list[str], str]:
+    summary = collection_summary or {}
+    manifest_data = manifest or {}
+    collected = as_string_list(summary.get("ScopeResolved") or manifest_data.get("ScopeResolved"))
+    effective = list(collected)
+
+    if applicable_windows_scope in {"Server", "Workstation"}:
+        opposite_scope = "Workstation" if applicable_windows_scope == "Server" else "Server"
+        effective = [scope for scope in effective if scope.strip().lower() != opposite_scope.lower()]
+
+    state = domain_controller_state(client_info, compatibility_report)
+    applicability = "applicable" if state is True else "not-applicable" if state is False else "unknown"
+    if (
+        automatic_all_requested(collection_summary, manifest)
+        and state is False
+        and not directory_evidence_present
+    ):
+        effective = [scope for scope in effective if scope.strip().lower() not in {"ad", "gpo"}]
+    return effective, applicability
+
+
 def build_environment_summary(
     client_info: dict[str, Any] | None,
     collection_summary: dict[str, Any] | None,
     manifest: dict[str, Any] | None,
     bundle_dir: Path,
     source_label: str,
+    applicable_windows_scope: str = "",
+    effective_scopes: list[str] | None = None,
+    directory_applicability: str = "unknown",
 ) -> dict[str, Any]:
     client = client_info or {}
     summary = collection_summary or {}
     manifest_data = manifest or {}
+    collected_scopes = as_string_list(summary.get("ScopeResolved") or manifest_data.get("ScopeResolved"))
+    resolved_scopes = list(effective_scopes) if effective_scopes is not None else list(collected_scopes)
     return {
         "company": "",
         "domain": str(client.get("UserDomain") or ""),
         "computer_name": str(client.get("ComputerName") or manifest_data.get("CollectionId") or ""),
         "user_domain": str(client.get("UserDomain") or ""),
         "os_caption": str(client.get("OsCaption") or ""),
+        "os_product_type": client.get("OsProductType"),
+        "computer_domain_role": client.get("ComputerDomainRole"),
+        "is_domain_controller": optional_explicit_bool(client.get("IsDomainController")),
         "os_version": str(client.get("OsVersion") or ""),
         "is_administrator": optional_explicit_bool(client.get("IsAdministrator")),
         "collection_id": str(summary.get("CollectionId") or manifest_data.get("CollectionId") or ""),
-        "scope_resolved": as_string_list(summary.get("ScopeResolved") or manifest_data.get("ScopeResolved")),
+        "scope_collected": collected_scopes,
+        "scope_resolved": resolved_scopes,
+        "windows_role_scope": applicable_windows_scope,
+        "directory_scope_applicability": directory_applicability,
         "safety_mode": str(summary.get("SafetyMode") or manifest_data.get("SafetyMode") or ""),
         "bundle_directory": str(bundle_dir),
         "input": source_label,
@@ -2499,13 +2746,17 @@ def collection_generated_at(collection_summary: dict[str, Any] | None, manifest:
     return utc_now()
 
 
-def scope_file_counts(detected_paths: dict[str, Path]) -> dict[str, int]:
+def scope_file_counts(detected_paths: dict[str, Path], applicable_windows_scope: str = "") -> dict[str, int]:
     counts = {scope: 0 for scope in ["Client", *SUPPORTED_SCOPES]}
     if "ad_shared" in detected_paths:
         counts["AD"] += 1
     for key in detected_paths:
         definition = CLIENT_FILE_DEFINITIONS.get(key)
-        if definition:
+        if definition and not (
+            applicable_windows_scope in {"Server", "Workstation"}
+            and definition["scope"] in {"Server", "Workstation"}
+            and definition["scope"] != applicable_windows_scope
+        ):
             counts[definition["scope"]] += 1
     return counts
 

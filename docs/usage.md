@@ -96,9 +96,10 @@ The Windows event export writes:
 
 - `events.csv`: one event per row, with `EventLabel`, `TriageSeverity`, `WhyItMatters`, and message evidence.
 - `summary.txt`: readable administrator summary with verdict, findings, evidence, and recommended review actions.
-- `summary.json`: event counts, `InvestigationSummary`, failed logon summaries, privileged logon summaries, recent high-severity events, and service installations.
+- `summary.json`: per-log `CollectionStatus`, event counts, `InvestigationSummary`, failed logon summaries, privileged logon summaries, recent high-severity events, and service installations.
 
 Start with `summary.txt` or `summary.json` -> `InvestigationSummary.Verdict`. A High item means "review first", not automatic proof of an attack.
+If Security or System log access is incomplete, the verdict is `Insufficient evidence` and an Info finding records the coverage gap. A zero-event result is treated as clear only when both log queries succeeded.
 
 If another approved product owns a control, exclude that control by ID instead of editing the script. For example, on a server where ESET manages the firewall:
 

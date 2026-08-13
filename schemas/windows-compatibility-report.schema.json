@@ -29,7 +29,9 @@
         "Name": { "type": "string", "maxLength": 255 },
         "OsVersion": { "type": "string", "maxLength": 128 },
         "Is64BitOperatingSystem": { "type": "boolean" },
-        "Is64BitProcess": { "type": "boolean" }
+        "Is64BitProcess": { "type": "boolean" },
+        "DomainRole": { "type": ["integer", "null"], "minimum": 0, "maximum": 5 },
+        "IsDomainController": { "type": ["boolean", "null"] }
       }
     },
     "Runtime": {
@@ -75,7 +77,7 @@
         "required": ["Scope", "Status", "MissingCapabilities", "Action"],
         "properties": {
           "Scope": { "enum": ["AD", "GPO", "Host", "Server", "Workstation", "Network", "Backup", "IIS", "RDS", "SQLServer", "ExchangeServer"] },
-          "Status": { "enum": ["Ready", "Limited", "Unavailable", "Blocked"] },
+          "Status": { "enum": ["Ready", "Limited", "Unavailable", "Blocked", "NotApplicable"] },
           "MissingCapabilities": {
             "type": "array",
             "uniqueItems": true,

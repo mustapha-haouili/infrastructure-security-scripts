@@ -258,6 +258,21 @@ function Test-DwordValueEquals {
     return "$Value" -eq "$Expected"
 }
 
+function ConvertTo-NullableInt {
+    param([AllowNull()][object]$Value)
+
+    if ($null -eq $Value) {
+        return $null
+    }
+
+    $parsed = 0
+    if ([int]::TryParse(("$Value").Trim(), [ref]$parsed)) {
+        return $parsed
+    }
+
+    return $null
+}
+
 function New-FindingList {
     New-Object System.Collections.Generic.List[object]
 }
@@ -443,7 +458,8 @@ function Get-WindowsAuditFindings {
 
     $passwordPolicy = $Audit["PasswordPolicy"]
     $minimumLength = Get-ObjectValue -InputObject $passwordPolicy -Name "Minimum password length"
-    if ($minimumLength -and [int]$minimumLength -lt 14) {
+    $minimumLengthNumber = ConvertTo-NullableInt -Value $minimumLength
+    if ($null -ne $minimumLengthNumber -and $minimumLengthNumber -lt 14) {
         Add-Finding -Findings $findings `
             -Id "WIN-PWD-001" `
             -Severity "Medium" `
@@ -460,7 +476,10 @@ function Get-WindowsAuditFindings {
     }
 
     $lockoutThreshold = Get-ObjectValue -InputObject $passwordPolicy -Name "Lockout threshold"
-    if ($lockoutThreshold -and ([int]$lockoutThreshold -eq 0)) {
+    $lockoutThresholdNumber = ConvertTo-NullableInt -Value $lockoutThreshold
+    $lockoutThresholdText = if ($null -ne $lockoutThreshold) { ("$lockoutThreshold").Trim() } else { "" }
+    $lockoutDisabled = $lockoutThresholdText -eq "Never" -or ($null -ne $lockoutThresholdNumber -and $lockoutThresholdNumber -eq 0)
+    if ($lockoutDisabled) {
         Add-Finding -Findings $findings `
             -Id "WIN-PWD-002" `
             -Severity "High" `

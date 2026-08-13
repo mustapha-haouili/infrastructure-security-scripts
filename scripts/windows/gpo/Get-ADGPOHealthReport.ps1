@@ -907,7 +907,9 @@ function Get-PrioritySortValue {
 function Add-MarkdownAdminActionPlan {
     param(
         [Parameter(Mandatory = $true)][object]$Lines,
-        [Parameter(Mandatory = $true)][object[]]$Findings,
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [object[]]$Findings,
         [Parameter(Mandatory = $true)][System.Collections.IDictionary]$Summary
     )
 

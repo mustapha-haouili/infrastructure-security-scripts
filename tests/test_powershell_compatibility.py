@@ -101,6 +101,16 @@ class PowerShellCompatibilityTests(unittest.TestCase):
         self.assertIn("FirstObservedUtc=$firstObservedUtc", content)
         self.assertIn("SuspiciousPathCount=$($suspiciousServiceInstalls.Count)", content)
 
+    def test_event_summary_distinguishes_empty_results_from_collection_failure(self):
+        path = REPO_ROOT / "scripts" / "windows" / "host" / "Export-WindowsEventSecurityReport.ps1"
+        content = path.read_text(encoding="utf-8-sig")
+
+        self.assertIn('FullyQualifiedErrorId -like "NoMatchingEventsFound*"', content)
+        self.assertIn('FindingId "EVENT-LOG-COLLECTION-GAP"', content)
+        self.assertIn('{ "No obvious attack indicators found" } else { "Insufficient evidence" }', content)
+        self.assertIn("CollectionStatus = $collectionStatus", content)
+        self.assertIn('Collection status:', content)
+
 
 if __name__ == "__main__":
     unittest.main()

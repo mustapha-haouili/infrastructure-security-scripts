@@ -12,10 +12,12 @@ The output bundle is designed for a client to send back for SecureInfra AI
 normalization, dashboard review, and final report generation.
 
 .PARAMETER Scope
-Collection scopes to run. Use All for the default supported local scopes.
+Collection scopes to run. Use All for automatic role-aware discovery.
 Current implemented scopes are AD, GPO, Host, Server, Workstation, Network, and
-Backup. The broad All scope includes Backup readiness so the default client
-collection produces complete infrastructure evidence.
+Backup. The broad All scope includes AD/GPO only on a detected domain
+controller, selects the matching Server or Workstation scope, and includes
+Backup readiness. Explicit scopes remain available for intentional remote or
+management-host collection.
 
 .PARAMETER OutputDirectory
 Directory for the collection folder. A zip archive is created next to this
@@ -151,7 +153,34 @@ function Add-SwitchArgument {
 }
 
 function Resolve-CollectionScopes {
-    $defaultAllScopes = @("AD", "Host", "Server", "Workstation", "Network", "Backup")
+    param(
+        [AllowNull()]$OsProductType,
+        [AllowNull()]$IsDomainController
+    )
+
+    $productTypeNumber = 0
+    $productTypeKnown = [int]::TryParse("$OsProductType", [ref]$productTypeNumber)
+    $roleScopes = @(
+        if ($productTypeKnown -and $productTypeNumber -eq 1) {
+            "Workstation"
+        }
+        elseif ($productTypeKnown -and $productTypeNumber -in @(2, 3)) {
+            "Server"
+        }
+        else {
+            "Server"
+            "Workstation"
+        }
+    )
+    $directoryScopes = @(
+        if ($IsDomainController -ne $false) {
+            # Unknown role evidence remains Unknown: retain AD so collection or
+            # compatibility preflight records the evidence gap instead of silently
+            # assuming that the directory role is absent.
+            "AD"
+        }
+    )
+    $defaultAllScopes = @($directoryScopes) + @("Host") + @($roleScopes) + @("Network", "Backup")
     $orderedScopes = @("AD", "GPO", "Host", "Server", "Workstation", "Network", "Backup")
     $requestedScopes = @(
         foreach ($item in @($Scope)) {
@@ -285,6 +314,7 @@ function Invoke-CollectionTask {
 
 function Get-ClientInfo {
     $os = $null
+    $computerSystem = $null
     try {
         if ($null -ne (Get-Command -Name "Get-CimInstance" -ErrorAction SilentlyContinue)) {
             $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
@@ -300,6 +330,33 @@ function Get-ClientInfo {
         $script:CollectionMessages.Add("Unable to read Win32_OperatingSystem: $($_.Exception.Message)") | Out-Null
     }
 
+    try {
+        if ($null -ne (Get-Command -Name "Get-CimInstance" -ErrorAction SilentlyContinue)) {
+            $computerSystem = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
+        }
+        elseif ($null -ne (Get-Command -Name "Get-WmiObject" -ErrorAction SilentlyContinue)) {
+            $computerSystem = Get-WmiObject -Class Win32_ComputerSystem -ErrorAction Stop
+        }
+        else {
+            throw "Neither Get-CimInstance nor Get-WmiObject is available."
+        }
+    }
+    catch {
+        $script:CollectionMessages.Add("Unable to read Win32_ComputerSystem: $($_.Exception.Message)") | Out-Null
+    }
+
+    $osProductType = if ($os -and $null -ne $os.ProductType) { [int]$os.ProductType } else { $null }
+    $computerDomainRole = if ($computerSystem -and $null -ne $computerSystem.DomainRole) { [int]$computerSystem.DomainRole } else { $null }
+    $isDomainController = if ($null -ne $osProductType) {
+        $osProductType -eq 2
+    }
+    elseif ($null -ne $computerDomainRole) {
+        $computerDomainRole -in @(4, 5)
+    }
+    else {
+        $null
+    }
+
     [pscustomobject][ordered]@{
         ComputerName       = $env:COMPUTERNAME
         UserName           = $env:USERNAME
@@ -310,6 +367,9 @@ function Get-ClientInfo {
         PowerShellLanguageMode = "$($ExecutionContext.SessionState.LanguageMode)"
         Is64BitProcess     = [Environment]::Is64BitProcess
         OsCaption          = if ($os) { "$($os.Caption)" } else { "" }
+        OsProductType      = $osProductType
+        ComputerDomainRole = $computerDomainRole
+        IsDomainController = $isDomainController
         OsVersion          = if ($os) { "$($os.Version)" } else { "" }
         OsBuildNumber      = if ($os) { "$($os.BuildNumber)" } else { "" }
         OsArchitecture     = if ($os) { "$($os.OSArchitecture)" } else { "" }
@@ -639,7 +699,8 @@ $script:LogDirectory = Join-Path -Path $script:OutputDirectory -ChildPath "logs"
 New-Directory -Path $script:OutputDirectory
 New-Directory -Path $script:LogDirectory
 
-$resolvedScopes = Resolve-CollectionScopes
+$clientInfo = Get-ClientInfo
+$resolvedScopes = Resolve-CollectionScopes -OsProductType $clientInfo.OsProductType -IsDomainController $clientInfo.IsDomainController
 $archivePath = if ($SkipArchive) { "" } else { "$($script:OutputDirectory).zip" }
 $clientInfoPath = Join-Path -Path $script:OutputDirectory -ChildPath "client-info.json"
 $summaryPath = Join-Path -Path $script:OutputDirectory -ChildPath "collection-summary.json"
@@ -655,7 +716,7 @@ if ($null -ne $CompatibilityProfile) {
     Write-JsonFile -Path $compatibilityPath -InputObject $CompatibilityProfile -Depth 10
 }
 
-Write-JsonFile -Path $clientInfoPath -InputObject (Get-ClientInfo)
+Write-JsonFile -Path $clientInfoPath -InputObject $clientInfo
 
 foreach ($scopeName in $resolvedScopes) {
     $scopeCompatibility = Get-ScopeCompatibilityRecord -ScopeName $scopeName

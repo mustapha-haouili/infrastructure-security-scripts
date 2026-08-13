@@ -143,6 +143,48 @@ class SecureInfraBundleSafetyTests(unittest.TestCase):
             self.assertIn("AD", compatibility_note)
             self.assertNotIn("ExchangeServer", compatibility_note)
 
+    def test_compatibility_contract_accepts_explicit_role_applicability(self):
+        profile = {
+            "SchemaVersion": "1.0",
+            "Contract": "secureinfra-windows-compatibility/1.0",
+            "GeneratedAtUtc": "2026-08-13T12:00:00Z",
+            "Host": {
+                "Name": "LAB-SRV01",
+                "OsVersion": "10.0",
+                "Is64BitOperatingSystem": True,
+                "Is64BitProcess": True,
+                "DomainRole": 3,
+                "IsDomainController": False,
+            },
+            "Runtime": {
+                "Ready": True,
+                "PowerShellVersion": "5.1",
+                "PowerShellEdition": "Desktop",
+                "LanguageMode": "FullLanguage",
+                "SelectedHost": "WindowsPowerShell",
+                "AutomaticInstall": "prohibited",
+            },
+            "ScopeRequested": ["All"],
+            "Capabilities": [],
+            "ScopeReadiness": [
+                {"Scope": "AD", "Status": "NotApplicable", "MissingCapabilities": [], "Action": ""}
+            ],
+            "HardFailures": [],
+            "Limitations": [],
+            "Safety": {
+                "Mode": "read-only-capability-discovery",
+                "Downloads": "prohibited",
+                "PackageInstallation": "prohibited",
+                "ServiceChanges": "prohibited",
+                "AutomaticRemediation": "prohibited",
+            },
+        }
+
+        client_bundle.validate_windows_compatibility_report(profile)
+        profile["Host"]["IsDomainController"] = True
+        with self.assertRaisesRegex(ValueError, "Conflicting"):
+            client_bundle.validate_windows_compatibility_report(profile)
+
     def test_rejects_parent_traversal_path(self):
         self.assert_rejects_zip({"../evil.json": "{}"}, "Unsafe zip entry path")
 

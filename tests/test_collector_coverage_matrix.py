@@ -6,6 +6,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 MATRIX_PATH = REPO_ROOT / "COLLECTOR_COVERAGE_MATRIX.md"
 WINDOWS_LAUNCHER = REPO_ROOT / "scripts" / "windows" / "Start-SecureInfraClientCollection.ps1"
 LINUX_LAUNCHER = REPO_ROOT / "scripts" / "linux" / "Start-SecureInfraLinuxCollection.sh"
+FIELD_VALIDATION_PATH = REPO_ROOT / "FIELD_VALIDATION.md"
 
 
 def repo_path(path: Path) -> str:
@@ -75,6 +76,23 @@ class CollectorCoverageMatrixTests(unittest.TestCase):
         self.assertIn("host/windows-hardening-preview.json", self.matrix)
         self.assertIn("Metadata only", self.matrix)
         self.assertIn("Final metadata-only output contract", self.matrix)
+
+    def test_field_validation_policy_covers_windows_runtime_claim_dimensions(self):
+        policy = FIELD_VALIDATION_PATH.read_text(encoding="utf-8")
+
+        for marker in (
+            "domain controller",
+            "member server",
+            "workstation",
+            "Windows PowerShell 5.1",
+            "PowerShell 7",
+            "en-US",
+            "de-DE",
+            "limited-permission",
+            "planned or scheduled case",
+        ):
+            self.assertIn(marker, policy)
+        self.assertIn("Do not commit raw field bundles", policy)
 
 
 if __name__ == "__main__":
