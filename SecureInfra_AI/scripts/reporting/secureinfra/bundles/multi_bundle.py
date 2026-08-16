@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from secureinfra.bundles.client_bundle import CLIENT_FILE_DEFINITIONS, SUPPORTED_SCOPES, normalize_client_bundle
-from secureinfra.normalizers.ad_common import severity_counts, utc_now
+from secureinfra.normalizers.ad_common import severity_counts
 from secureinfra.normalizers.evidence_contract import normalize_report_evidence_contract
 
 
@@ -21,7 +21,7 @@ def normalize_multi_bundle(input_dir: str | Path) -> dict[str, Any]:
         raise ValueError("multi-bundle input must be a directory containing client bundle folders or .zip archives")
 
     bundle_inputs = discover_bundle_inputs(root)
-    generated_at = utc_now()
+    generated_at = "1970-01-01T00:00:00Z"
     source_files: list[str] = []
     findings: list[dict[str, Any]] = []
     machine_inventory: list[dict[str, Any]] = []
@@ -65,6 +65,16 @@ def normalize_multi_bundle(input_dir: str | Path) -> dict[str, Any]:
         if report_has_ad_evidence(item["report"])
         and str(as_dict(item["report"].get("environment_summary")).get("domain") or "").strip()
     }
+
+    child_timestamps = sorted(
+        {
+            str(item["report"].get("generated_at_utc") or "").strip()
+            for item in prepared_bundles
+            if str(item["report"].get("generated_at_utc") or "").strip()
+        }
+    )
+    if child_timestamps:
+        generated_at = child_timestamps[-1]
 
     for item in prepared_bundles:
         client_report = item["report"]
@@ -119,6 +129,12 @@ def normalize_multi_bundle(input_dir: str | Path) -> dict[str, Any]:
             )
         )
 
+    findings.sort(
+        key=lambda item: (
+            str(item.get("finding_id") or "").casefold(),
+            str(item.get("source_script") or "").casefold(),
+        )
+    )
     counts = severity_counts(findings)
     top_machines = top_risky_machines(machine_inventory)
     fleet_status = fleet_coverage_status(machine_inventory, failed_bundles)

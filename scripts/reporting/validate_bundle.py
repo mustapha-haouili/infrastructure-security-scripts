@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tempfile
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,9 +34,12 @@ from secureinfra.bundles.client_bundle import (  # noqa: E402
     MAX_ZIP_ENTRIES,
     MAX_ZIP_MEMBER_SIZE_BYTES,
     discover_client_bundle,
+    find_collection_root,
     is_allowed_zip_path_without_wrapper,
     is_allowed_zip_relative_path,
     missing_client_files,
+    safe_extract_zip,
+    validate_expanded_bundle_integrity,
     validate_windows_compatibility_report,
     validate_zip_member,
 )
@@ -115,6 +119,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Fail on suspicious filenames/path segments in addition to structural checks.",
     )
     parser.add_argument(
+        "--require-manifest-hashes",
+        action="store_true",
+        help="Require exact file membership, size, and SHA-256 records in manifest.json.",
+    )
+    parser.add_argument(
         "--quiet",
         action="store_true",
         help="Only print validation errors.",
@@ -127,6 +136,7 @@ def validate_input_bundle(
     *,
     expected_bundle_count: int = 0,
     strict_safety: bool = False,
+    require_manifest_hashes: bool = False,
 ) -> BundleValidationResult:
     path = Path(input_path)
     result = BundleValidationResult(input_path=path)
@@ -151,7 +161,12 @@ def validate_input_bundle(
         )
 
     for candidate in candidates:
-        validate_candidate(candidate, result, strict_safety=strict_safety)
+        validate_candidate(
+            candidate,
+            result,
+            strict_safety=strict_safety,
+            require_manifest_hashes=require_manifest_hashes,
+        )
 
     raise_if_errors(result)
     return result
@@ -170,23 +185,46 @@ def resolve_bundle_candidates(input_path: Path) -> list[Path]:
     return discover_bundle_inputs(input_path)
 
 
-def validate_candidate(candidate: Path, result: BundleValidationResult, *, strict_safety: bool) -> None:
+def validate_candidate(
+    candidate: Path,
+    result: BundleValidationResult,
+    *,
+    strict_safety: bool,
+    require_manifest_hashes: bool,
+) -> None:
     if candidate.is_file():
-        validate_zip_bundle(candidate, result, strict_safety=strict_safety)
+        validate_zip_bundle(
+            candidate,
+            result,
+            strict_safety=strict_safety,
+            require_manifest_hashes=require_manifest_hashes,
+        )
         return
     if candidate.is_dir():
-        validate_directory_bundle(candidate, result, strict_safety=strict_safety)
+        validate_directory_bundle(
+            candidate,
+            result,
+            strict_safety=strict_safety,
+            require_manifest_hashes=require_manifest_hashes,
+        )
         return
     result.add_error(f"Unsupported bundle candidate type: {candidate}")
 
 
-def validate_zip_bundle(zip_path: Path, result: BundleValidationResult, *, strict_safety: bool) -> None:
+def validate_zip_bundle(
+    zip_path: Path,
+    result: BundleValidationResult,
+    *,
+    strict_safety: bool,
+    require_manifest_hashes: bool,
+) -> None:
     if zip_path.suffix.lower() != ".zip":
         result.add_error(f"Bundle file must be a .zip archive: {zip_path}")
         return
 
     try:
         with zipfile.ZipFile(zip_path) as archive:
+            initial_error_count = len(result.errors)
             bad_member = archive.testzip()
             if bad_member:
                 result.add_error(f"{zip_path}: archive member failed integrity check: {bad_member}")
@@ -218,6 +256,23 @@ def validate_zip_bundle(zip_path: Path, result: BundleValidationResult, *, stric
                     validate_json_zip_member(archive, member, f"{zip_path}!{relative_name}", result)
 
             validate_bundle_shape(content_paths, f"{zip_path}", result)
+            if len(result.errors) == initial_error_count:
+                try:
+                    with tempfile.TemporaryDirectory(prefix="secureinfra-bundle-validation-") as temporary:
+                        extraction_root = Path(temporary)
+                        safe_extract_zip(archive, extraction_root)
+                        bundle_root = find_collection_root(extraction_root)
+                        integrity = validate_expanded_bundle_integrity(
+                            bundle_root,
+                            require_manifest_hashes=require_manifest_hashes,
+                        )
+                    if integrity.get("status") != "verified":
+                        result.add_warning(
+                            f"{zip_path}: bundle has no cryptographically verifiable file manifest "
+                            f"(status={integrity.get('status', 'unknown')})"
+                        )
+                except ValueError as exc:
+                    result.add_error(f"{zip_path}: {exc}")
     except zipfile.BadZipFile as exc:
         result.add_error(f"{zip_path}: not a readable ZIP archive: {exc}")
     except OSError as exc:
@@ -250,7 +305,27 @@ def validate_json_zip_member(
         result.add_error(f"{display_name}: cannot read JSON member: {exc}")
 
 
-def validate_directory_bundle(bundle_dir: Path, result: BundleValidationResult, *, strict_safety: bool) -> None:
+def validate_directory_bundle(
+    bundle_dir: Path,
+    result: BundleValidationResult,
+    *,
+    strict_safety: bool,
+    require_manifest_hashes: bool,
+) -> None:
+    try:
+        integrity = validate_expanded_bundle_integrity(
+            bundle_dir,
+            require_manifest_hashes=require_manifest_hashes,
+        )
+    except (OSError, ValueError) as exc:
+        result.add_error(f"{bundle_dir}: {exc}")
+        return
+    if integrity.get("status") != "verified":
+        result.add_warning(
+            f"{bundle_dir}: bundle has no cryptographically verifiable file manifest "
+            f"(status={integrity.get('status', 'unknown')})"
+        )
+
     try:
         detected = discover_client_bundle(bundle_dir)
     except (OSError, ValueError) as exc:
@@ -344,6 +419,7 @@ def main(argv: list[str] | None = None) -> int:
             args.input,
             expected_bundle_count=args.expected_bundle_count,
             strict_safety=args.strict_safety,
+            require_manifest_hashes=args.require_manifest_hashes,
         )
     except BundleValidationError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

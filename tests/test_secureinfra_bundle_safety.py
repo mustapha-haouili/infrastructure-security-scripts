@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sys
 import tempfile
@@ -76,6 +77,26 @@ def safe_client_bundle_entries(machine_name: str = "LAB-SRV01") -> dict[str, str
     }
 
 
+def with_hashed_manifest(entries: dict[str, str | bytes]) -> dict[str, str | bytes]:
+    output = dict(entries)
+    manifest = json.loads(str(output["manifest.json"]))
+    records = []
+    for name, payload in sorted(output.items()):
+        if name in {"manifest.json", "bundle-manifest.json"}:
+            continue
+        raw = payload if isinstance(payload, bytes) else payload.encode("utf-8")
+        records.append(
+            {
+                "Path": name.replace("/", "\\"),
+                "SizeBytes": len(raw),
+                "Sha256": hashlib.sha256(raw).hexdigest().upper(),
+            }
+        )
+    manifest["Files"] = records
+    output["manifest.json"] = json.dumps(manifest)
+    return output
+
+
 class SecureInfraBundleSafetyTests(unittest.TestCase):
     def assert_rejects_zip(self, entries: dict[str, str | bytes], pattern: str) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -88,13 +109,64 @@ class SecureInfraBundleSafetyTests(unittest.TestCase):
     def test_safe_client_bundle_zip_still_loads(self):
         with tempfile.TemporaryDirectory() as tmp:
             archive_path = Path(tmp) / "safe-client-bundle.zip"
-            write_zip(archive_path, safe_client_bundle_entries())
+            write_zip(archive_path, with_hashed_manifest(safe_client_bundle_entries()))
 
             report = normalize_client_bundle(archive_path)
 
             self.assertEqual(report["report_type"], "client-bundle")
             self.assertEqual(report["summary"]["normalized_finding_count"], 1)
             self.assertIn("host_windows_security_audit", report["metadata"]["loaded_files"])
+            self.assertEqual(report["metadata"]["bundle_integrity"]["status"], "verified")
+
+    def test_rejects_missing_file_declared_by_manifest(self):
+        entries = with_hashed_manifest(safe_client_bundle_entries())
+        del entries["host/windows-security-audit.json"]
+        self.assert_rejects_zip(entries, "manifest membership mismatch")
+
+    def test_rejects_file_modified_after_manifest_creation(self):
+        entries = with_hashed_manifest(safe_client_bundle_entries())
+        entries["host/windows-security-audit.json"] = json.dumps({"Findings": []})
+        self.assert_rejects_zip(entries, "manifest (size|SHA-256) mismatch")
+
+    def test_empty_files_array_is_explicitly_legacy_unverified(self):
+        entries = with_hashed_manifest(safe_client_bundle_entries())
+        manifest = json.loads(str(entries["manifest.json"]))
+        manifest["Files"] = []
+        entries["manifest.json"] = json.dumps(manifest)
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = Path(tmp) / "legacy-bundle.zip"
+            write_zip(archive_path, entries)
+            report = normalize_client_bundle(archive_path)
+        self.assertEqual(report["metadata"]["bundle_integrity"]["status"], "legacy-empty-file-list")
+
+    def test_rejects_inconsistent_manifest_alias_metadata(self):
+        entries = with_hashed_manifest(safe_client_bundle_entries())
+        alias = json.loads(str(entries["manifest.json"]))
+        alias["CollectionId"] = "different-run"
+        entries["bundle-manifest.json"] = json.dumps(alias)
+        self.assert_rejects_zip(entries, "contain different metadata")
+
+    def test_rejects_expanded_bundle_symlink(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bundle_dir = root / "bundle"
+            entries = with_hashed_manifest(safe_client_bundle_entries())
+            for relative_name, payload in entries.items():
+                target = bundle_dir / relative_name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                raw = payload if isinstance(payload, bytes) else payload.encode("utf-8")
+                target.write_bytes(raw)
+
+            source = bundle_dir / "host" / "windows-security-audit.json"
+            outside = root / "outside.json"
+            source.replace(outside)
+            try:
+                source.symlink_to(outside)
+            except (NotImplementedError, OSError):
+                self.skipTest("Symbolic links are unavailable in this test environment")
+
+            with self.assertRaisesRegex(ValueError, "symbolic link or reparse point"):
+                normalize_client_bundle(bundle_dir)
 
     def test_compatibility_report_is_loaded_as_evidence_gap_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -215,6 +287,37 @@ class SecureInfraBundleSafetyTests(unittest.TestCase):
             self.assert_rejects_zip({"client-info.json": "{}", "manifest.json": "{}"}, "too many entries")
         finally:
             client_bundle.MAX_ZIP_ENTRIES = original_limit
+
+    def test_rejects_excessive_total_uncompressed_size(self):
+        original_limit = client_bundle.MAX_BUNDLE_TOTAL_SIZE_BYTES
+        client_bundle.MAX_BUNDLE_TOTAL_SIZE_BYTES = 10
+        try:
+            self.assert_rejects_zip(
+                {"client-info.json": "123456", "manifest.json": "123456"},
+                "total uncompressed size",
+            )
+        finally:
+            client_bundle.MAX_BUNDLE_TOTAL_SIZE_BYTES = original_limit
+
+    def test_rejects_duplicate_normalized_zip_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = Path(tmp) / "duplicate.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr("client-info.json", "{}")
+                archive.writestr("CLIENT-INFO.JSON", "{}")
+            with self.assertRaisesRegex(ValueError, "duplicate normalized entry path"):
+                normalize_client_bundle(archive_path)
+
+    def test_rejects_zip_symbolic_link_member(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = Path(tmp) / "symlink.zip"
+            link = zipfile.ZipInfo("host/windows-security-audit.json")
+            link.create_system = 3
+            link.external_attr = (0o120777 << 16)
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.writestr(link, "../../outside.json")
+            with self.assertRaisesRegex(ValueError, "symbolic link"):
+                normalize_client_bundle(archive_path)
 
     def test_multi_bundle_marks_unsafe_child_zip_failed(self):
         with tempfile.TemporaryDirectory() as tmp:

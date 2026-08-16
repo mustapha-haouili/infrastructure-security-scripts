@@ -178,8 +178,8 @@ fi
 
 mkdir -p "$staging_dir"
 
-file_list="$(mktemp)"
-sorted_list="$(mktemp)"
+file_list="$(mktemp "$output_dir/.secureinfra-file-list.XXXXXX")"
+sorted_list="$(mktemp "$output_dir/.secureinfra-sorted-list.XXXXXX")"
 trap 'rm -f "$file_list" "$sorted_list"' EXIT
 
 root_files=(
@@ -205,12 +205,12 @@ for public_dir in "${public_dirs[@]}"; do
     if [[ ! -d "$repo_root/$public_dir" ]]; then
         continue
     fi
-    while IFS= read -r -d '' file_path; do
+    find "$repo_root/$public_dir" -type f -print0 | while IFS= read -r -d '' file_path; do
         rel_path="${file_path#"$repo_root"/}"
         if ! is_excluded_path "$rel_path"; then
             printf '%s\n' "$rel_path" >> "$file_list"
         fi
-    done < <(find "$repo_root/$public_dir" -type f -print0)
+    done
 done
 
 sort -u "$file_list" > "$sorted_list"

@@ -19,6 +19,7 @@ sys.path.insert(0, str(SECUREINFRA_REPORTING))
 
 from secureinfra.bundles.ad_shared_bundle import discover_ad_shared_bundle, normalize_ad_shared_bundle
 from secureinfra.bundles.client_bundle import normalize_windows_event_summary_rows
+from secureinfra.bundles.multi_bundle import normalize_multi_bundle
 from secureinfra.loaders.csv_loader import load_csv_file
 from secureinfra.loaders.json_loader import load_json_file
 from secureinfra.normalizers.ad_inactive_users import normalize_ad_inactive_users
@@ -576,6 +577,23 @@ class SecureInfraAITests(unittest.TestCase):
         self.assertEqual(len(report["findings"]), 6)
         self.assertEqual(report["findings"][0]["finding_id"], "AD-INACTIVE-0001")
         self.assertEqual(report["findings"][0]["safe_to_auto_remediate"], False)
+
+    def test_inactive_user_normalizer_uses_report_metadata_timestamp(self):
+        data = load_json_file(SAMPLE_INPUT)
+        expected = "2026-06-08T10:30:00Z"
+        data.pop("GeneratedAtUtc", None)
+        data.pop("SourceScript", None)
+        data["ReportMetadata"] = {
+            "GeneratedAtUtc": expected,
+            "ScriptName": "Get-ADInactiveUserReport.ps1",
+        }
+
+        first = normalize_ad_inactive_users(data, SAMPLE_INPUT)
+        second = normalize_ad_inactive_users(data, SAMPLE_INPUT)
+
+        self.assertEqual(first, second)
+        self.assertEqual(first["generated_at_utc"], expected)
+        self.assertTrue(all(item["timestamp_utc"] == expected for item in first["findings"]))
 
     def test_normalized_report_schema_validation_accepts_valid_report(self):
         data = load_json_file(SAMPLE_INPUT)
@@ -1329,6 +1347,18 @@ class SecureInfraAITests(unittest.TestCase):
             self.assertTrue(any(str(value).endswith(".zip!ad-shared") for value in normalized["source_files"]))
             self.assert_evidence_contract(normalized)
             self.assert_no_internal_paths(normalized, root, fleet_dir)
+
+    def test_multi_bundle_normalization_is_repeatable_for_same_input(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fleet_dir = Path(tmp) / "fleet-input"
+            fleet_dir.mkdir()
+            self.create_client_bundle(fleet_dir, machine_name="EXAMPLE-SRV01")
+            self.create_client_bundle(fleet_dir, machine_name="EXAMPLE-SRV02")
+
+            first = normalize_multi_bundle(fleet_dir)
+            second = normalize_multi_bundle(fleet_dir)
+
+            self.assertEqual(first, second)
 
     def test_multi_bundle_unselected_scopes_do_not_downgrade_machine_coverage(self):
         with tempfile.TemporaryDirectory() as tmp:

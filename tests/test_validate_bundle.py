@@ -1,3 +1,4 @@
+import hashlib
 import json
 import tempfile
 import unittest
@@ -45,13 +46,37 @@ def safe_client_bundle_entries(machine_name: str = "LAB-SRV01") -> dict[str, str
     }
 
 
+def with_hashed_manifest(entries: dict[str, str | bytes]) -> dict[str, str | bytes]:
+    output = dict(entries)
+    manifest = json.loads(str(output["manifest.json"]))
+    records = []
+    for name, payload in sorted(output.items()):
+        if name in {"manifest.json", "bundle-manifest.json"}:
+            continue
+        raw = payload if isinstance(payload, bytes) else payload.encode("utf-8")
+        records.append(
+            {
+                "Path": name.replace("/", "\\"),
+                "SizeBytes": len(raw),
+                "Sha256": hashlib.sha256(raw).hexdigest().upper(),
+            }
+        )
+    manifest["Files"] = records
+    output["manifest.json"] = json.dumps(manifest)
+    return output
+
+
 class ValidateBundleTests(unittest.TestCase):
     def test_validate_bundle_accepts_safe_zip(self):
         with tempfile.TemporaryDirectory() as tmp:
             archive_path = Path(tmp) / "secureinfra-client-collection-LAB-SRV01.zip"
-            write_zip(archive_path, safe_client_bundle_entries())
+            write_zip(archive_path, with_hashed_manifest(safe_client_bundle_entries()))
 
-            result = validate_bundle.validate_input_bundle(archive_path, strict_safety=True)
+            result = validate_bundle.validate_input_bundle(
+                archive_path,
+                strict_safety=True,
+                require_manifest_hashes=True,
+            )
 
             self.assertEqual(result.bundle_count, 1)
             self.assertEqual(result.errors, [])
@@ -88,9 +113,14 @@ class ValidateBundleTests(unittest.TestCase):
                     },
                 }
             )
+            entries = with_hashed_manifest(entries)
             write_zip(archive_path, entries)
 
-            result = validate_bundle.validate_input_bundle(archive_path, strict_safety=True)
+            result = validate_bundle.validate_input_bundle(
+                archive_path,
+                strict_safety=True,
+                require_manifest_hashes=True,
+            )
 
             self.assertEqual(result.errors, [])
 
@@ -111,24 +141,69 @@ class ValidateBundleTests(unittest.TestCase):
     def test_validate_bundle_accepts_directory_of_multiple_zips(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            write_zip(root / "secureinfra-client-collection-LAB-SRV01.zip", safe_client_bundle_entries("LAB-SRV01"))
-            write_zip(root / "secureinfra-client-collection-LAB-SRV02.zip", safe_client_bundle_entries("LAB-SRV02"))
+            write_zip(
+                root / "secureinfra-client-collection-LAB-SRV01.zip",
+                with_hashed_manifest(safe_client_bundle_entries("LAB-SRV01")),
+            )
+            write_zip(
+                root / "secureinfra-client-collection-LAB-SRV02.zip",
+                with_hashed_manifest(safe_client_bundle_entries("LAB-SRV02")),
+            )
 
-            result = validate_bundle.validate_input_bundle(root, expected_bundle_count=2, strict_safety=True)
+            result = validate_bundle.validate_input_bundle(
+                root,
+                expected_bundle_count=2,
+                strict_safety=True,
+                require_manifest_hashes=True,
+            )
 
             self.assertEqual(result.bundle_count, 2)
 
     def test_validate_bundle_accepts_expanded_client_bundle(self):
         with tempfile.TemporaryDirectory() as tmp:
             bundle_dir = Path(tmp) / "secureinfra-client-collection-LAB-SRV01"
-            for relative_name, payload in safe_client_bundle_entries().items():
+            for relative_name, payload in with_hashed_manifest(safe_client_bundle_entries()).items():
                 target = bundle_dir / relative_name
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(payload, encoding="utf-8")
+                raw = payload if isinstance(payload, bytes) else payload.encode("utf-8")
+                target.write_bytes(raw)
 
-            result = validate_bundle.validate_input_bundle(bundle_dir, strict_safety=True)
+            result = validate_bundle.validate_input_bundle(
+                bundle_dir,
+                strict_safety=True,
+                require_manifest_hashes=True,
+            )
 
             self.assertEqual(result.bundle_count, 1)
+
+    def test_validate_bundle_rejects_missing_declared_member(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = Path(tmp) / "bundle.zip"
+            entries = with_hashed_manifest(safe_client_bundle_entries())
+            del entries["host/windows-security-audit.json"]
+            write_zip(archive_path, entries)
+
+            with self.assertRaises(validate_bundle.BundleValidationError) as context:
+                validate_bundle.validate_input_bundle(
+                    archive_path,
+                    strict_safety=True,
+                    require_manifest_hashes=True,
+                )
+
+            self.assertIn("manifest membership mismatch", str(context.exception))
+
+    def test_validate_bundle_requires_hashes_when_requested(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = Path(tmp) / "legacy.zip"
+            write_zip(archive_path, safe_client_bundle_entries())
+
+            with self.assertRaises(validate_bundle.BundleValidationError) as context:
+                validate_bundle.validate_input_bundle(
+                    archive_path,
+                    require_manifest_hashes=True,
+                )
+
+            self.assertIn("hashed Files array", str(context.exception))
 
     def test_validate_bundle_rejects_unsafe_zip_path(self):
         with tempfile.TemporaryDirectory() as tmp:

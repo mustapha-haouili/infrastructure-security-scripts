@@ -2,9 +2,29 @@
 
 All notable project changes are documented here.
 
-This project follows semantic versioning after the initial `1.0.0` baseline.
+Version labels record internal development changes. Suffixes such as `beta` or
+`rc` are not evidence of maturity or commercial readiness; those claims require
+the documented quality, provenance, and field-validation gates.
 
 ## [Unreleased]
+
+### Security
+- Added fail-closed verification of manifest file membership, byte sizes, and
+  SHA-256 values whenever a collection bundle declares `Files`. The commercial
+  path can now require hashed manifests explicitly.
+- Reject empty or conflicting hash-manifest aliases instead of allowing a
+  damaged `Files` declaration to fall back to legacy-unverified handling.
+- Rejected expanded-bundle symlinks and Windows reparse points, duplicate
+  normalized ZIP paths, encrypted and symbolic-link ZIP members, excessive
+  total expanded size, and extreme compression ratios.
+
+### Fixed
+- Made client and fleet finding order deterministic across Python hash seeds.
+- Read inactive-user collection time from `ReportMetadata` and derive fleet
+  report time from child collections instead of the analyzer wall clock.
+- Added cryptographic file records to new Linux collection manifests.
+- Made the release builder create temporary lists inside its selected output
+  directory and removed its `/dev/fd` process-substitution dependency.
 
 ## [1.3.0-beta.8] - 2026-08-13
 

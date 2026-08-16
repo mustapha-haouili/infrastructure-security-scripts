@@ -14,7 +14,10 @@ This repository is designed for defensive security operations, infrastructure ad
 
 It includes the SecureInfra_AI layer for deterministic, local, AI-ready analysis of infrastructure evidence. This layer can normalize security findings, generate JSON and Markdown reports, compare historical runs, analyze client bundles, review fleet evidence, and display reports in a local dashboard. The default reporting workflow is deterministic and local: it does not require an AI provider and does not upload evidence to a cloud service.
 
-Development status: beta. See [CHANGELOG.md](CHANGELOG.md) for release history and the current development baseline.
+Version suffixes such as `beta` or `rc` are internal change markers only; they
+do not establish product maturity or commercial readiness. Readiness claims
+must be based on the quality gate, signed-artifact provenance, and the live
+platform evidence recorded in [FIELD_VALIDATION.md](FIELD_VALIDATION.md).
 
 The packaged Windows workflow targets the inbox 64-bit Windows PowerShell 5.1
 Desktop host. A verified Enterprise wrapper may be started from PowerShell 7
@@ -66,7 +69,7 @@ Get-Content .\demo-output\executive-summary.md -TotalCount 40
 
 If your Windows Python launcher is `py`, replace `python` with `py -3`.
 
-Expected generated files in the current beta demo:
+Expected generated files in the current demo:
 
 ```text
 demo-output/

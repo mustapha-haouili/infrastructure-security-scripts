@@ -286,6 +286,32 @@ JSON
   "Collectors": $collector_json
 }
 JSON
+    python3 - "$BUNDLE_ROOT/manifest.json" "$BUNDLE_ROOT" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+manifest_path = Path(sys.argv[1])
+bundle_root = Path(sys.argv[2]).resolve(strict=True)
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+records = []
+for path in sorted(bundle_root.rglob("*"), key=lambda item: item.as_posix().casefold()):
+    if path.is_symlink():
+        raise SystemExit(f"Refusing to package symbolic link: {path}")
+    if not path.is_file() or path.name in {"manifest.json", "bundle-manifest.json"}:
+        continue
+    payload = path.read_bytes()
+    records.append(
+        {
+            "Path": path.relative_to(bundle_root).as_posix(),
+            "SizeBytes": len(payload),
+            "Sha256": hashlib.sha256(payload).hexdigest().upper(),
+        }
+    )
+manifest["Files"] = records
+manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+PY
     cp "$BUNDLE_ROOT/manifest.json" "$BUNDLE_ROOT/bundle-manifest.json"
 }
 

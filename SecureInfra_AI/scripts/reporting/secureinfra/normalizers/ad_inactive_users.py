@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -10,25 +9,14 @@ from typing import Any
 from secureinfra.normalizers.ad_common import (
     activity_evidence_context,
     account_risk_flags,
+    generated_at_utc,
     optional_bool,
     optional_int,
     service_account_classification,
+    source_script,
 )
 from secureinfra.normalizers.evidence_contract import normalize_report_evidence_contract
 from secureinfra.risk_engine.rules import as_list, classify_ad_inactive_user
-
-
-def utc_now() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-
-def first_present(data: dict[str, Any], names: list[str], default: Any = None) -> Any:
-    lower_map = {key.lower(): key for key in data}
-    for name in names:
-        key = lower_map.get(name.lower())
-        if key is not None and data.get(key) not in (None, ""):
-            return data.get(key)
-    return default
 
 
 def build_evidence(user: dict[str, Any]) -> dict[str, Any]:
@@ -98,10 +86,10 @@ def normalize_ad_inactive_users(data: dict[str, Any], source_file: str | Path) -
     if not isinstance(users, list):
         raise ValueError("AD inactive users input must contain an InactiveUsers list")
 
-    timestamp_utc = str(first_present(data, ["GeneratedAtUtc", "generated_at_utc"], utc_now()))
-    source_script = str(first_present(data, ["SourceScript", "source_script"], "Get-ADInactiveUserReport.ps1"))
+    timestamp_utc = generated_at_utc(data)
+    script_name = source_script(data, "Get-ADInactiveUserReport.ps1")
     source_path = str(source_file)
-    findings = [normalize_user(user, index, source_script, timestamp_utc) for index, user in enumerate(users, start=1)]
+    findings = [normalize_user(user, index, script_name, timestamp_utc) for index, user in enumerate(users, start=1)]
     counts = severity_counts(findings)
     summary = data.get("Summary") if isinstance(data.get("Summary"), dict) else {}
 
@@ -115,7 +103,7 @@ def normalize_ad_inactive_users(data: dict[str, Any], source_file: str | Path) -
             "environment_summary": {
                 "company": str(data.get("Company") or ""),
                 "domain": str(data.get("Domain") or ""),
-                "source_script": source_script,
+                "source_script": script_name,
                 "input_user_count": len(users),
             },
             "summary": {

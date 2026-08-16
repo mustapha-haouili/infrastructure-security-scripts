@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import os
 import re
+import stat
 import tempfile
 import zipfile
 import shutil
@@ -48,7 +51,7 @@ OPTIONAL_SAFE_MODE_OUTPUT_KEYS = {
     "host_windows_hardening_preview",
     "server_rdp_profile_cache_cleanup",
 }
-FINDING_SOURCE_KEYS = {
+FINDING_SOURCE_KEYS = (
     "host_windows_security_audit",
     "host_windows_events_summary",
     "network_windows_network_exposure",
@@ -64,7 +67,7 @@ FINDING_SOURCE_KEYS = {
     "linux_network_exposure_summary",
     "linux_log_audit_summary",
     "linux_service_inventory_summary",
-}
+)
 SUPPORTED_SCOPES = ["AD", "Host", "Server", "Workstation", "Network", "Backup", "Linux"]
 DISPLAY_NAME_BY_KEY = {
     "host_windows_security_audit": "Windows security audit",
@@ -134,6 +137,10 @@ CATEGORY_BY_KEY = {
 # content before anything is extracted.
 MAX_ZIP_ENTRIES = 512
 MAX_ZIP_MEMBER_SIZE_BYTES = 25 * 1024 * 1024
+MAX_BUNDLE_TOTAL_SIZE_BYTES = 512 * 1024 * 1024
+MAX_ZIP_COMPRESSION_RATIO = 200
+MIN_COMPRESSION_RATIO_CHECK_BYTES = 1024 * 1024
+MANIFEST_CONTROL_FILES = {"manifest.json", "bundle-manifest.json"}
 ALLOWED_ZIP_EXTENSIONS = {".json", ".csv", ".md", ".txt", ".log"}
 ALLOWED_ZIP_ROOT_FILES = {
     "client-info.json",
@@ -270,11 +277,12 @@ def validate_windows_compatibility_report(value: Any) -> None:
 
 
 @contextmanager
-def prepared_client_bundle_path(input_path: str | Path) -> Iterator[tuple[Path, str]]:
+def prepared_client_bundle_path(input_path: str | Path) -> Iterator[tuple[Path, str, dict[str, Any]]]:
     """Yield a collection root from either a directory or zip archive."""
     source_path = Path(input_path)
     if source_path.is_dir():
-        yield source_path, str(source_path)
+        integrity = validate_expanded_bundle_integrity(source_path)
+        yield source_path, str(source_path), integrity
         return
 
     if not source_path.is_file() or source_path.suffix.lower() != ".zip":
@@ -284,7 +292,9 @@ def prepared_client_bundle_path(input_path: str | Path) -> Iterator[tuple[Path, 
         extract_root = Path(temp_root)
         with zipfile.ZipFile(source_path) as archive:
             safe_extract_zip(archive, extract_root)
-        yield find_collection_root(extract_root), str(source_path)
+        collection_root = find_collection_root(extract_root)
+        integrity = validate_expanded_bundle_integrity(collection_root)
+        yield collection_root, str(source_path), integrity
 
 
 def safe_extract_zip(archive: zipfile.ZipFile, target_dir: Path) -> None:
@@ -294,8 +304,21 @@ def safe_extract_zip(archive: zipfile.ZipFile, target_dir: Path) -> None:
         raise ValueError(f"Unsafe zip archive: too many entries ({len(members)} > {MAX_ZIP_ENTRIES})")
 
     validated_members = []
+    seen_paths: set[str] = set()
+    total_uncompressed_bytes = 0
     for member in members:
         parts = validate_zip_member(member)
+        normalized_key = "/".join(parts).casefold()
+        if normalized_key in seen_paths:
+            raise ValueError(f"Unsafe zip archive: duplicate normalized entry path: {member.filename}")
+        seen_paths.add(normalized_key)
+        if not member.is_dir():
+            total_uncompressed_bytes += member.file_size
+            if total_uncompressed_bytes > MAX_BUNDLE_TOTAL_SIZE_BYTES:
+                raise ValueError(
+                    "Unsafe zip archive: total uncompressed size exceeds fixed maximum "
+                    f"({total_uncompressed_bytes} > {MAX_BUNDLE_TOTAL_SIZE_BYTES} bytes)"
+                )
         destination = (target_dir / Path(*parts)).resolve()
         if target_root != destination and target_root not in destination.parents:
             raise ValueError(f"Unsafe zip entry path: {member.filename}")
@@ -321,10 +344,27 @@ def validate_zip_member(member: zipfile.ZipInfo) -> list[str]:
     if not parts or any(part == ".." for part in parts):
         raise ValueError(f"Unsafe zip entry path: {raw_name}")
 
+    if member.flag_bits & 0x1:
+        raise ValueError(f"Unsafe zip entry is encrypted: {raw_name}")
+
+    unix_mode = (member.external_attr >> 16) & 0xFFFF
+    if unix_mode and stat.S_ISLNK(unix_mode):
+        raise ValueError(f"Unsafe zip entry is a symbolic link: {raw_name}")
+
     if member.file_size > MAX_ZIP_MEMBER_SIZE_BYTES:
         raise ValueError(
             f"Unsafe zip entry too large: {raw_name} ({member.file_size} > {MAX_ZIP_MEMBER_SIZE_BYTES} bytes)"
         )
+
+    if member.file_size >= MIN_COMPRESSION_RATIO_CHECK_BYTES:
+        if member.compress_size <= 0:
+            raise ValueError(f"Unsafe zip entry has an invalid compressed size: {raw_name}")
+        compression_ratio = member.file_size / member.compress_size
+        if compression_ratio > MAX_ZIP_COMPRESSION_RATIO:
+            raise ValueError(
+                f"Unsafe zip entry compression ratio is too high: {raw_name} "
+                f"({compression_ratio:.1f} > {MAX_ZIP_COMPRESSION_RATIO})"
+            )
 
     if member.is_dir():
         if not is_allowed_zip_relative_path(parts, is_directory=True):
@@ -363,11 +403,260 @@ def is_allowed_zip_path_without_wrapper(parts: list[str], is_directory: bool) ->
 def find_collection_root(root: Path) -> Path:
     if (root / "manifest.json").is_file() or (root / "client-info.json").is_file():
         return root
-    children = [item for item in root.iterdir() if item.is_dir()]
+    children = sorted(
+        (item for item in root.iterdir() if item.is_dir()),
+        key=lambda item: item.name.casefold(),
+    )
     for child in children:
         if (child / "manifest.json").is_file() or (child / "client-info.json").is_file():
             return child
     return root
+
+
+def validate_expanded_bundle_integrity(
+    bundle_dir: str | Path,
+    *,
+    require_manifest_hashes: bool = False,
+) -> dict[str, Any]:
+    """Validate directory containment and any available file-hash manifest.
+
+    Older evidence-only bundles may not contain a hashed ``Files`` array. They
+    remain readable for public backward compatibility unless the caller sets
+    ``require_manifest_hashes``. Whenever hashes are present, membership,
+    sizes, and SHA-256 values are mandatory and fail closed.
+    """
+
+    root = Path(bundle_dir)
+    files = scan_expanded_bundle_files(root)
+    manifest_paths = [root / name for name in sorted(MANIFEST_CONTROL_FILES) if (root / name).is_file()]
+    if not manifest_paths:
+        if require_manifest_hashes:
+            raise ValueError("Bundle integrity manifest with a hashed Files array is required")
+        return {"status": "manifest-absent", "verified_file_count": 0}
+
+    manifests: list[tuple[Path, dict[str, Any]]] = []
+    for manifest_path in manifest_paths:
+        try:
+            value = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"Bundle integrity manifest is not valid JSON: {manifest_path.name}: {exc}") from exc
+        if not isinstance(value, dict):
+            raise ValueError(f"Bundle integrity manifest root must be an object: {manifest_path.name}")
+        manifests.append((manifest_path, value))
+
+    manifests_with_file_records: list[tuple[Path, dict[str, Any], list[Any]]] = []
+    for manifest_path, manifest in manifests:
+        if "Files" not in manifest and "files" not in manifest:
+            continue
+        records = manifest.get("Files") if "Files" in manifest else manifest.get("files")
+        if not isinstance(records, list):
+            raise ValueError(f"Bundle integrity manifest Files array is invalid: {manifest_path.name}")
+        manifests_with_file_records.append((manifest_path, manifest, records))
+
+    if not manifests_with_file_records:
+        if require_manifest_hashes:
+            raise ValueError("Bundle integrity manifest must contain a hashed Files array")
+        return {"status": "legacy-unverified", "verified_file_count": 0}
+
+    hashed_manifests = [
+        (manifest_path, manifest)
+        for manifest_path, manifest, records in manifests_with_file_records
+        if records
+    ]
+    if not hashed_manifests:
+        if require_manifest_hashes:
+            parse_manifest_file_records(manifests_with_file_records[0][1], manifests_with_file_records[0][0].name)
+        return {"status": "legacy-empty-file-list", "verified_file_count": 0}
+
+    if len(hashed_manifests) != len(manifests):
+        raise ValueError("manifest.json and bundle-manifest.json disagree about hashed file records")
+
+    primary_path, primary_manifest = hashed_manifests[0]
+    declared = parse_manifest_file_records(primary_manifest, primary_path.name)
+    for alias_path, alias_manifest in hashed_manifests[1:]:
+        if alias_manifest != primary_manifest:
+            raise ValueError("manifest.json and bundle-manifest.json contain different metadata")
+        alias_declared = parse_manifest_file_records(alias_manifest, alias_path.name)
+        if alias_declared != declared:
+            raise ValueError("manifest.json and bundle-manifest.json declare different file records")
+
+    actual = {
+        key: record
+        for key, record in files.items()
+        if record["relative_path"].casefold() not in MANIFEST_CONTROL_FILES
+    }
+    declared_keys = set(declared)
+    actual_keys = set(actual)
+    missing = sorted(declared_keys - actual_keys)
+    extra = sorted(actual_keys - declared_keys)
+    if missing or extra:
+        details = []
+        if missing:
+            details.append("missing=" + ", ".join(declared[key]["path"] for key in missing))
+        if extra:
+            details.append("undeclared=" + ", ".join(actual[key]["relative_path"] for key in extra))
+        raise ValueError("Bundle manifest membership mismatch: " + "; ".join(details))
+
+    for key in sorted(declared):
+        expected = declared[key]
+        observed = actual[key]
+        if observed["size_bytes"] != expected["size_bytes"]:
+            raise ValueError(
+                f"Bundle manifest size mismatch for {expected['path']}: "
+                f"{observed['size_bytes']} != {expected['size_bytes']}"
+            )
+        digest = sha256_file(observed["path"])
+        if digest != expected["sha256"]:
+            raise ValueError(f"Bundle manifest SHA-256 mismatch for {expected['path']}")
+
+    return {
+        "status": "verified",
+        "manifest": primary_path.name,
+        "verified_file_count": len(declared),
+    }
+
+
+def scan_expanded_bundle_files(bundle_dir: Path) -> dict[str, dict[str, Any]]:
+    if not bundle_dir.exists() or not bundle_dir.is_dir():
+        raise ValueError(f"Bundle directory does not exist: {bundle_dir}")
+
+    root_lstat = bundle_dir.lstat()
+    if bundle_dir.is_symlink() or is_reparse_point(root_lstat):
+        raise ValueError(f"Unsafe bundle directory is a symbolic link or reparse point: {bundle_dir}")
+
+    root_resolved = bundle_dir.resolve(strict=True)
+    stack = [bundle_dir]
+    files: dict[str, dict[str, Any]] = {}
+    seen_entries = 0
+    total_bytes = 0
+
+    while stack:
+        current = stack.pop()
+        try:
+            entries = sorted(os.scandir(current), key=lambda entry: entry.name.casefold())
+        except OSError as exc:
+            raise ValueError(f"Cannot inspect bundle directory: {current}: {exc}") from exc
+
+        for entry in entries:
+            seen_entries += 1
+            if seen_entries > MAX_ZIP_ENTRIES:
+                raise ValueError(
+                    f"Unsafe bundle directory: too many entries ({seen_entries} > {MAX_ZIP_ENTRIES})"
+                )
+            path = Path(entry.path)
+            try:
+                entry_stat = entry.stat(follow_symlinks=False)
+            except OSError as exc:
+                raise ValueError(f"Cannot stat bundle entry: {path}: {exc}") from exc
+            if entry.is_symlink() or stat.S_ISLNK(entry_stat.st_mode) or is_reparse_point(entry_stat):
+                raise ValueError(f"Unsafe bundle entry is a symbolic link or reparse point: {path}")
+
+            resolved = path.resolve(strict=True)
+            if not path_is_within_root(resolved, root_resolved):
+                raise ValueError(f"Unsafe bundle entry resolves outside bundle root: {path}")
+
+            if entry.is_dir(follow_symlinks=False):
+                stack.append(path)
+                continue
+            if not entry.is_file(follow_symlinks=False):
+                raise ValueError(f"Unsafe bundle entry is not a regular file: {path}")
+            if entry_stat.st_size > MAX_ZIP_MEMBER_SIZE_BYTES:
+                raise ValueError(
+                    f"Unsafe bundle entry too large: {path} "
+                    f"({entry_stat.st_size} > {MAX_ZIP_MEMBER_SIZE_BYTES} bytes)"
+                )
+            total_bytes += entry_stat.st_size
+            if total_bytes > MAX_BUNDLE_TOTAL_SIZE_BYTES:
+                raise ValueError(
+                    "Unsafe bundle directory: total size exceeds fixed maximum "
+                    f"({total_bytes} > {MAX_BUNDLE_TOTAL_SIZE_BYTES} bytes)"
+                )
+
+            relative_path = path.relative_to(bundle_dir).as_posix()
+            key = relative_path.casefold()
+            if key in files:
+                raise ValueError(f"Unsafe bundle directory contains duplicate normalized path: {relative_path}")
+            files[key] = {
+                "path": path,
+                "relative_path": relative_path,
+                "size_bytes": entry_stat.st_size,
+            }
+
+    return files
+
+
+def parse_manifest_file_records(manifest: dict[str, Any], label: str) -> dict[str, dict[str, Any]]:
+    records = manifest.get("Files") if isinstance(manifest.get("Files"), list) else manifest.get("files")
+    if not isinstance(records, list) or not records:
+        raise ValueError(f"Bundle integrity manifest Files array is empty or invalid: {label}")
+    if len(records) > MAX_ZIP_ENTRIES:
+        raise ValueError(f"Bundle integrity manifest declares too many files: {label}")
+
+    parsed: dict[str, dict[str, Any]] = {}
+    for index, record in enumerate(records):
+        if not isinstance(record, dict):
+            raise ValueError(f"Bundle integrity manifest file record #{index + 1} must be an object")
+        raw_path = record.get("Path") if "Path" in record else record.get("path")
+        size_bytes = record.get("SizeBytes") if "SizeBytes" in record else record.get("size_bytes")
+        sha256 = record.get("Sha256") if "Sha256" in record else record.get("sha256")
+        normalized_path = normalize_manifest_relative_path(raw_path)
+        key = normalized_path.casefold()
+        if key in MANIFEST_CONTROL_FILES:
+            raise ValueError(f"Bundle integrity manifest must not hash itself: {normalized_path}")
+        if key in parsed:
+            raise ValueError(f"Bundle integrity manifest contains duplicate normalized path: {normalized_path}")
+        if not isinstance(size_bytes, int) or isinstance(size_bytes, bool) or size_bytes < 0:
+            raise ValueError(f"Bundle integrity manifest has invalid size for {normalized_path}")
+        if size_bytes > MAX_ZIP_MEMBER_SIZE_BYTES:
+            raise ValueError(f"Bundle integrity manifest size exceeds member limit for {normalized_path}")
+        if not isinstance(sha256, str) or not re.fullmatch(r"[0-9A-Fa-f]{64}", sha256):
+            raise ValueError(f"Bundle integrity manifest has invalid SHA-256 for {normalized_path}")
+        parsed[key] = {
+            "path": normalized_path,
+            "size_bytes": size_bytes,
+            "sha256": sha256.lower(),
+        }
+    return parsed
+
+
+def normalize_manifest_relative_path(value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("Bundle integrity manifest contains an empty file path")
+    raw_path = value.strip()
+    windows_path = PureWindowsPath(raw_path)
+    normalized = raw_path.replace("\\", "/")
+    parts = [part for part in normalized.split("/") if part and part != "."]
+    if (
+        raw_path.startswith(("/", "\\"))
+        or windows_path.is_absolute()
+        or windows_path.drive
+        or not parts
+        or any(part == ".." for part in parts)
+    ):
+        raise ValueError(f"Bundle integrity manifest contains an unsafe file path: {value}")
+    return "/".join(parts)
+
+
+def path_is_within_root(path: Path, root: Path) -> bool:
+    try:
+        common = os.path.commonpath([str(path), str(root)])
+    except ValueError:
+        return False
+    return os.path.normcase(common) == os.path.normcase(str(root))
+
+
+def is_reparse_point(value: os.stat_result) -> bool:
+    attribute = getattr(value, "st_file_attributes", 0)
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    return bool(attribute & reparse_flag)
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def discover_client_bundle(input_dir: str | Path) -> dict[str, Path]:
@@ -444,11 +733,15 @@ def missing_client_files(
 
 def normalize_client_bundle(input_path: str | Path) -> dict[str, Any]:
     """Normalize a full SecureInfra client collection directory or zip."""
-    with prepared_client_bundle_path(input_path) as (bundle_dir, source_label):
-        return normalize_prepared_client_bundle(bundle_dir, source_label)
+    with prepared_client_bundle_path(input_path) as (bundle_dir, source_label, bundle_integrity):
+        return normalize_prepared_client_bundle(bundle_dir, source_label, bundle_integrity)
 
 
-def normalize_prepared_client_bundle(bundle_dir: Path, source_label: str) -> dict[str, Any]:
+def normalize_prepared_client_bundle(
+    bundle_dir: Path,
+    source_label: str,
+    bundle_integrity: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     detected_paths = discover_client_bundle(bundle_dir)
     loaded_files: dict[str, str] = {}
     loaded_summaries: dict[str, dict[str, Any]] = {}
@@ -461,6 +754,11 @@ def normalize_prepared_client_bundle(bundle_dir: Path, source_label: str) -> dic
         "Remediation plans and hardening previews are loaded as coverage metadata; they are not counted as separate findings.",
         "Human owner review and approved change control are required before remediation.",
     ]
+    bundle_integrity = bundle_integrity or validate_expanded_bundle_integrity(bundle_dir)
+    if bundle_integrity.get("status") != "verified":
+        notes.append(
+            "Bundle file hashes were unavailable, so legacy evidence was analyzed without cryptographic membership verification."
+        )
 
     client_info = load_optional_json(detected_paths, "client_info", loaded_files, loaded_summaries, failed_files, bundle_dir, source_label)
     collection_summary = load_optional_json(
@@ -559,6 +857,12 @@ def normalize_prepared_client_bundle(bundle_dir: Path, source_label: str) -> dic
     for metadata_key in ("host_windows_remediation_plan", "host_windows_hardening_preview", "linux_inventory"):
         load_optional_json(detected_paths, metadata_key, loaded_files, loaded_summaries, failed_files, bundle_dir, source_label)
 
+    findings.sort(
+        key=lambda item: (
+            str(item.get("finding_id") or "").casefold(),
+            str(item.get("source_script") or "").casefold(),
+        )
+    )
     generated_at = collection_generated_at(collection_summary, manifest)
     source_files = list(loaded_files.values())
     counts = severity_counts(findings)
@@ -606,6 +910,7 @@ def normalize_prepared_client_bundle(bundle_dir: Path, source_label: str) -> dic
                 "supported_scopes": SUPPORTED_SCOPES,
                 "normalized_source_counts": normalized_source_counts,
                 "ignored_inapplicable_scope_files": ignored_inapplicable_scope_files,
+                "bundle_integrity": bundle_integrity,
             },
             "findings": findings,
             "metadata": {
@@ -621,6 +926,7 @@ def normalize_prepared_client_bundle(bundle_dir: Path, source_label: str) -> dic
                 "normalized_finding_count": len(findings),
                 "scope_finding_counts": scope_counts,
                 "ignored_inapplicable_scope_files": ignored_inapplicable_scope_files,
+                "bundle_integrity": bundle_integrity,
             },
             "notes": notes,
         }

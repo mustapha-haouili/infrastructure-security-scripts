@@ -74,6 +74,18 @@ Recommended fields:
 
 `manifest.json` is the primary analyzer metadata file. `bundle-manifest.json` is an alias used by human operators and external bundle tooling. When both exist, they should describe the same bundle.
 
+New collection bundles include a `Files` array. Every payload file except
+`manifest.json` and `bundle-manifest.json` is declared exactly once with its
+portable relative `Path`, `SizeBytes`, and SHA-256 digest. The analyzer verifies
+these records whenever present. Commercial delivery additionally requires them
+with `validate_bundle.py --require-manifest-hashes`; legacy unverified bundles
+must be recollected or handled outside the delivery pipeline under an explicit
+migration decision.
+
+These hashes detect missing or changed payload files relative to the supplied
+manifest. They do not authenticate who produced the bundle; commercial release
+provenance still requires a trusted signature over the manifest or archive.
+
 ## Linux evidence contract
 
 Linux platform bundles should be produced by:
@@ -169,7 +181,7 @@ For commercial delivery, the private repository should run:
 For public-only testing:
 
 ```bash
-python scripts/reporting/validate_bundle.py --input <bundle.zip> --strict-safety
+python scripts/reporting/validate_bundle.py --input <bundle.zip> --strict-safety --require-manifest-hashes
 python SecureInfra_AI/scripts/reporting/secureinfra_analyzer.py --input <bundle.zip> --type client-bundle --output <output-dir>
 python scripts/reporting/validate_schema.py --input <output-dir> --strict-safety
 ```
@@ -182,6 +194,10 @@ Bundle validation rejects:
 - absolute paths such as `C:\...` or `/tmp/...`;
 - unsupported file extensions;
 - oversized members or archive bombs;
+- excessive total expanded size or compression ratio;
+- duplicate normalized member paths, encrypted members, and ZIP symlinks;
+- expanded-directory symlinks, junctions, reparse points, or files resolving outside the bundle root;
+- missing, additional, size-mismatched, or SHA-256-mismatched files when a hash manifest is present;
 - obvious secret, credential, token, or private prompt paths in strict mode.
 
 ## Commit safety
