@@ -810,6 +810,50 @@ class SecureInfraAITests(unittest.TestCase):
         self.assertEqual(evidence["activity_evidence_confidence"], "Needs Corroboration")
         self.assertTrue(evidence["activity_validation_required"])
 
+    def test_privileged_identity_finding_is_enriched_from_identity_inventory(self):
+        data = {
+            "GeneratedAtUtc": "2026-06-08T09:00:00Z",
+            "Findings": [
+                {
+                    "FindingType": "PrivilegedIdentityProtectionGap",
+                    "Severity": "Critical",
+                    "Subject": "Administrator",
+                    "GroupName": "Domain Admins",
+                    "Evidence": "PasswordNeverExpires; AdminCount",
+                    "AdminAction": "Validate protection controls.",
+                }
+            ],
+            "PrivilegedIdentities": [
+                {
+                    "ReviewPriority": "Critical",
+                    "SamAccountName": "Administrator",
+                    "SID": "S-1-5-21-1-2-3-500",
+                    "Enabled": True,
+                    "PasswordNeverExpires": True,
+                    "AdminCount": 1,
+                    "EffectivePrivilegedGroups": ["Domain Admins", "Enterprise Admins"],
+                    "EffectivePrivilegedGroupsText": "Domain Admins; Enterprise Admins",
+                    "RiskFlags": ["PrivilegedAccess", "PasswordNeverExpires"],
+                    "ReviewReasons": ["Privileged identity has PasswordNeverExpires set."],
+                    "LastLogonDateUtc": "2026-06-01T10:00:00Z",
+                    "InactiveDays": 7,
+                    "DistinguishedName": "CN=Administrator,CN=Users,DC=corp,DC=example",
+                }
+            ],
+        }
+
+        report = normalize_privileged_identity(data, SAMPLE_INPUT)
+        finding = report["findings"][0]
+        evidence = finding["evidence"]
+
+        self.assertEqual(evidence["sid"], "S-1-5-21-1-2-3-500")
+        self.assertEqual(evidence["sam_account_name"], "Administrator")
+        self.assertTrue(evidence["password_never_expires"])
+        self.assertEqual(evidence["admin_count"], 1)
+        self.assertIn("Domain Admins", evidence["privileged_groups"])
+        self.assertEqual(evidence["classification"], "Built-in Administrator Governance Review")
+        self.assertEqual(evidence["activity_evidence_confidence"], "Medium")
+
     def test_markdown_reports_are_generated(self):
         data = load_json_file(SAMPLE_INPUT)
         report = normalize_ad_inactive_users(data, SAMPLE_INPUT)

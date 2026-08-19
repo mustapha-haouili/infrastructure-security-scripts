@@ -28,7 +28,13 @@ def build_evidence(row: dict[str, Any]) -> dict[str, Any]:
         "finding_type": str(row.get("FindingType") or ""),
         "action_priority": str(row.get("ActionPriority") or ""),
         "subject": str(row.get("Subject") or row.get("SamAccountName") or ""),
+        "sam_account_name": str(row.get("SamAccountName") or row.get("Subject") or ""),
+        "user_principal_name": str(row.get("UserPrincipalName") or ""),
+        "sid": str(row.get("SID") or ""),
         "group_name": str(row.get("GroupName") or row.get("EffectivePrivilegedGroupsText") or ""),
+        "direct_privileged_groups": split_text_or_list(row.get("DirectPrivilegedGroups") or row.get("DirectPrivilegedGroupsText")),
+        "effective_privileged_groups": split_text_or_list(row.get("EffectivePrivilegedGroups") or row.get("EffectivePrivilegedGroupsText") or row.get("GroupName")),
+        "privileged_groups": split_text_or_list(row.get("EffectivePrivilegedGroups") or row.get("EffectivePrivilegedGroupsText") or row.get("GroupName")),
         "identity_category": str(row.get("IdentityCategory") or ""),
         "enabled": optional_bool(row.get("Enabled")),
         "critical_group_member": optional_bool(row.get("CriticalGroupMember")),
@@ -80,13 +86,55 @@ def risk_factors_for(row: dict[str, Any]) -> list[str]:
     return factors
 
 
+def _account_key(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if "\\" in text:
+        text = text.rsplit("\\", 1)[-1]
+    if "@" in text:
+        text = text.split("@", 1)[0]
+    return text.rstrip("$")
+
+
 def source_rows(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return finding rows enriched with authoritative identity details when available.
+
+    The PowerShell report intentionally has two views: ``Findings`` contains compact
+    alert rows, while ``PrivilegedIdentities`` contains the richer account evidence
+    (SID, groups, password state, activity, etc.).  Normalizing only the compact row
+    loses the very context needed for correlation and safe remediation.
+    """
     findings = data.get("Findings")
-    if isinstance(findings, list) and findings:
-        return findings
     identities = data.get("PrivilegedIdentities")
+
+    if isinstance(findings, list) and findings:
+        identity_by_key: dict[str, dict[str, Any]] = {}
+        if isinstance(identities, list):
+            for identity in identities:
+                if not isinstance(identity, dict):
+                    continue
+                for candidate in (identity.get("SamAccountName"), identity.get("Name"), identity.get("UserPrincipalName")):
+                    key = _account_key(candidate)
+                    if key and key not in identity_by_key:
+                        identity_by_key[key] = identity
+
+        enriched: list[dict[str, Any]] = []
+        for finding in findings:
+            if not isinstance(finding, dict):
+                continue
+            row = dict(finding)
+            if str(finding.get("FindingType") or "").strip() == "PrivilegedIdentityProtectionGap":
+                key = _account_key(finding.get("Subject") or finding.get("SamAccountName"))
+                identity = identity_by_key.get(key)
+                if identity:
+                    # Rich identity evidence is the base; compact finding fields keep
+                    # their finding-specific severity/action/verification semantics.
+                    row = dict(identity)
+                    row.update(finding)
+            enriched.append(row)
+        return enriched
+
     if isinstance(identities, list):
-        return identities
+        return [row for row in identities if isinstance(row, dict)]
     raise ValueError("Privileged identity report must contain a Findings or PrivilegedIdentities list")
 
 
