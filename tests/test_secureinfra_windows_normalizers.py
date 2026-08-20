@@ -130,7 +130,10 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
             ("tcp", 5985, "Windows Remote Management", "WinRM over HTTP"),
             ("tcp", 5986, "Windows Remote Management", "WinRM over HTTPS"),
             ("tcp", 3389, "Remote Desktop Protocol", "RDP"),
+            ("udp", 3389, "Remote Desktop Protocol", "RDP UDP transport"),
             ("tcp", 445, "SMB", "Server Message Block"),
+            ("udp", 88, "Kerberos", "Kerberos authentication"),
+            ("udp", 389, "CLDAP / Active Directory DC Locator", "Connectionless LDAP / LDAP Ping"),
             ("tcp", 80, "HTTP web service", "Hypertext Transfer Protocol"),
             ("udp", 137, "NetBIOS Name Service", "NetBIOS over TCP/IP name service"),
             ("udp", 138, "NetBIOS Datagram Service", "NetBIOS over TCP/IP datagram service"),
@@ -148,6 +151,11 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
         self.assertEqual(fallback["common_service"], "Unknown or custom service")
         self.assertEqual(fallback["exposure_type"], "Listening service requiring validation")
         self.assertIn("Validate owner, purpose, firewall scope, and monitoring", fallback["risk_explanation"])
+
+        udp_445 = lookup_port_context("udp", 445)
+        self.assertEqual(udp_445["common_service"], "Unknown or custom service")
+        self.assertNotIn("SMB", udp_445["common_service"])
+        self.assertNotIn("Server Message Block", udp_445["common_name"])
 
     def test_windows_local_admin_findings_use_stable_principal_ids_and_context(self):
         data = {
@@ -1296,7 +1304,7 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
                     "LogBlocked": True,
                 }
             ],
-            "RemoteAccess": {"WinRmService": "Running"},
+            "RemoteAccess": {"RdpDenyConnections": 0, "RdpNlaRequired": 1, "WinRmService": "Running"},
             "Defender": {
                 "AMServiceEnabled": True,
                 "AntivirusEnabled": True,
@@ -1331,6 +1339,14 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
                     "Title": "SMBv1 server protocol is enabled",
                     "Evidence": "Smb1ServerEnabled=True",
                     "Recommendation": "Disable SMBv1 server protocol unless approved.",
+                },
+                {
+                    "Id": "WIN-RDP-002",
+                    "Severity": "Info",
+                    "Area": "Remote access",
+                    "Title": "RDP is enabled",
+                    "Evidence": "RdpDenyConnections=0; RdpNlaRequired=1",
+                    "Recommendation": "Confirm RDP is limited to approved administration paths.",
                 },
                 {
                     "Id": "WIN-WINRM-003",
@@ -1425,6 +1441,14 @@ class SecureInfraWindowsNormalizerTests(unittest.TestCase):
         self.assertIs(smb["evidence"]["current_value"], True)
         self.assertIn("not proof that TCP 445 is reachable", smb["evidence"]["risk_explanation"])
         self.assertIn("legacy SMB dependency", smb["evidence"]["customer_question"])
+
+        rdp = by_id["HOST-WIN-WIN-RDP-002"]
+        self.assertEqual(rdp["evidence"]["baseline_control_id"], "WIN-RDP-002")
+        self.assertEqual(rdp["evidence"]["control_family"], "RDP baseline")
+        self.assertEqual(rdp["evidence"]["protocol_family"], "RDP")
+        self.assertEqual(rdp["evidence"]["rdp_nla_required"], 1)
+        self.assertIn("do not prove", rdp["evidence"]["risk_explanation"])
+        self.assertIn("tcp 3389", rdp["evidence"]["risk_explanation"].lower())
 
         winrm = by_id["HOST-WIN-WIN-WINRM-003"]
         self.assertEqual(winrm["evidence"]["control_family"], "WinRM baseline")

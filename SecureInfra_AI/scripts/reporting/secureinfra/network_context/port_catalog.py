@@ -108,6 +108,16 @@ PORT_CONTEXT: dict[tuple[str, int], dict[str, str]] = {
         "safe_next_step": "Validate server role, domain ownership, firewall scope, and monitoring before changing the listener.",
         "mapping_confidence": "high",
     },
+    ("udp", 88): {
+        "common_service": "Kerberos",
+        "common_name": "Kerberos authentication",
+        "exposure_type": "Directory authentication service",
+        "risk_explanation": "Kerberos can use UDP 88 for authentication traffic in Active Directory and other Kerberos environments. Validate whether this host is expected to provide Kerberos and which client networks should reach it.",
+        "acceptable_when": "May be acceptable on approved domain controllers or Kerberos infrastructure with expected network reachability.",
+        "customer_question": "Is this host approved to provide Kerberos authentication over UDP, and which networks should reach it?",
+        "safe_next_step": "Validate server role, domain ownership, firewall scope, and monitoring before changing UDP 88 exposure.",
+        "mapping_confidence": "high",
+    },
     ("tcp", 135): {
         "common_service": "RPC Endpoint Mapper",
         "common_name": "Microsoft RPC Endpoint Mapper",
@@ -156,6 +166,16 @@ PORT_CONTEXT: dict[tuple[str, int], dict[str, str]] = {
         "acceptable_when": "May be acceptable on approved directory servers with intended client reachability and monitoring.",
         "customer_question": "Is this host an approved LDAP directory service, and which systems should query it?",
         "safe_next_step": "Validate directory role, approved clients, firewall scope, and whether LDAPS is required before changing LDAP exposure.",
+        "mapping_confidence": "high",
+    },
+    ("udp", 389): {
+        "common_service": "CLDAP / Active Directory DC Locator",
+        "common_name": "Connectionless LDAP / LDAP Ping",
+        "exposure_type": "Directory discovery service",
+        "risk_explanation": "UDP 389 can be used for connectionless LDAP (CLDAP/LDAP Ping), including Active Directory domain-controller discovery. Validate the directory role and intended client networks before changing this path.",
+        "acceptable_when": "May be acceptable on approved Active Directory/domain-controller infrastructure when UDP 389 is required for directory discovery and restricted to intended client networks.",
+        "customer_question": "Does this host intentionally provide Active Directory/DC Locator or another CLDAP service, and which client networks should reach UDP 389?",
+        "safe_next_step": "Validate the directory/DC Locator dependency, allowed client networks, firewall scope, and monitoring before changing UDP 389 exposure.",
         "mapping_confidence": "high",
     },
     ("tcp", 443): {
@@ -236,6 +256,16 @@ PORT_CONTEXT: dict[tuple[str, int], dict[str, str]] = {
         "acceptable_when": "May be acceptable when Remote Desktop is approved, restricted to trusted administration sources, protected by policy, and monitored.",
         "customer_question": "Who requires RDP access, from which source networks, and how is access approved and monitored?",
         "safe_next_step": "Validate RDP owner, allowed source networks, NLA/policy controls, firewall scope, and monitoring before changing the listener.",
+        "mapping_confidence": "high",
+    },
+    ("udp", 3389): {
+        "common_service": "Remote Desktop Protocol",
+        "common_name": "RDP UDP transport",
+        "exposure_type": "Remote administration service",
+        "risk_explanation": "Modern RDP can use UDP 3389 alongside TCP 3389 for remote-session transport. Validate whether RDP is approved, which management/VPN/gateway sources require it, and whether the path is appropriately restricted and monitored.",
+        "acceptable_when": "May be acceptable when Remote Desktop is approved, restricted to trusted administration sources, protected by policy, and monitored.",
+        "customer_question": "Who requires RDP access, from which source networks, and how are the TCP/UDP RDP paths approved and monitored?",
+        "safe_next_step": "Validate RDP owner, allowed source networks, NLA/gateway policy, firewall scope, and monitoring before changing UDP 3389 exposure.",
         "mapping_confidence": "high",
     },
     ("tcp", 5432): {
@@ -348,8 +378,6 @@ def lookup_port_context(protocol: Any, port: Any) -> dict[str, str]:
         return dict(UNKNOWN_PORT_CONTEXT)
 
     context = PORT_CONTEXT.get((normalized_protocol, normalized_port))
-    if context is None and normalized_protocol == "udp":
-        context = PORT_CONTEXT.get(("tcp", normalized_port))
     if context is None:
         return dict(UNKNOWN_PORT_CONTEXT)
     return dict(context)

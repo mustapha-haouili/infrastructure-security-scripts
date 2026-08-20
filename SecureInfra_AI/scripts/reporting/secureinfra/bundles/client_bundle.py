@@ -1451,6 +1451,8 @@ def host_security_context_evidence(row: dict[str, Any], data: dict[str, Any], ev
     finding_id = str(first_value(row, ["Id", "FindingId", "ControlId"], "") or evidence.get("id") or evidence.get("finding_id") or "").strip().upper()
     if finding_id.startswith("WIN-SMB-"):
         return host_smb_baseline_context(row, data, evidence, finding_id)
+    if finding_id.startswith("WIN-RDP-"):
+        return host_rdp_baseline_context(row, data, evidence, finding_id)
     if finding_id.startswith("WIN-WINRM-"):
         return host_winrm_baseline_context(row, data, evidence, finding_id)
     if finding_id.startswith("WIN-FW-"):
@@ -1759,6 +1761,32 @@ def host_smb_baseline_context(row: dict[str, Any], data: dict[str, Any], evidenc
         "risk_explanation": "Legacy or weak SMB settings can increase lateral movement, downgrade, or unauthenticated access risk. This is protocol policy evidence, not proof that TCP 445 is reachable from untrusted networks.",
         "customer_question": "Is there a documented legacy SMB dependency, owner, compensating control, and retirement date for this host?",
         "safe_next_step": "Validate application, NAS, print, and legacy file-sharing dependencies before changing SMB policy through approved change control.",
+    }
+
+
+def host_rdp_baseline_context(row: dict[str, Any], data: dict[str, Any], evidence: dict[str, Any], finding_id: str) -> dict[str, Any]:
+    remote_access = as_dict(data.get("RemoteAccess"))
+    rdp_deny = remote_access.get("RdpDenyConnections", "")
+    rdp_nla = remote_access.get("RdpNlaRequired", "")
+    if finding_id == "WIN-RDP-001":
+        summary = "RDP is enabled without the expected Network Level Authentication setting and requires remote-access dependency validation."
+        expected = "RDP disabled when not required, or RdpNlaRequired=1 with access restricted to approved administration paths when RDP is required"
+    else:
+        summary = "RDP is enabled with NLA evidence and requires validation of the approved administration path, users, firewall scope, and monitoring."
+        expected = "RDP enabled only when required, with RdpNlaRequired=1 and reachability restricted to approved management/VPN/RD Gateway sources"
+    return {
+        "baseline_control_id": finding_id,
+        "control_family": "RDP baseline",
+        "protocol_family": "RDP",
+        "common_service": "Remote Desktop Protocol",
+        "rdp_deny_connections": rdp_deny,
+        "rdp_nla_required": rdp_nla,
+        "current_value": f"RdpDenyConnections={rdp_deny}; RdpNlaRequired={rdp_nla}",
+        "expected_value": expected,
+        "summary": summary,
+        "risk_explanation": "RDP is a legitimate administration/recovery service when required. Local enablement and NLA state do not prove that TCP 3389 is reachable from the Internet, VPN, user VLANs, or other network segments.",
+        "customer_question": "Is RDP an approved administration/recovery path for this host, which users and source networks may use it, and which gateway/MFA/logging controls apply?",
+        "safe_next_step": "Validate RDP ownership, NLA, approved users/groups, Windows Firewall scope, upstream segmentation, VPN/RD Gateway/MFA, logging, and alternate recovery access before changing RDP policy.",
     }
 
 

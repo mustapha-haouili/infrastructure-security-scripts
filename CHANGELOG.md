@@ -19,6 +19,8 @@ the documented quality, provenance, and field-validation gates.
   total expanded size, and extreme compression ratios.
 
 ### Fixed
+- Made Windows network port context protocol-specific instead of falling back from any unmapped UDP port to the TCP service with the same number. UDP/445 now remains unknown/custom unless direct evidence identifies its owner, while UDP/389 is explicitly modeled as CLDAP / Active Directory DC Locator, UDP/88 as Kerberos, and UDP/3389 as the RDP UDP transport.
+- Added structured RDP baseline context for `WIN-RDP-*` host findings, including NLA/enablement state and an explicit boundary that local RDP configuration does not prove TCP/3389 Internet/VPN/cross-segment reachability.
 - Preserve AD privileged-principal object class, SID, DN, and member sAMAccountName from membership evidence so downstream reporting can distinguish user, group, and computer principals during correlation.
 - Enrich nested privileged-group and non-user privileged-principal findings from the collector Memberships dataset instead of leaving compact finding rows without typed identity context.
 - Made client and fleet finding order deterministic across Python hash seeds.
