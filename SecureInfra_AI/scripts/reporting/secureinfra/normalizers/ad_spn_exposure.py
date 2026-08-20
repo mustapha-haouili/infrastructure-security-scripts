@@ -27,6 +27,8 @@ def build_evidence(row: dict[str, Any]) -> dict[str, Any]:
     classification = service_account_classification(row)
     return {
         "sam_account_name": str(row.get("SamAccountName") or ""),
+        "object_sid": str(row.get("SID") or ""),
+        "object_class": str(row.get("ObjectClass") or "user"),
         "enabled": optional_bool(row.get("Enabled")),
         "spn_count": optional_int(row.get("SPNCount")),
         "service_principal_names": split_text_or_list(row.get("ServicePrincipalNames") or row.get("ServicePrincipalNamesText")),

@@ -30,8 +30,15 @@ def build_evidence(row: dict[str, Any]) -> dict[str, Any]:
         "subject": str(row.get("Subject") or row.get("SamAccountName") or ""),
         "sam_account_name": str(row.get("SamAccountName") or row.get("Subject") or ""),
         "user_principal_name": str(row.get("UserPrincipalName") or ""),
-        "sid": str(row.get("SID") or ""),
+        "sid": str(row.get("SID") or row.get("MemberSID") or ""),
+        "object_sid": str(row.get("SID") or row.get("MemberSID") or ""),
+        "object_class": str(row.get("ObjectClass") or row.get("MemberObjectClass") or ""),
         "group_name": str(row.get("GroupName") or row.get("EffectivePrivilegedGroupsText") or ""),
+        "member_name": str(row.get("MemberName") or row.get("Subject") or ""),
+        "member_sam_account_name": str(row.get("MemberSamAccountName") or row.get("SamAccountName") or row.get("Subject") or ""),
+        "member_object_class": str(row.get("MemberObjectClass") or row.get("ObjectClass") or ""),
+        "member_sid": str(row.get("MemberSID") or row.get("SID") or ""),
+        "member_dn": str(row.get("MemberDN") or row.get("DistinguishedName") or ""),
         "direct_privileged_groups": split_text_or_list(row.get("DirectPrivilegedGroups") or row.get("DirectPrivilegedGroupsText")),
         "effective_privileged_groups": split_text_or_list(row.get("EffectivePrivilegedGroups") or row.get("EffectivePrivilegedGroupsText") or row.get("GroupName")),
         "privileged_groups": split_text_or_list(row.get("EffectivePrivilegedGroups") or row.get("EffectivePrivilegedGroupsText") or row.get("GroupName")),
@@ -95,16 +102,90 @@ def _account_key(value: Any) -> str:
     return text.rstrip("$")
 
 
-def source_rows(data: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return finding rows enriched with authoritative identity details when available.
+def _nonempty(value: Any) -> bool:
+    return value not in (None, "", [], {})
 
-    The PowerShell report intentionally has two views: ``Findings`` contains compact
-    alert rows, while ``PrivilegedIdentities`` contains the richer account evidence
-    (SID, groups, password state, activity, etc.).  Normalizing only the compact row
-    loses the very context needed for correlation and safe remediation.
+
+def _membership_key(value: Any) -> str:
+    return _account_key(value)
+
+
+def _enrich_structural_finding_from_memberships(
+    finding: dict[str, Any], memberships: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Attach object-class/SID/DN evidence to compact group/computer principal findings.
+
+    ``NestedPrivilegedGroup`` and ``NonUserPrivilegedPrincipal`` rows are emitted as
+    compact alerts, while the report's ``Memberships`` section carries the authoritative
+    MemberObjectClass/MemberSID/MemberDN fields.  Without this enrichment a nested group
+    can be misclassified as a user and a computer principal cannot correlate with AD-COMP.
+    """
+    finding_type = str(finding.get("FindingType") or "").strip()
+    if finding_type not in {"NestedPrivilegedGroup", "NonUserPrivilegedPrincipal"}:
+        return dict(finding)
+
+    subject_key = _membership_key(finding.get("Subject") or finding.get("SamAccountName"))
+    group_key = str(finding.get("GroupName") or "").strip().casefold()
+    candidates: list[dict[str, Any]] = []
+    for membership in memberships:
+        if not isinstance(membership, dict):
+            continue
+        member_keys = {
+            _membership_key(membership.get("MemberSamAccountName")),
+            _membership_key(membership.get("MemberName")),
+        }
+        member_keys.discard("")
+        if subject_key and subject_key not in member_keys:
+            continue
+        membership_group = str(membership.get("GroupName") or "").strip().casefold()
+        if group_key and membership_group and membership_group != group_key:
+            continue
+        candidates.append(membership)
+
+    if not candidates:
+        return dict(finding)
+
+    # Direct membership is the strongest structural match; then choose deterministically.
+    candidates.sort(
+        key=lambda item: (
+            0 if str(item.get("MembershipType") or "").strip().casefold() == "direct" else 1,
+            str(item.get("GroupName") or "").casefold(),
+            str(item.get("MemberSID") or "").casefold(),
+        )
+    )
+    membership = candidates[0]
+    row = dict(finding)
+    mapped = {
+        "SamAccountName": membership.get("MemberSamAccountName"),
+        "SID": membership.get("MemberSID"),
+        "DistinguishedName": membership.get("MemberDN"),
+        "ObjectClass": membership.get("MemberObjectClass"),
+        "MemberName": membership.get("MemberName"),
+        "MemberSamAccountName": membership.get("MemberSamAccountName"),
+        "MemberObjectClass": membership.get("MemberObjectClass"),
+        "MemberSID": membership.get("MemberSID"),
+        "MemberDN": membership.get("MemberDN"),
+        "MembershipType": membership.get("MembershipType"),
+    }
+    for key, value in mapped.items():
+        if _nonempty(value) and not _nonempty(row.get(key)):
+            row[key] = value
+    return row
+
+
+def source_rows(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return compact findings enriched from authoritative identity/membership views.
+
+    The PowerShell report intentionally has three complementary views:
+    ``Findings`` contains compact alert rows, ``PrivilegedIdentities`` carries rich
+    user-account evidence, and ``Memberships`` carries authoritative structural
+    identity evidence for nested groups and non-user principals.  Correlation must
+    retain the object class/SID rather than guessing from a name.
     """
     findings = data.get("Findings")
     identities = data.get("PrivilegedIdentities")
+    memberships_raw = data.get("Memberships")
+    memberships = [row for row in memberships_raw if isinstance(row, dict)] if isinstance(memberships_raw, list) else []
 
     if isinstance(findings, list) and findings:
         identity_by_key: dict[str, dict[str, Any]] = {}
@@ -121,8 +202,9 @@ def source_rows(data: dict[str, Any]) -> list[dict[str, Any]]:
         for finding in findings:
             if not isinstance(finding, dict):
                 continue
+            finding_type = str(finding.get("FindingType") or "").strip()
             row = dict(finding)
-            if str(finding.get("FindingType") or "").strip() == "PrivilegedIdentityProtectionGap":
+            if finding_type == "PrivilegedIdentityProtectionGap":
                 key = _account_key(finding.get("Subject") or finding.get("SamAccountName"))
                 identity = identity_by_key.get(key)
                 if identity:
@@ -130,6 +212,8 @@ def source_rows(data: dict[str, Any]) -> list[dict[str, Any]]:
                     # their finding-specific severity/action/verification semantics.
                     row = dict(identity)
                     row.update(finding)
+            elif finding_type in {"NestedPrivilegedGroup", "NonUserPrivilegedPrincipal"}:
+                row = _enrich_structural_finding_from_memberships(finding, memberships)
             enriched.append(row)
         return enriched
 

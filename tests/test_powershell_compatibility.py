@@ -92,6 +92,32 @@ class PowerShellCompatibilityTests(unittest.TestCase):
         self.assertNotRegex(content, re.compile(r"^\s*\$pid\s*=", re.IGNORECASE | re.MULTILINE))
         self.assertNotRegex(content, re.compile(r"^\s*\$matches\s*=", re.IGNORECASE | re.MULTILINE))
 
+    def test_server_inventory_excludes_builtin_service_identities_from_custom_account_findings(self):
+        path = REPO_ROOT / "scripts" / "windows" / "server" / "Get-WindowsServerSecurityInventory.ps1"
+        content = path.read_text(encoding="utf-8-sig")
+        self.assertIn("function Test-ServiceAccountNeedsReview", content)
+        for identity in [
+            "LocalSystem",
+            "NT AUTHORITY\\SYSTEM",
+            "NT AUTHORITY\\LocalService",
+            "NT AUTHORITY\\NetworkService",
+            "S-1-5-18",
+            "S-1-5-19",
+            "S-1-5-20",
+        ]:
+            self.assertIn(identity, content)
+        self.assertIn('if ($text -match "^NT SERVICE\\\\")', content)
+        self.assertIn("Test-ManagedServiceAccount -Value $text", content)
+
+    def test_server_inventory_does_not_flag_builtin_microsoft_highest_task_by_runlevel_alone(self):
+        path = REPO_ROOT / "scripts" / "windows" / "server" / "Get-WindowsServerSecurityInventory.ps1"
+        content = path.read_text(encoding="utf-8-sig")
+        self.assertIn("function Test-BuiltInScheduledTaskPrincipal", content)
+        self.assertIn("function Test-MicrosoftWindowsScheduledTask", content)
+        self.assertIn('$isMicrosoftWindowsTask = Test-MicrosoftWindowsScheduledTask -TaskPath $task.TaskPath', content)
+        self.assertIn('(-not $isBuiltInPrincipal -or -not $isMicrosoftWindowsTask)', content)
+        self.assertIn("Actions=$actionSummary", content)
+
     def test_service_install_summary_uses_context_before_high_severity(self):
         path = REPO_ROOT / "scripts" / "windows" / "host" / "Export-WindowsEventSecurityReport.ps1"
         content = path.read_text(encoding="utf-8-sig")

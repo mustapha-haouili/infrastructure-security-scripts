@@ -56,13 +56,44 @@ function Test-ServiceAccountNeedsReview {
     if ([string]::IsNullOrWhiteSpace($text)) {
         return $false
     }
-    if ($text -in @("LocalSystem", "NT AUTHORITY\LocalService", "NT AUTHORITY\NetworkService")) {
+    if ($text -in @(
+        "LocalSystem",
+        "SYSTEM",
+        "NT AUTHORITY\SYSTEM",
+        "NT Authority\System",
+        "NT AUTHORITY\LocalService",
+        "NT AUTHORITY\NetworkService",
+        "S-1-5-18",
+        "S-1-5-19",
+        "S-1-5-20"
+    )) {
         return $false
     }
     if ($text -match "^(LocalService|NetworkService)$") {
         return $false
     }
+    if ($text -match "^NT SERVICE\\") {
+        return $false
+    }
+    if (Test-ManagedServiceAccount -Value $text) {
+        return $false
+    }
     return $true
+}
+
+function Test-BuiltInScheduledTaskPrincipal {
+    param([AllowNull()][object]$Value)
+    $text = "$Value".Trim()
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return $false
+    }
+    return $text -match "^(SYSTEM|NT AUTHORITY\\SYSTEM|LOCAL SERVICE|NT AUTHORITY\\LOCAL SERVICE|NETWORK SERVICE|NT AUTHORITY\\NETWORK SERVICE|S-1-5-18|S-1-5-19|S-1-5-20)$"
+}
+
+function Test-MicrosoftWindowsScheduledTask {
+    param([AllowNull()][object]$TaskPath)
+    $text = "$TaskPath"
+    return $text.StartsWith("\Microsoft\Windows\", [System.StringComparison]::OrdinalIgnoreCase)
 }
 
 function Get-ServiceCommandExecutablePath {
@@ -226,12 +257,20 @@ $services = @(Invoke-Safe -ScriptBlock {
 
 $scheduledTasks = @(Invoke-Safe -ScriptBlock {
         Get-ScheduledTask -ErrorAction Stop | ForEach-Object {
+            $actions = @($_.Actions | ForEach-Object {
+                    [pscustomobject][ordered]@{
+                        Execute          = "$(Get-ObjectValue -InputObject $_ -Name 'Execute')"
+                        Arguments        = "$(Get-ObjectValue -InputObject $_ -Name 'Arguments')"
+                        WorkingDirectory = "$(Get-ObjectValue -InputObject $_ -Name 'WorkingDirectory')"
+                    }
+                })
             [pscustomobject][ordered]@{
                 TaskName = "$($_.TaskName)"
                 TaskPath = "$($_.TaskPath)"
                 State    = "$($_.State)"
                 UserId   = "$($_.Principal.UserId)"
                 RunLevel = "$($_.Principal.RunLevel)"
+                Actions  = @($actions)
             }
         }
     } -Default @())
@@ -274,8 +313,17 @@ foreach ($service in $services) {
 }
 
 foreach ($task in $scheduledTasks) {
-    if ($task.RunLevel -eq "Highest" -and -not [string]::IsNullOrWhiteSpace($task.UserId) -and $task.UserId -notmatch "^(SYSTEM|LOCAL SERVICE|NETWORK SERVICE)$") {
-        $findings.Add((New-ServerFinding -FindingType "ScheduledTaskRunsHighest" -Severity "Medium" -Name "$($task.TaskPath)$($task.TaskName)" -Title "Scheduled task runs with highest privileges" -Evidence "$($task.TaskPath)$($task.TaskName) runs as $($task.UserId) with RunLevel=$($task.RunLevel)." -Recommendation "Confirm task owner, action path, and whether highest privileges are required.")) | Out-Null
+    $isBuiltInPrincipal = Test-BuiltInScheduledTaskPrincipal -Value $task.UserId
+    $isMicrosoftWindowsTask = Test-MicrosoftWindowsScheduledTask -TaskPath $task.TaskPath
+    # Many Microsoft Windows tasks legitimately run at Highest under built-in
+    # service principals. RunLevel alone is not evidence of unsafe drift.
+    if ($task.RunLevel -eq "Highest" -and -not [string]::IsNullOrWhiteSpace($task.UserId) -and (-not $isBuiltInPrincipal -or -not $isMicrosoftWindowsTask)) {
+        $actionSummary = @($task.Actions | ForEach-Object { "$($_.Execute) $($_.Arguments)".Trim() } | Where-Object { $_ }) -join "; "
+        $evidence = "$($task.TaskPath)$($task.TaskName) runs as $($task.UserId) with RunLevel=$($task.RunLevel)."
+        if ($actionSummary) {
+            $evidence += " Actions=$actionSummary."
+        }
+        $findings.Add((New-ServerFinding -FindingType "ScheduledTaskRunsHighest" -Severity "Medium" -Name "$($task.TaskPath)$($task.TaskName)" -Title "Scheduled task runs with highest privileges" -Evidence $evidence -Recommendation "Confirm task owner, principal, action path, and whether highest privileges are required.")) | Out-Null
     }
 }
 

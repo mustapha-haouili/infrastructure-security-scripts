@@ -26,6 +26,7 @@ from secureinfra.normalizers.ad_inactive_users import normalize_ad_inactive_user
 from secureinfra.normalizers.ad_privileged_identity import normalize_privileged_identity
 from secureinfra.normalizers.ad_service_accounts import normalize_service_accounts
 from secureinfra.normalizers.ad_spn_exposure import normalize_spn_exposure
+from secureinfra.normalizers.ad_stale_computers import normalize_stale_computers
 from secureinfra.report_generator.markdown_report import generate_markdown_reports
 from secureinfra.risk_engine.rules import classify_ad_inactive_user
 from secureinfra.validators.schema_validator import SchemaValidationError, validate_normalized_report
@@ -854,6 +855,70 @@ class SecureInfraAITests(unittest.TestCase):
         self.assertEqual(evidence["classification"], "Built-in Administrator Governance Review")
         self.assertEqual(evidence["activity_evidence_confidence"], "Medium")
 
+    def test_nested_privileged_group_is_enriched_from_memberships(self):
+        data = {
+            "GeneratedAtUtc": "2026-08-19T18:00:00Z",
+            "Findings": [
+                {
+                    "FindingType": "NestedPrivilegedGroup",
+                    "Severity": "Critical",
+                    "Subject": "Tier0-Delegated",
+                    "GroupName": "Domain Admins",
+                    "Evidence": "Nested group membership",
+                }
+            ],
+            "Memberships": [
+                {
+                    "GroupName": "Domain Admins",
+                    "MemberName": "Tier0-Delegated",
+                    "MemberSamAccountName": "Tier0-Delegated",
+                    "MemberObjectClass": "group",
+                    "MemberSID": "S-1-5-21-1-2-3-2101",
+                    "MemberDN": "CN=Tier0-Delegated,OU=Groups,DC=corp,DC=example",
+                    "MembershipType": "Direct",
+                }
+            ],
+        }
+        report = normalize_privileged_identity(data, SAMPLE_INPUT)
+        evidence = report["findings"][0]["evidence"]
+        self.assertEqual(evidence["object_class"], "group")
+        self.assertEqual(evidence["member_object_class"], "group")
+        self.assertEqual(evidence["sid"], "S-1-5-21-1-2-3-2101")
+        self.assertEqual(evidence["member_sid"], "S-1-5-21-1-2-3-2101")
+        self.assertEqual(evidence["sam_account_name"], "Tier0-Delegated")
+
+    def test_non_user_privileged_computer_is_enriched_from_memberships(self):
+        data = {
+            "GeneratedAtUtc": "2026-08-19T18:00:00Z",
+            "Findings": [
+                {
+                    "FindingType": "NonUserPrivilegedPrincipal",
+                    "Severity": "Critical",
+                    "Subject": "LEGACY-SRV",
+                    "GroupName": "Domain Admins",
+                    "Evidence": "ComputerAccount; CriticalGroup",
+                }
+            ],
+            "Memberships": [
+                {
+                    "GroupName": "Domain Admins",
+                    "MemberName": "LEGACY-SRV",
+                    "MemberSamAccountName": "LEGACY-SRV$",
+                    "MemberObjectClass": "computer",
+                    "MemberSID": "S-1-5-21-1-2-3-3101",
+                    "MemberDN": "CN=LEGACY-SRV,OU=Servers,DC=corp,DC=example",
+                    "MembershipType": "Direct",
+                }
+            ],
+        }
+        report = normalize_privileged_identity(data, SAMPLE_INPUT)
+        finding = report["findings"][0]
+        evidence = finding["evidence"]
+        self.assertEqual(evidence["object_class"], "computer")
+        self.assertEqual(evidence["member_object_class"], "computer")
+        self.assertEqual(evidence["sid"], "S-1-5-21-1-2-3-3101")
+        self.assertEqual(evidence["sam_account_name"], "LEGACY-SRV$")
+
     def test_markdown_reports_are_generated(self):
         data = load_json_file(SAMPLE_INPUT)
         report = normalize_ad_inactive_users(data, SAMPLE_INPUT)
@@ -980,6 +1045,36 @@ class SecureInfraAITests(unittest.TestCase):
             executive = (output_dir / "executive-summary.md").read_text(encoding="utf-8")
             self.assertIn("Detected AD Report Files", executive)
             self.assertIn("Limitations", executive)
+
+    def test_stale_computer_missing_activity_remains_unknown_not_zero(self):
+        data = {
+            "ToolName": "Get-ADStaleComputerReport",
+            "GeneratedAtUtc": "2026-08-19T12:00:00Z",
+            "ComputerName": "DC01",
+            "StaleComputers": [
+                {
+                    "Name": "UNKNOWN-ACTIVITY-PC",
+                    "SID": "S-1-5-21-1-2-3-4444",
+                    "Enabled": True,
+                    "InactiveDays": None,
+                    "NeverLoggedOn": True,
+                    "LastLogonEvidence": "No replicated logon evidence was found.",
+                    "ReviewPriority": "High",
+                    "HasSPN": True,
+                    "SPNCount": 3,
+                }
+            ],
+        }
+        report = normalize_stale_computers(data, "ad-stale-computers.json")
+        self.assertEqual(len(report["findings"]), 1)
+        finding = report["findings"][0]
+        evidence = finding["evidence"]
+        self.assertEqual(finding["object_type"], "Active Directory computer")
+        self.assertEqual(evidence["object_class"], "computer")
+        self.assertEqual(evidence["object_sid"], "S-1-5-21-1-2-3-4444")
+        self.assertIsNone(evidence["inactive_days"])
+        self.assertTrue(evidence["never_logged_on"])
+        self.assertIn("No replicated logon evidence", evidence["last_logon_evidence"])
 
     def test_ad_shared_collection_root_input_resolves_ad_shared_subdirectory(self):
         with tempfile.TemporaryDirectory() as tmp:

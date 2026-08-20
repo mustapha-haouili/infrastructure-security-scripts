@@ -19,6 +19,8 @@ the documented quality, provenance, and field-validation gates.
   total expanded size, and extreme compression ratios.
 
 ### Fixed
+- Preserve AD privileged-principal object class, SID, DN, and member sAMAccountName from membership evidence so downstream reporting can distinguish user, group, and computer principals during correlation.
+- Enrich nested privileged-group and non-user privileged-principal findings from the collector Memberships dataset instead of leaving compact finding rows without typed identity context.
 - Made client and fleet finding order deterministic across Python hash seeds.
 - Read inactive-user collection time from `ReportMetadata` and derive fleet
   report time from child collections instead of the analyzer wall clock.
