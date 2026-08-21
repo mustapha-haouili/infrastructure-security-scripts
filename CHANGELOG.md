@@ -8,6 +8,9 @@ the documented quality, provenance, and field-validation gates.
 
 ## [Unreleased]
 
+### Architecture
+- Froze the current public AD/GPO surface as a maintenance-focused compatibility baseline for future identity architecture work; new deep directory/cloud-identity expansion is outside the current public roadmap.
+
 ### Security
 - Added fail-closed verification of manifest file membership, byte sizes, and
   SHA-256 values whenever a collection bundle declares `Files`. The commercial

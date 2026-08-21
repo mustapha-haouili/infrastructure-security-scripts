@@ -23,9 +23,9 @@ Items are priorities, not contractual commitments.
 - Complete remaining safe Windows evidence gaps, including pending-reboot and
   certificate-expiry visibility, only after the current collectors are fully
   tested.
-- Design Entra/Microsoft Graph identity checks separately with explicit
-  permissions and authentication requirements; do not infer cloud controls from
-  on-premises evidence.
+- Keep the existing public AD/GPO baseline stable and maintenance-focused; new
+  deep directory or cloud-identity assessment is outside the current public
+  roadmap. Do not infer cloud controls from on-premises evidence.
 - Keep generated examples synchronized with tested fixtures and schemas.
 
 ## 3. Normalized contract consistency
