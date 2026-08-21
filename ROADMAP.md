@@ -23,9 +23,12 @@ Items are priorities, not contractual commitments.
 - Complete remaining safe Windows evidence gaps, including pending-reboot and
   certificate-expiry visibility, only after the current collectors are fully
   tested.
-- Keep the existing public AD/GPO baseline stable and maintenance-focused; new
-  deep directory or cloud-identity assessment is outside the current public
-  roadmap. Do not infer cloud controls from on-premises evidence.
+- Retain the existing public AD/GPO implementation in the current tree as a
+  compatibility and maintenance baseline. Do not remove it as part of future
+  feature development. No new AD/GPO features are added here; changes are limited
+  to correctness, security, compatibility, and contract maintenance. Deep directory
+  or cloud-identity assessment is outside the current public roadmap. Do not infer
+  cloud controls from on-premises evidence.
 - Keep generated examples synchronized with tested fixtures and schemas.
 
 ## 3. Normalized contract consistency

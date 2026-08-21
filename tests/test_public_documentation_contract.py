@@ -66,6 +66,12 @@ class PublicDocumentationContractTests(unittest.TestCase):
         missing = [path for path in indexed_paths if not (ROOT / path).is_file()]
         self.assertEqual([], missing)
 
+    def test_public_ad_gpo_is_retained_but_feature_frozen(self) -> None:
+        roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
+        self.assertIn("Retain the existing public AD/GPO implementation", roadmap)
+        self.assertIn("No new AD/GPO features are added here", roadmap)
+        self.assertIn("correctness, security, compatibility, and contract maintenance", roadmap)
+
     def test_public_schemas_use_canonical_technical_severities(self) -> None:
         schema_paths = [
             ROOT / "SecureInfra_AI/schemas/finding.schema.json",
